@@ -14,3 +14,18 @@ export function serializeProject<T extends { budget: Prisma.Decimal | null; budg
     budgetSpent: project.budgetSpent ? Number(project.budgetSpent) : null,
   };
 }
+
+type MetricLike = { value: Prisma.Decimal; target: Prisma.Decimal | null };
+
+export function serializeArea<T extends { metrics: MetricLike[] }>(area: T) {
+  return {
+    ...area,
+    metrics: area.metrics.map((m) => ({
+      ...m,
+      value: Number(m.value),
+      target: m.target ? Number(m.target) : null,
+    })),
+  } as unknown as Omit<T, "metrics"> & {
+    metrics: (Omit<T["metrics"][number], "value" | "target"> & { value: number; target: number | null })[];
+  };
+}
