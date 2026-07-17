@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/shared/empty-state";
 import { DecisionStatusBadge } from "./badges";
 import { DecisionFormDialog } from "./decision-form-dialog";
+import { ExcelExportButton } from "@/components/excel/excel-export-button";
 import { formatDate, initials } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { SelectOption, SelectUser } from "@/types/task";
@@ -24,7 +25,8 @@ export function DecisionsListView({ decisions, users, projects }: DecisionsListV
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <ExcelExportButton entity="decisions" />
         <Button onClick={() => setFormOpen(true)}>
           <Plus /> Entscheidung erfassen
         </Button>

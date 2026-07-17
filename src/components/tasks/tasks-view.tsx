@@ -9,6 +9,8 @@ import { TaskKanban } from "./task-kanban";
 import { TaskFiltersBar, EMPTY_FILTERS, type TaskFilters } from "./task-filters-bar";
 import { TaskFormDialog } from "./task-form-dialog";
 import { TaskDetailSheet } from "./task-detail-sheet";
+import { ExcelExportButton } from "@/components/excel/excel-export-button";
+import { ExcelImportDialog } from "@/components/excel/excel-import-dialog";
 import type { SelectOption, SelectUser, TaskWithRelations } from "@/types/task";
 
 interface TasksViewProps {
@@ -61,14 +63,18 @@ export function TasksView({ scope, users, projects, departments, companyAreas }:
             <TabsTrigger value="kanban"><LayoutGrid className="size-4" /> Kanban</TabsTrigger>
           </TabsList>
         </Tabs>
-        <Button
-          onClick={() => {
-            setEditingTask(null);
-            setFormOpen(true);
-          }}
-        >
-          <Plus /> Aufgabe erstellen
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <ExcelImportDialog entity="tasks" />
+          <ExcelExportButton entity="tasks" filters={{ ...filters, scope }} />
+          <Button
+            onClick={() => {
+              setEditingTask(null);
+              setFormOpen(true);
+            }}
+          >
+            <Plus /> Aufgabe erstellen
+          </Button>
+        </div>
       </div>
 
       <TaskFiltersBar

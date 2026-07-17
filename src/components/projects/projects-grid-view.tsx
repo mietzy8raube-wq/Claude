@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/shared/empty-state";
 import { ProjectCard } from "./project-card";
 import { ProjectFormDialog } from "./project-form-dialog";
+import { ExcelExportButton } from "@/components/excel/excel-export-button";
+import { ExcelImportDialog } from "@/components/excel/excel-import-dialog";
 import type { SelectUser } from "@/types/task";
 import type { ProjectWithRelations } from "@/types/project";
 
@@ -19,7 +21,9 @@ export function ProjectsGridView({ projects, users }: ProjectsGridViewProps) {
 
   return (
     <div>
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        <ExcelImportDialog entity="projects" />
+        <ExcelExportButton entity="projects" />
         <Button onClick={() => setFormOpen(true)}>
           <Plus /> Projekt erstellen
         </Button>

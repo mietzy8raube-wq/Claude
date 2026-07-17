@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { MicrosoftConnectionCard } from "@/components/integrations/microsoft-connection-card";
 import { OneDriveCard } from "@/components/integrations/onedrive-card";
 import { PermissionsCard } from "@/components/integrations/permissions-card";
+import { ExcelManagementCard } from "@/components/integrations/excel-management-card";
 import { isMicrosoftGraphConfigured } from "@/lib/graph/config";
 import type { ConnectionStatus } from "@/types/integration";
 
@@ -54,6 +55,7 @@ export default async function IntegrationsPage() {
         </Suspense>
         <OneDriveCard />
         <PermissionsCard />
+        <ExcelManagementCard />
       </div>
     </div>
   );
