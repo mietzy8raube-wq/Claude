@@ -1,0 +1,264 @@
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { DecisionStatusBadge } from "@/components/decisions/badges";
+import { formatDate, formatDateTime, initials } from "@/lib/utils";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  FolderKanban,
+  Scale,
+  AlertTriangle,
+  CalendarClock,
+  RefreshCw,
+  FileSpreadsheet,
+  XCircle,
+  Activity,
+  LineChart,
+} from "lucide-react";
+
+export function TasksByAssigneeWidget({
+  data,
+}: {
+  data: { userId: string; name: string; open: number; overdue: number; total: number }[];
+}) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Aufgaben pro Geschäftsführer</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {data.map((d) => (
+          <div key={d.userId}>
+            <div className="mb-1 flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2">
+                <Avatar className="size-6"><AvatarFallback className="text-[10px]">{initials(d.name)}</AvatarFallback></Avatar>
+                {d.name}
+              </span>
+              <span className="text-muted-foreground">{d.open} offen{d.overdue > 0 && `, ${d.overdue} überfällig`}</span>
+            </div>
+            <Progress value={d.total ? (d.open / d.total) * 100 : 0} />
+          </div>
+        ))}
+        {data.length === 0 && <p className="text-sm text-muted-foreground">Keine Daten.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function RunningProjectsWidget({
+  projects,
+}: {
+  projects: { id: string; name: string; progress: number; status: string; targetDate: Date | null }[];
+}) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FolderKanban className="size-4" /> Laufende Projekte</CardTitle></CardHeader>
+      <CardContent className="space-y-3">
+        {projects.map((p) => (
+          <Link key={p.id} href={`/projects/${p.id}`} className="block">
+            <div className="mb-1 flex items-center justify-between text-sm">
+              <span className="font-medium">{p.name}</span>
+              <span className="text-xs text-muted-foreground">{p.progress}%</span>
+            </div>
+            <Progress value={p.progress} />
+            {p.targetDate && <p className="mt-1 text-xs text-muted-foreground">Ziel: {formatDate(p.targetDate)}</p>}
+          </Link>
+        ))}
+        {projects.length === 0 && <p className="text-sm text-muted-foreground">Keine laufenden Projekte.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ImportantDecisionsWidget({
+  decisions,
+}: {
+  decisions: { id: string; title: string; status: string; decisionDeadline: Date | null }[];
+}) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Scale className="size-4" /> Wichtige Entscheidungen</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {decisions.map((d) => (
+          <Link key={d.id} href={`/decisions/${d.id}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted/50">
+            <span className="truncate">{d.title}</span>
+            <div className="flex shrink-0 items-center gap-2">
+              {d.decisionDeadline && <span className="text-xs text-muted-foreground">{formatDate(d.decisionDeadline)}</span>}
+              <DecisionStatusBadge status={d.status as never} />
+            </div>
+          </Link>
+        ))}
+        {decisions.length === 0 && <p className="text-sm text-muted-foreground">Keine offenen Entscheidungen.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CriticalAlertsWidget({
+  overdueCount,
+  criticalTaskCount,
+  failedSyncCount,
+}: {
+  overdueCount: number;
+  criticalTaskCount: number;
+  failedSyncCount: number;
+}) {
+  const alerts = [
+    overdueCount > 0 && `${overdueCount} überfällige Aufgabe(n)`,
+    criticalTaskCount > 0 && `${criticalTaskCount} offene Aufgabe(n) mit kritischer Priorität`,
+    failedSyncCount > 0 && `${failedSyncCount} fehlgeschlagene Synchronisierung(en)`,
+  ].filter(Boolean) as string[];
+
+  return (
+    <Card className={alerts.length > 0 ? "border-destructive/40" : undefined}>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="size-4 text-destructive" /> Kritische Meldungen</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {alerts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">Keine kritischen Meldungen.</p>
+        ) : (
+          alerts.map((a, i) => (
+            <p key={i} className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{a}</p>
+          ))
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CalendarWidget({
+  today,
+  upcoming,
+}: {
+  today: { id: string; title: string; startTime: Date; endTime: Date; location: string | null }[];
+  upcoming: { id: string; title: string; startTime: Date; endTime: Date; location: string | null }[];
+}) {
+  const fmtTime = (d: Date) => new Date(d).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CalendarClock className="size-4" /> Termine</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Heute</p>
+          {today.length === 0 && <p className="text-sm text-muted-foreground">Keine Termine heute.</p>}
+          {today.map((e) => (
+            <div key={e.id} className="flex justify-between text-sm">
+              <span>{e.title}</span>
+              <span className="text-muted-foreground">{fmtTime(e.startTime)}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Bevorstehend</p>
+          {upcoming.length === 0 && <p className="text-sm text-muted-foreground">Keine bevorstehenden Termine.</p>}
+          {upcoming.map((e) => (
+            <div key={e.id} className="flex justify-between text-sm">
+              <span>{e.title}</span>
+              <span className="text-muted-foreground">{formatDate(e.startTime)}</span>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+export function SyncStatusWidget({
+  connections,
+  recentImports,
+  failedSyncs,
+}: {
+  connections: { name: string; lastSyncAt: Date | null; lastSyncStatus: string }[];
+  recentImports: { fileName: string; entity: string; createdAt: Date; successCount: number; errorCount: number }[];
+  failedSyncs: { message: string | null; createdAt: Date }[];
+}) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><RefreshCw className="size-4" /> Synchronisierung &amp; Import</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="mb-1 text-xs font-medium text-muted-foreground">Zuletzt synchronisiert</p>
+          {connections.length === 0 && <p className="text-sm text-muted-foreground">Kein Microsoft-Konto verbunden.</p>}
+          {connections.map((c, i) => (
+            <div key={i} className="flex items-center justify-between text-sm">
+              <span>{c.name}</span>
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                {c.lastSyncAt ? formatDateTime(c.lastSyncAt) : "nie"}
+                <Badge className={c.lastSyncStatus === "ERFOLGREICH" ? "border-transparent bg-success/15 text-success" : "border-transparent bg-destructive/15 text-destructive"}>
+                  {c.lastSyncStatus}
+                </Badge>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div>
+          <p className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+            <FileSpreadsheet className="size-3.5" /> Zuletzt importierte Excel-Dateien
+          </p>
+          {recentImports.length === 0 && <p className="text-sm text-muted-foreground">Noch keine Importe.</p>}
+          {recentImports.map((imp, i) => (
+            <div key={i} className="flex items-center justify-between text-sm">
+              <span className="truncate">{imp.fileName}</span>
+              <span className="text-xs text-muted-foreground">
+                {formatDate(imp.createdAt)} · {imp.successCount} ok{imp.errorCount > 0 && `, ${imp.errorCount} Fehler`}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {failedSyncs.length > 0 && (
+          <div>
+            <p className="mb-1 flex items-center gap-1 text-xs font-medium text-destructive">
+              <XCircle className="size-3.5" /> Fehlgeschlagene Synchronisierungen
+            </p>
+            {failedSyncs.map((s, i) => (
+              <p key={i} className="text-xs text-muted-foreground">{formatDateTime(s.createdAt)}: {s.message}</p>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function CompanyKpiWidget({
+  metrics,
+}: {
+  metrics: { id: string; areaName: string; name: string; value: number; unit: string | null; period: string }[];
+}) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><LineChart className="size-4" /> Unternehmenskennzahlen</CardTitle></CardHeader>
+      <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {metrics.map((m) => (
+          <div key={m.id} className="rounded-md bg-muted/50 p-2">
+            <p className="text-xs text-muted-foreground">{m.areaName} · {m.name}</p>
+            <p className="text-lg font-semibold">{m.value.toLocaleString("de-DE")} {m.unit}</p>
+          </div>
+        ))}
+        {metrics.length === 0 && <p className="text-sm text-muted-foreground">Keine Kennzahlen erfasst.</p>}
+      </CardContent>
+    </Card>
+  );
+}
+
+export function ActivityFeedWidget({
+  activities,
+}: {
+  activities: { id: string; description: string; userName: string | null; createdAt: Date }[];
+}) {
+  return (
+    <Card>
+      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Activity className="size-4" /> Aktivitäten der letzten Tage</CardTitle></CardHeader>
+      <CardContent className="space-y-2">
+        {activities.map((a) => (
+          <div key={a.id} className="flex items-start justify-between gap-2 text-sm">
+            <span className="text-muted-foreground">{a.description}</span>
+            <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(a.createdAt)}</span>
+          </div>
+        ))}
+        {activities.length === 0 && <p className="text-sm text-muted-foreground">Keine Aktivitäten.</p>}
+      </CardContent>
+    </Card>
+  );
+}
