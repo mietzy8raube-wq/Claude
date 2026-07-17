@@ -45,6 +45,7 @@ interface DetailData {
   checklistItems: { id: string; title: string; isDone: boolean }[];
   comments: { id: string; content: string; createdAt: string; author: { id: string; name: string } }[];
   activities: { id: string; action: string; createdAt: string; user: { id: string; name: string } }[];
+  calendarEvent: { id: string; startTime: string; endTime: string; source: string } | null;
 }
 
 export function TaskDetailSheet({ taskId, onOpenChange, onEdit, onChanged }: TaskDetailSheetProps) {
@@ -123,6 +124,28 @@ export function TaskDetailSheet({ taskId, onOpenChange, onEdit, onChanged }: Tas
       toast.error("Kommentar konnte nicht gespeichert werden");
     } finally {
       setSubmittingComment(false);
+    }
+  }
+
+  async function createEventFromTask() {
+    if (!task) return;
+    const start = task.dueDate ? new Date(task.dueDate) : new Date();
+    start.setHours(9, 0, 0, 0);
+    const end = new Date(start);
+    end.setHours(end.getHours() + 1);
+
+    try {
+      const res = await fetch(`/api/tasks/${task.id}/calendar-event`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startTime: start, endTime: end }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Termin aus Aufgabe erstellt");
+      loadTask(task.id);
+      onChanged();
+    } catch {
+      toast.error("Termin konnte nicht erstellt werden");
     }
   }
 
@@ -209,6 +232,23 @@ export function TaskDetailSheet({ taskId, onOpenChange, onEdit, onChanged }: Tas
                       <p className="text-xs text-muted-foreground">Kategorie</p>
                       <p>{task.category}</p>
                     </div>
+                  )}
+                </div>
+
+                <Separator />
+
+                <div>
+                  <p className="mb-2 text-sm font-medium">Termin</p>
+                  {task.calendarEvent ? (
+                    <p className="text-sm text-muted-foreground">
+                      Verknüpfter Termin: {formatDateTime(task.calendarEvent.startTime)} –{" "}
+                      {new Date(task.calendarEvent.endTime).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })}
+                      {task.calendarEvent.source === "OUTLOOK" && " (Outlook)"}
+                    </p>
+                  ) : (
+                    <Button type="button" variant="outline" size="sm" onClick={createEventFromTask}>
+                      Outlook-Termin aus Aufgabe erstellen
+                    </Button>
                   )}
                 </div>
 
