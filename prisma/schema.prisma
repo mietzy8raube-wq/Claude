@@ -1,0 +1,768 @@
+// Prisma schema for the GF-Suite (Unternehmensübersicht für Geschäftsführer)
+// Datenbank: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum Role {
+  GESCHAEFTSFUEHRER
+  ADMINISTRATOR
+  MITARBEITER
+}
+
+enum TaskStatus {
+  OFFEN
+  IN_BEARBEITUNG
+  BLOCKIERT
+  ZUR_PRUEFUNG
+  ERLEDIGT
+}
+
+enum Priority {
+  NIEDRIG
+  MITTEL
+  HOCH
+  KRITISCH
+}
+
+enum TaskVisibility {
+  PERSOENLICH
+  GEMEINSAM
+}
+
+enum RecurrenceFrequency {
+  TAEGLICH
+  WOECHENTLICH
+  MONATLICH
+  JAEHRLICH
+}
+
+enum ProjectStatus {
+  GEPLANT
+  LAUFEND
+  PAUSIERT
+  ABGESCHLOSSEN
+  ABGEBROCHEN
+}
+
+enum RiskImpact {
+  NIEDRIG
+  MITTEL
+  HOCH
+  KRITISCH
+}
+
+enum RiskStatus {
+  OFFEN
+  IN_BEOBACHTUNG
+  GEMILDERT
+  EINGETRETEN
+  GESCHLOSSEN
+}
+
+enum DecisionStatus {
+  VORBEREITUNG
+  DISKUSSION
+  ENTSCHEIDUNG_ERFORDERLICH
+  ENTSCHIEDEN
+  ZURUECKGESTELLT
+}
+
+enum CompanyAreaType {
+  FINANZEN
+  VERTRIEB
+  MARKETING
+  PERSONAL
+  OPERATIVES
+  KUNDEN
+  LIEFERANTEN
+  VERTRAEGE
+  RISIKEN
+  STRATEGISCHE_ZIELE
+}
+
+enum ContactType {
+  KUNDE
+  LIEFERANT
+  PARTNER
+  SONSTIGE
+}
+
+enum CalendarEventSource {
+  LOKAL
+  OUTLOOK
+}
+
+enum SyncStatus {
+  NIE_SYNCHRONISIERT
+  AUSSTEHEND
+  ERFOLGREICH
+  FEHLER
+}
+
+enum ImportExportEntity {
+  TASK
+  PROJECT
+  DECISION
+  CONTACT
+  COMPANY_METRIC
+}
+
+enum ExcelOperationType {
+  IMPORT
+  EXPORT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  CONNECT_INTEGRATION
+  DISCONNECT_INTEGRATION
+  EXPORT
+  IMPORT
+  SYNC
+}
+
+// ---------------------------------------------------------------------------
+// Benutzer & Zugriff
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(GESCHAEFTSFUEHRER)
+  image        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  microsoftConnection MicrosoftConnection?
+
+  createdTasks      Task[]            @relation("TaskCreatedBy")
+  assignedTasks     Task[]            @relation("TaskAssignee")
+  taskParticipation TaskParticipant[]
+  taskComments      TaskComment[]
+  taskAttachments   TaskAttachment[]
+  taskActivities    TaskActivity[]
+
+  ownedProjects        Project[]            @relation("ProjectOwner")
+  projectParticipation ProjectParticipant[]
+  projectComments      ProjectComment[]
+  projectFiles         ProjectFile[]
+
+  responsibleDecisions Decision[]        @relation("DecisionResponsible")
+  decisionComments     DecisionComment[]
+
+  createdMeetings    Meeting[]           @relation("MeetingCreatedBy")
+  meetingAttendees   MeetingAttendee[]
+  meetingResolutions MeetingResolution[] @relation("ResolutionResponsible")
+
+  responsibleAreas    CompanyArea[]     @relation("AreaResponsible")
+  companyNotes        CompanyNote[]
+  companyDocuments    CompanyDocument[]
+  responsibleContacts Contact[]         @relation("ContactResponsible")
+
+  calendarEvents CalendarEvent[]
+
+  auditLogs AuditLog[]
+  excelOps  ExcelOperationLog[]
+
+  @@map("users")
+}
+
+// ---------------------------------------------------------------------------
+// Microsoft Graph Integration
+// ---------------------------------------------------------------------------
+
+model MicrosoftConnection {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  microsoftUserId String
+  email           String
+  displayName     String
+
+  accessTokenEncrypted  String   @db.Text
+  refreshTokenEncrypted String   @db.Text
+  tokenExpiresAt        DateTime
+
+  scopes String // space-separated granted scopes
+
+  selectedCalendarId   String?
+  selectedCalendarName String?
+
+  syncIntervalMinutes Int     @default(15)
+  autoSyncEnabled     Boolean @default(true)
+
+  lastSyncAt     DateTime?
+  lastSyncStatus SyncStatus @default(NIE_SYNCHRONISIERT)
+  lastSyncError  String?    @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  syncLogs SyncLog[]
+
+  @@map("microsoft_connections")
+}
+
+model SyncLog {
+  id           String              @id @default(cuid())
+  connectionId String
+  connection   MicrosoftConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  status      SyncStatus
+  message     String?    @db.Text
+  itemsSynced Int        @default(0)
+  itemsFailed Int        @default(0)
+  durationMs  Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([connectionId, createdAt])
+  @@map("sync_logs")
+}
+
+model CalendarEvent {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?  @db.Text
+  location    String?
+  startTime   DateTime
+  endTime     DateTime
+  timeZone    String   @default("Europe/Berlin")
+
+  organizer String?
+  attendees Json? // [{name, email, response}]
+  teamsLink String?
+
+  source         CalendarEventSource @default(LOKAL)
+  outlookEventId String?             @unique
+  syncStatus     SyncStatus          @default(NIE_SYNCHRONISIERT)
+  lastSyncedAt   DateTime?
+  syncError      String?             @db.Text
+
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId     String?   @unique
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  projectId  String?
+  meeting    Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+  meetingId  String?
+  decision   Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+  decisionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startTime])
+  @@map("calendar_events")
+}
+
+// ---------------------------------------------------------------------------
+// Aufgaben
+// ---------------------------------------------------------------------------
+
+model Department {
+  id    String @id @default(cuid())
+  name  String @unique
+  tasks Task[]
+
+  @@map("departments")
+}
+
+model Task {
+  id          String  @id @default(cuid())
+  title       String
+  description String? @db.Text
+
+  assigneeId String?
+  assignee   User?   @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User   @relation("TaskCreatedBy", fields: [createdById], references: [id])
+
+  participants TaskParticipant[]
+
+  priority   Priority       @default(MITTEL)
+  status     TaskStatus     @default(OFFEN)
+  visibility TaskVisibility @default(GEMEINSAM)
+
+  dueDate DateTime?
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+
+  companyAreaId String?
+  companyArea   CompanyArea? @relation(fields: [companyAreaId], references: [id], onDelete: SetNull)
+
+  decisionId String?
+  decision   Decision? @relation(fields: [decisionId], references: [id], onDelete: SetNull)
+
+  meetingResolutionId String?            @unique
+  meetingResolution   MeetingResolution? @relation(fields: [meetingResolutionId], references: [id], onDelete: SetNull)
+
+  category String?
+
+  isRecurring         Boolean              @default(false)
+  recurrenceFrequency RecurrenceFrequency?
+  recurrenceInterval  Int?                 @default(1)
+  recurrenceEndDate   DateTime?
+
+  reminderAt DateTime?
+
+  calendarEvent CalendarEvent?
+
+  checklistItems TaskChecklistItem[]
+  comments       TaskComment[]
+  attachments    TaskAttachment[]
+  activities     TaskActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([assigneeId, status])
+  @@index([dueDate])
+  @@index([projectId])
+  @@map("tasks")
+}
+
+model TaskParticipant {
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, userId])
+  @@map("task_participants")
+}
+
+model TaskChecklistItem {
+  id       String  @id @default(cuid())
+  taskId   String
+  task     Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  title    String
+  isDone   Boolean @default(false)
+  position Int     @default(0)
+
+  @@map("task_checklist_items")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@map("task_comments")
+}
+
+model TaskAttachment {
+  id           String   @id @default(cuid())
+  taskId       String
+  task         Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  fileName     String
+  url          String
+  size         Int
+  mimeType     String
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@map("task_attachments")
+}
+
+model TaskActivity {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  action    String
+  details   Json?
+  createdAt DateTime @default(now())
+
+  @@map("task_activities")
+}
+
+// ---------------------------------------------------------------------------
+// Projekte
+// ---------------------------------------------------------------------------
+
+model Project {
+  id          String        @id @default(cuid())
+  name        String
+  description String?       @db.Text
+  status      ProjectStatus @default(GEPLANT)
+  progress    Int           @default(0)
+
+  startDate  DateTime?
+  targetDate DateTime?
+
+  ownerId String
+  owner   User   @relation("ProjectOwner", fields: [ownerId], references: [id])
+
+  budget      Decimal? @db.Decimal(14, 2)
+  budgetSpent Decimal? @db.Decimal(14, 2)
+
+  participants   ProjectParticipant[]
+  tasks          Task[]
+  milestones     ProjectMilestone[]
+  risks          ProjectRisk[]
+  files          ProjectFile[]
+  comments       ProjectComment[]
+  calendarEvents CalendarEvent[]
+  decisions      Decision[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("projects")
+}
+
+model ProjectParticipant {
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@map("project_participants")
+}
+
+model ProjectMilestone {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  dueDate   DateTime?
+  isDone    Boolean   @default(false)
+  position  Int       @default(0)
+
+  @@map("project_milestones")
+}
+
+model ProjectRisk {
+  id          String     @id @default(cuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?    @db.Text
+  impact      RiskImpact @default(MITTEL)
+  status      RiskStatus @default(OFFEN)
+  mitigation  String?    @db.Text
+  createdAt   DateTime   @default(now())
+
+  @@map("project_risks")
+}
+
+model ProjectFile {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fileName     String
+  url          String
+  size         Int
+  mimeType     String
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+
+  @@map("project_files")
+}
+
+model ProjectComment {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@map("project_comments")
+}
+
+// ---------------------------------------------------------------------------
+// Entscheidungen
+// ---------------------------------------------------------------------------
+
+model Decision {
+  id          String  @id @default(cuid())
+  title       String
+  description String? @db.Text
+  background  String? @db.Text
+
+  responsibleId String
+  responsible   User   @relation("DecisionResponsible", fields: [responsibleId], references: [id])
+
+  decisionDeadline DateTime?
+  status           DecisionStatus @default(VORBEREITUNG)
+
+  finalDecision String?   @db.Text
+  decisionDate  DateTime?
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  options        DecisionOption[]
+  comments       DecisionComment[]
+  linkedTasks    Task[]
+  calendarEvents CalendarEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("decisions")
+}
+
+model DecisionOption {
+  id         String   @id @default(cuid())
+  decisionId String
+  decision   Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  title      String
+  pros       String?  @db.Text
+  cons       String?  @db.Text
+  position   Int      @default(0)
+  isChosen   Boolean  @default(false)
+
+  @@map("decision_options")
+}
+
+model DecisionComment {
+  id         String   @id @default(cuid())
+  decisionId String
+  decision   Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@map("decision_comments")
+}
+
+// ---------------------------------------------------------------------------
+// Meetings
+// ---------------------------------------------------------------------------
+
+model Meeting {
+  id          String   @id @default(cuid())
+  title       String
+  meetingDate DateTime
+  location    String?
+  notes       String?  @db.Text
+
+  createdById String
+  createdBy   User   @relation("MeetingCreatedBy", fields: [createdById], references: [id])
+
+  agendaItems    MeetingAgendaItem[]
+  attendees      MeetingAttendee[]
+  attachments    MeetingAttachment[]
+  resolutions    MeetingResolution[]
+  calendarEvents CalendarEvent[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("meetings")
+}
+
+model MeetingAgendaItem {
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title     String
+  notes     String? @db.Text
+  position  Int     @default(0)
+
+  @@map("meeting_agenda_items")
+}
+
+model MeetingAttendee {
+  id        String  @id @default(cuid())
+  meetingId String
+  meeting   Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+  name      String
+  email     String?
+
+  @@map("meeting_attendees")
+}
+
+model MeetingAttachment {
+  id        String   @id @default(cuid())
+  meetingId String
+  meeting   Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  fileName  String
+  url       String
+  size      Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  @@map("meeting_attachments")
+}
+
+model MeetingResolution {
+  id            String    @id @default(cuid())
+  meetingId     String
+  meeting       Meeting   @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  title         String
+  description   String?   @db.Text
+  responsibleId String?
+  responsible   User?     @relation("ResolutionResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  dueDate       DateTime?
+  generatedTask Task?
+
+  createdAt DateTime @default(now())
+
+  @@map("meeting_resolutions")
+}
+
+// ---------------------------------------------------------------------------
+// Unternehmensübersicht
+// ---------------------------------------------------------------------------
+
+model CompanyArea {
+  id            String          @id @default(cuid())
+  type          CompanyAreaType @unique
+  name          String
+  description   String?         @db.Text
+  responsibleId String?
+  responsible   User?           @relation("AreaResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+
+  metrics   CompanyMetric[]
+  notes     CompanyNote[]
+  documents CompanyDocument[]
+  tasks     Task[]
+  contacts  Contact[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("company_areas")
+}
+
+model CompanyMetric {
+  id            String      @id @default(cuid())
+  companyAreaId String
+  companyArea   CompanyArea @relation(fields: [companyAreaId], references: [id], onDelete: Cascade)
+  name          String
+  value         Decimal     @db.Decimal(14, 2)
+  unit          String?
+  target        Decimal?    @db.Decimal(14, 2)
+  period        String // z.B. "2026-06" oder "2026-Q2"
+  createdAt     DateTime    @default(now())
+
+  @@index([companyAreaId, period])
+  @@map("company_metrics")
+}
+
+model CompanyNote {
+  id            String      @id @default(cuid())
+  companyAreaId String
+  companyArea   CompanyArea @relation(fields: [companyAreaId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User        @relation(fields: [authorId], references: [id])
+  content       String      @db.Text
+  createdAt     DateTime    @default(now())
+
+  @@map("company_notes")
+}
+
+model CompanyDocument {
+  id            String      @id @default(cuid())
+  companyAreaId String
+  companyArea   CompanyArea @relation(fields: [companyAreaId], references: [id], onDelete: Cascade)
+  fileName      String
+  url           String
+  size          Int
+  mimeType      String
+  uploadedById  String
+  uploadedBy    User        @relation(fields: [uploadedById], references: [id])
+  createdAt     DateTime    @default(now())
+
+  @@map("company_documents")
+}
+
+model Contact {
+  id            String       @id @default(cuid())
+  type          ContactType  @default(KUNDE)
+  name          String
+  company       String?
+  email         String?
+  phone         String?
+  notes         String?      @db.Text
+  responsibleId String?
+  responsible   User?        @relation("ContactResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  companyAreaId String?
+  companyArea   CompanyArea? @relation(fields: [companyAreaId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("contacts")
+}
+
+// ---------------------------------------------------------------------------
+// Protokolle / Sicherheit
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  userId      String?
+  user        User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      AuditAction
+  entityType  String
+  entityId    String?
+  description String
+  metadata    Json?
+  ipAddress   String?
+  createdAt   DateTime    @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model ExcelOperationLog {
+  id           String             @id @default(cuid())
+  userId       String
+  user         User               @relation(fields: [userId], references: [id])
+  type         ExcelOperationType
+  entity       ImportExportEntity
+  fileName     String
+  totalRows    Int                @default(0)
+  successCount Int                @default(0)
+  errorCount   Int                @default(0)
+  errors       Json?
+  filtersUsed  Json?
+  createdAt    DateTime           @default(now())
+
+  @@index([userId, createdAt])
+  @@map("excel_operation_logs")
+}
