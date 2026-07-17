@@ -71,7 +71,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       throw new ApiError(404, "Aufgabe nicht gefunden.");
     }
 
-    const { participantIds, checklistItems: _checklistItems, ...rest } = data;
+    const { participantIds, checklistItems, ...rest } = data;
+    void checklistItems;
 
     const task = await prisma.task.update({
       where: { id },
