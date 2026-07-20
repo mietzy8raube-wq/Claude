@@ -1,9 +1,10 @@
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { DecisionStatusBadge } from "@/components/decisions/badges";
-import { formatDate, formatDateTime, initials } from "@/lib/utils";
+import { formatDate, formatDateTime, initials, cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   FolderKanban,
@@ -17,6 +18,22 @@ import {
   LineChart,
 } from "lucide-react";
 
+function WidgetTitle({ icon: Icon, tone = "default", children }: { icon: LucideIcon; tone?: "default" | "destructive"; children: React.ReactNode }) {
+  return (
+    <CardTitle className="flex items-center gap-2.5 text-[0.925rem]">
+      <span
+        className={cn(
+          "flex size-7 items-center justify-center rounded-md",
+          tone === "destructive" ? "bg-destructive/12 text-destructive" : "bg-accent text-accent-foreground"
+        )}
+      >
+        <Icon className="size-3.5" strokeWidth={2.25} />
+      </span>
+      {children}
+    </CardTitle>
+  );
+}
+
 export function TasksByAssigneeWidget({
   data,
 }: {
@@ -24,18 +41,20 @@ export function TasksByAssigneeWidget({
 }) {
   return (
     <Card>
-      <CardHeader><CardTitle className="text-base">Aufgaben pro Geschäftsführer</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
+      <CardHeader><WidgetTitle icon={Activity}>Aufgaben pro Geschäftsführer</WidgetTitle></CardHeader>
+      <CardContent className="space-y-4">
         {data.map((d) => (
           <div key={d.userId}>
-            <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2">
-                <Avatar className="size-6"><AvatarFallback className="text-[10px]">{initials(d.name)}</AvatarFallback></Avatar>
+            <div className="mb-1.5 flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 font-medium">
+                <Avatar className="size-6"><AvatarFallback className="bg-brand-gradient text-[10px] text-white">{initials(d.name)}</AvatarFallback></Avatar>
                 {d.name}
               </span>
-              <span className="text-muted-foreground">{d.open} offen{d.overdue > 0 && `, ${d.overdue} überfällig`}</span>
+              <span className="tabular-nums text-muted-foreground">
+                {d.open} offen{d.overdue > 0 && <span className="text-destructive"> · {d.overdue} überfällig</span>}
+              </span>
             </div>
-            <Progress value={d.total ? (d.open / d.total) * 100 : 0} />
+            <Progress value={d.total ? (d.open / d.total) * 100 : 0} className="h-1.5" />
           </div>
         ))}
         {data.length === 0 && <p className="text-sm text-muted-foreground">Keine Daten.</p>}
@@ -51,15 +70,15 @@ export function RunningProjectsWidget({
 }) {
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FolderKanban className="size-4" /> Laufende Projekte</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
+      <CardHeader><WidgetTitle icon={FolderKanban}>Laufende Projekte</WidgetTitle></CardHeader>
+      <CardContent className="space-y-4">
         {projects.map((p) => (
-          <Link key={p.id} href={`/projects/${p.id}`} className="block">
-            <div className="mb-1 flex items-center justify-between text-sm">
+          <Link key={p.id} href={`/projects/${p.id}`} className="block rounded-md -mx-1 px-1 py-0.5 transition-colors hover:bg-muted/60">
+            <div className="mb-1.5 flex items-center justify-between text-sm">
               <span className="font-medium">{p.name}</span>
-              <span className="text-xs text-muted-foreground">{p.progress}%</span>
+              <span className="tabular-nums text-xs text-muted-foreground">{p.progress}%</span>
             </div>
-            <Progress value={p.progress} />
+            <Progress value={p.progress} className="h-1.5" />
             {p.targetDate && <p className="mt-1 text-xs text-muted-foreground">Ziel: {formatDate(p.targetDate)}</p>}
           </Link>
         ))}
@@ -76,11 +95,11 @@ export function ImportantDecisionsWidget({
 }) {
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Scale className="size-4" /> Wichtige Entscheidungen</CardTitle></CardHeader>
+      <CardHeader><WidgetTitle icon={Scale}>Wichtige Entscheidungen</WidgetTitle></CardHeader>
       <CardContent className="space-y-2">
         {decisions.map((d) => (
-          <Link key={d.id} href={`/decisions/${d.id}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm hover:bg-muted/50">
-            <span className="truncate">{d.title}</span>
+          <Link key={d.id} href={`/decisions/${d.id}`} className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm transition-colors hover:bg-muted/50 hover:border-accent-foreground/15">
+            <span className="truncate font-medium">{d.title}</span>
             <div className="flex shrink-0 items-center gap-2">
               {d.decisionDeadline && <span className="text-xs text-muted-foreground">{formatDate(d.decisionDeadline)}</span>}
               <DecisionStatusBadge status={d.status as never} />
@@ -109,14 +128,14 @@ export function CriticalAlertsWidget({
   ].filter(Boolean) as string[];
 
   return (
-    <Card className={alerts.length > 0 ? "border-destructive/40" : undefined}>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><AlertTriangle className="size-4 text-destructive" /> Kritische Meldungen</CardTitle></CardHeader>
+    <Card className={alerts.length > 0 ? "border-destructive/30" : undefined}>
+      <CardHeader><WidgetTitle icon={AlertTriangle} tone="destructive">Kritische Meldungen</WidgetTitle></CardHeader>
       <CardContent className="space-y-2">
         {alerts.length === 0 ? (
           <p className="text-sm text-muted-foreground">Keine kritischen Meldungen.</p>
         ) : (
           alerts.map((a, i) => (
-            <p key={i} className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{a}</p>
+            <p key={i} className="rounded-md bg-destructive/8 px-3 py-2 text-sm font-medium text-destructive">{a}</p>
           ))
         )}
       </CardContent>
@@ -135,27 +154,31 @@ export function CalendarWidget({
 
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><CalendarClock className="size-4" /> Termine</CardTitle></CardHeader>
+      <CardHeader><WidgetTitle icon={CalendarClock}>Termine</WidgetTitle></CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Heute</p>
+          <p className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Heute</p>
           {today.length === 0 && <p className="text-sm text-muted-foreground">Keine Termine heute.</p>}
-          {today.map((e) => (
-            <div key={e.id} className="flex justify-between text-sm">
-              <span>{e.title}</span>
-              <span className="text-muted-foreground">{fmtTime(e.startTime)}</span>
-            </div>
-          ))}
+          <div className="space-y-1">
+            {today.map((e) => (
+              <div key={e.id} className="flex justify-between text-sm">
+                <span>{e.title}</span>
+                <span className="tabular-nums text-muted-foreground">{fmtTime(e.startTime)}</span>
+              </div>
+            ))}
+          </div>
         </div>
         <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Bevorstehend</p>
+          <p className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Bevorstehend</p>
           {upcoming.length === 0 && <p className="text-sm text-muted-foreground">Keine bevorstehenden Termine.</p>}
-          {upcoming.map((e) => (
-            <div key={e.id} className="flex justify-between text-sm">
-              <span>{e.title}</span>
-              <span className="text-muted-foreground">{formatDate(e.startTime)}</span>
-            </div>
-          ))}
+          <div className="space-y-1">
+            {upcoming.map((e) => (
+              <div key={e.id} className="flex justify-between text-sm">
+                <span>{e.title}</span>
+                <span className="text-muted-foreground">{formatDate(e.startTime)}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -173,15 +196,15 @@ export function SyncStatusWidget({
 }) {
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><RefreshCw className="size-4" /> Synchronisierung &amp; Import</CardTitle></CardHeader>
+      <CardHeader><WidgetTitle icon={RefreshCw}>Synchronisierung &amp; Import</WidgetTitle></CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Zuletzt synchronisiert</p>
+          <p className="mb-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">Zuletzt synchronisiert</p>
           {connections.length === 0 && <p className="text-sm text-muted-foreground">Kein Microsoft-Konto verbunden.</p>}
           {connections.map((c, i) => (
             <div key={i} className="flex items-center justify-between text-sm">
               <span>{c.name}</span>
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {c.lastSyncAt ? formatDateTime(c.lastSyncAt) : "nie"}
                 <Badge className={c.lastSyncStatus === "ERFOLGREICH" ? "border-transparent bg-success/15 text-success" : "border-transparent bg-destructive/15 text-destructive"}>
                   {c.lastSyncStatus}
@@ -192,7 +215,7 @@ export function SyncStatusWidget({
         </div>
 
         <div>
-          <p className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+          <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
             <FileSpreadsheet className="size-3.5" /> Zuletzt importierte Excel-Dateien
           </p>
           {recentImports.length === 0 && <p className="text-sm text-muted-foreground">Noch keine Importe.</p>}
@@ -208,7 +231,7 @@ export function SyncStatusWidget({
 
         {failedSyncs.length > 0 && (
           <div>
-            <p className="mb-1 flex items-center gap-1 text-xs font-medium text-destructive">
+            <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-destructive uppercase">
               <XCircle className="size-3.5" /> Fehlgeschlagene Synchronisierungen
             </p>
             {failedSyncs.map((s, i) => (
@@ -228,12 +251,14 @@ export function CompanyKpiWidget({
 }) {
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><LineChart className="size-4" /> Unternehmenskennzahlen</CardTitle></CardHeader>
+      <CardHeader><WidgetTitle icon={LineChart}>Unternehmenskennzahlen</WidgetTitle></CardHeader>
       <CardContent className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {metrics.map((m) => (
-          <div key={m.id} className="rounded-md bg-muted/50 p-2">
-            <p className="text-xs text-muted-foreground">{m.areaName} · {m.name}</p>
-            <p className="text-lg font-semibold">{m.value.toLocaleString("de-DE")} {m.unit}</p>
+          <div key={m.id} className="rounded-lg bg-muted/60 p-3 transition-colors hover:bg-muted">
+            <p className="truncate text-xs text-muted-foreground">{m.areaName} · {m.name}</p>
+            <p className="mt-0.5 text-lg font-semibold tabular-nums">
+              {m.value.toLocaleString("de-DE")} <span className="text-sm font-normal text-muted-foreground">{m.unit}</span>
+            </p>
           </div>
         ))}
         {metrics.length === 0 && <p className="text-sm text-muted-foreground">Keine Kennzahlen erfasst.</p>}
@@ -249,10 +274,10 @@ export function ActivityFeedWidget({
 }) {
   return (
     <Card>
-      <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Activity className="size-4" /> Aktivitäten der letzten Tage</CardTitle></CardHeader>
-      <CardContent className="space-y-2">
+      <CardHeader><WidgetTitle icon={Activity}>Aktivitäten der letzten Tage</WidgetTitle></CardHeader>
+      <CardContent className="space-y-0.5">
         {activities.map((a) => (
-          <div key={a.id} className="flex items-start justify-between gap-2 text-sm">
+          <div key={a.id} className="flex items-start justify-between gap-3 rounded-md px-1 py-1.5 text-sm transition-colors hover:bg-muted/50">
             <span className="text-muted-foreground">{a.description}</span>
             <span className="shrink-0 text-xs text-muted-foreground">{formatDateTime(a.createdAt)}</span>
           </div>

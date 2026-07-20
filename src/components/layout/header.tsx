@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Menu, LogOut, User as UserIcon, Settings as SettingsIcon } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Menu, LogOut, User as UserIcon, Settings as SettingsIcon, ChevronDown } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -15,9 +16,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "./theme-toggle";
 import { SidebarNav } from "./sidebar-nav";
-import { initials } from "@/lib/utils";
+import { NAV_ITEMS } from "./nav-config";
+import { initials, cn } from "@/lib/utils";
 import Link from "next/link";
 
 interface HeaderProps {
@@ -32,9 +35,14 @@ const ROLE_LABEL: Record<string, string> = {
 
 export function Header({ user }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+
+  const current = NAV_ITEMS.find(
+    (item) => pathname === item.href || pathname.startsWith(item.href + "/")
+  );
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/95 px-4 backdrop-blur supports-backdrop-filter:bg-background/60">
+    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md supports-backdrop-filter:bg-background/60 sm:px-6">
       <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
         <Button
           variant="ghost"
@@ -53,28 +61,44 @@ export function Header({ user }: HeaderProps) {
         </SheetContent>
       </Sheet>
 
-      <div className="flex-1" />
+      <div className="flex min-w-0 flex-1 items-center">
+        {current && (
+          <h1 className="truncate text-sm font-semibold tracking-tight text-foreground/90">
+            {current.title}
+          </h1>
+        )}
+      </div>
 
       <ThemeToggle />
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="flex items-center gap-2 px-2">
-            <Avatar className="size-7">
-              <AvatarFallback>{initials(user.name)}</AvatarFallback>
+          <Button variant="ghost" className={cn("flex h-9 items-center gap-2 rounded-full pr-2.5 pl-1.5")}>
+            <Avatar className="size-7 ring-1 ring-border">
+              <AvatarFallback className="bg-brand-gradient text-[10px] font-semibold text-white">
+                {initials(user.name)}
+              </AvatarFallback>
             </Avatar>
             <span className="hidden text-sm font-medium sm:inline">{user.name}</span>
+            <ChevronDown className="hidden size-3.5 text-muted-foreground sm:inline" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="w-60">
           <DropdownMenuLabel>
-            <div className="flex flex-col">
-              <span className="font-medium">{user.name}</span>
-              <span className="text-xs font-normal text-muted-foreground">{user.email}</span>
-              <span className="mt-1 text-xs font-normal text-muted-foreground">
-                {ROLE_LABEL[user.role] ?? user.role}
-              </span>
+            <div className="flex items-center gap-2.5 py-1">
+              <Avatar className="size-8">
+                <AvatarFallback className="bg-brand-gradient text-xs font-semibold text-white">
+                  {initials(user.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">{user.name}</span>
+                <span className="truncate text-xs font-normal text-muted-foreground">{user.email}</span>
+              </div>
             </div>
+            <Badge variant="outline" className="mt-2 font-normal">
+              {ROLE_LABEL[user.role] ?? user.role}
+            </Badge>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuItem asChild>

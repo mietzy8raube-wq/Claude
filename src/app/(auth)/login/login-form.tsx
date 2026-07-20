@@ -17,7 +17,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 export function LoginForm() {
   const router = useRouter();
@@ -56,55 +55,72 @@ export function LoginForm() {
   }
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader className="items-center text-center">
-        <div className="mb-2 flex size-11 items-center justify-center rounded-xl bg-primary text-primary-foreground">
-          <Building2 className="size-5" />
+    <div className="w-full max-w-[23rem]">
+      <div className="mb-8 flex flex-col items-center gap-3 text-center lg:hidden">
+        <div className="flex size-11 items-center justify-center rounded-xl bg-brand-gradient shadow-md">
+          <Building2 className="size-5 text-white" strokeWidth={2.25} />
         </div>
-        <CardTitle className="text-xl">GF-Suite</CardTitle>
-        <CardDescription>Melden Sie sich mit Ihrem Konto an</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="email"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>E-Mail</FormLabel>
-                  <FormControl>
-                    <Input type="email" placeholder="name@unternehmen.de" autoComplete="username" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="password"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Passwort</FormLabel>
-                  <FormControl>
-                    <Input type="password" placeholder="••••••••" autoComplete="current-password" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            {error && (
-              <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {error}
-              </p>
+        <span className="text-lg font-semibold tracking-tight">GF-Suite</span>
+      </div>
+
+      <div className="mb-7">
+        <h2 className="text-[1.4rem] font-semibold tracking-tight">Willkommen zurück</h2>
+        <p className="mt-1.5 text-[0.925rem] text-muted-foreground">
+          Melden Sie sich mit Ihrem Konto an, um fortzufahren.
+        </p>
+      </div>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <FormField
+            control={form.control}
+            name="email"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>E-Mail</FormLabel>
+                <FormControl>
+                  <Input
+                    type="email"
+                    placeholder="name@unternehmen.de"
+                    autoComplete="username"
+                    className="h-10"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             )}
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting && <Loader2 className="animate-spin" />}
-              Anmelden
-            </Button>
-          </form>
-        </Form>
-      </CardContent>
-    </Card>
+          />
+          <FormField
+            control={form.control}
+            name="password"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Passwort</FormLabel>
+                <FormControl>
+                  <Input
+                    type="password"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    className="h-10"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          {error && (
+            <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive" role="alert">
+              {error}
+            </p>
+          )}
+          <Button type="submit" className="h-10 w-full" disabled={isSubmitting}>
+            {isSubmitting && <Loader2 className="animate-spin" />}
+            Anmelden
+          </Button>
+        </form>
+      </Form>
+    </div>
   );
 }
