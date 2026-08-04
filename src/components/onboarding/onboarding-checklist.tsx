@@ -9,6 +9,10 @@ import {
   CalendarDays,
   Plug,
   Users,
+  Scale,
+  FolderKanban,
+  Presentation,
+  Settings,
   ArrowRight,
   type LucideIcon,
 } from "lucide-react";
@@ -16,23 +20,100 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import type { Role } from "@prisma/client";
+
+type Milestone = "heute" | "woche" | "monat";
+
+const MILESTONE_LABEL: Record<Milestone, string> = {
+  heute: "Heute",
+  woche: "Diese Woche",
+  monat: "Erster Monat",
+};
 
 export interface OnboardingStep {
   id: string;
   title: string;
   description: string;
   icon: LucideIcon;
+  milestone: Milestone;
   href?: string;
   cta?: string;
 }
 
-function buildSteps(openTaskCount: number): OnboardingStep[] {
+function buildSteps(role: Role, openTaskCount: number): OnboardingStep[] {
+  const roleStep: Record<Role, { woche: OnboardingStep; monat: OnboardingStep }> = {
+    GESCHAEFTSFUEHRER: {
+      woche: {
+        id: "role-woche",
+        title: "Offene Entscheidungen prüfen",
+        description: "Entscheidungen, die aktuell auf Ihre Einschätzung warten.",
+        icon: Scale,
+        milestone: "woche",
+        href: "/decisions",
+        cta: "Entscheidungen öffnen",
+      },
+      monat: {
+        id: "role-monat",
+        title: "Erstes Meeting vorbereiten",
+        description: "Tagesordnung anlegen oder an einem bestehenden Meeting teilnehmen.",
+        icon: Presentation,
+        milestone: "monat",
+        href: "/meetings",
+        cta: "Meetings öffnen",
+      },
+    },
+    ADMINISTRATOR: {
+      woche: {
+        id: "role-woche",
+        title: "Projekte im Überblick behalten",
+        description: "Laufende Projekte und ihre Meilensteine ansehen.",
+        icon: FolderKanban,
+        milestone: "woche",
+        href: "/projects",
+        cta: "Projekte öffnen",
+      },
+      monat: {
+        id: "role-monat",
+        title: "Benutzerverwaltung kennenlernen",
+        description: "Zugänge und Rollen der Kolleginnen und Kollegen prüfen.",
+        icon: Settings,
+        milestone: "monat",
+        href: "/settings",
+        cta: "Einstellungen öffnen",
+      },
+    },
+    MITARBEITER: {
+      woche: {
+        id: "role-woche",
+        title: "Erste Aufgabe übernehmen",
+        description:
+          openTaskCount > 0
+            ? `${openTaskCount} offene ${openTaskCount === 1 ? "Aufgabe wartet" : "Aufgaben warten"} bereits auf Sie.`
+            : "Sobald Ihnen eine Aufgabe zugewiesen wird, erscheint sie hier.",
+        icon: ListChecks,
+        milestone: "woche",
+        href: "/tasks/mine",
+        cta: "Meine Aufgaben öffnen",
+      },
+      monat: {
+        id: "role-monat",
+        title: "An einem Meeting teilnehmen",
+        description: "Tagesordnung und Beschlüsse eines Meetings nachvollziehen.",
+        icon: Presentation,
+        milestone: "monat",
+        href: "/meetings",
+        cta: "Meetings öffnen",
+      },
+    },
+  };
+
   return [
     {
       id: "profil",
       title: "Profil überprüfen",
       description: "Name, E-Mail-Adresse und Passwort in den Einstellungen kontrollieren.",
       icon: UserCircle,
+      milestone: "heute",
       href: "/settings",
       cta: "Zu den Einstellungen",
     },
@@ -41,42 +122,37 @@ function buildSteps(openTaskCount: number): OnboardingStep[] {
       title: "Unternehmen kennenlernen",
       description: "Die zehn Unternehmensbereiche und ihre Verantwortlichen ansehen.",
       icon: Building2,
+      milestone: "heute",
       href: "/company",
       cta: "Unternehmensbereiche öffnen",
     },
     {
       id: "team",
-      title: "Team & Ansprechpartner",
-      description: "Geschäftsführung und Administration weiter unten auf dieser Seite kennenlernen.",
+      title: "Ihre Ansprechperson kennenlernen",
+      description: "Wer Sie in den ersten Wochen begleitet, steht weiter unten auf dieser Seite.",
       icon: Users,
-    },
-    {
-      id: "aufgaben",
-      title: "Erste Aufgaben ansehen",
-      description:
-        openTaskCount > 0
-          ? `Aktuell ${openTaskCount} offene ${openTaskCount === 1 ? "Aufgabe" : "Aufgaben"} für Sie.`
-          : "Aktuell keine offenen Aufgaben zugewiesen.",
-      icon: ListChecks,
-      href: "/tasks/mine",
-      cta: "Meine Aufgaben öffnen",
+      milestone: "heute",
     },
     {
       id: "kalender",
       title: "Kalender prüfen",
       description: "Anstehende Termine und Meetings im Blick behalten.",
       icon: CalendarDays,
+      milestone: "woche",
       href: "/calendar",
       cta: "Kalender öffnen",
     },
+    roleStep[role].woche,
     {
       id: "integrationen",
       title: "Outlook verbinden (optional)",
       description: "Kalender mit Microsoft Outlook synchronisieren.",
       icon: Plug,
+      milestone: "monat",
       href: "/integrations",
       cta: "Integrationen öffnen",
     },
+    roleStep[role].monat,
   ];
 }
 
@@ -84,8 +160,16 @@ function storageKey(userId: string) {
   return `gf-suite:onboarding:${userId}`;
 }
 
-export function OnboardingChecklist({ userId, openTaskCount }: { userId: string; openTaskCount: number }) {
-  const steps = buildSteps(openTaskCount);
+export function OnboardingChecklist({
+  userId,
+  role,
+  openTaskCount,
+}: {
+  userId: string;
+  role: Role;
+  openTaskCount: number;
+}) {
+  const steps = buildSteps(role, openTaskCount);
   const [completed, setCompleted] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
 
@@ -109,6 +193,7 @@ export function OnboardingChecklist({ userId, openTaskCount }: { userId: string;
   }
 
   const progress = Math.round((completed.length / steps.length) * 100);
+  const milestones: Milestone[] = ["heute", "woche", "monat"];
 
   return (
     <Card>
@@ -122,42 +207,58 @@ export function OnboardingChecklist({ userId, openTaskCount }: { userId: string;
           </div>
           <span className="shrink-0 text-2xl font-semibold tabular-nums text-primary">{progress}%</span>
         </div>
-        <Progress value={progress} className="mb-6" />
+        <Progress value={progress} className="mb-2" />
 
-        <div className="flex flex-col divide-y divide-border">
-          {steps.map((step) => {
-            const isDone = completed.includes(step.id);
-            const Icon = step.icon;
-            return (
-              <div key={step.id} className="flex items-start gap-3.5 py-4 first:pt-0 last:pb-0">
-                <Checkbox
-                  checked={isDone}
-                  onCheckedChange={() => toggle(step.id)}
-                  aria-label={`${step.title} als erledigt markieren`}
-                  className="mt-0.5"
-                />
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-                  <Icon className="size-4.5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className={cn("font-medium", isDone && "text-muted-foreground line-through")}>
-                    {step.title}
-                  </p>
-                  <p className="mt-0.5 text-sm text-muted-foreground">{step.description}</p>
-                </div>
-                {step.href && (
-                  <Link
-                    href={step.href}
-                    className="hidden shrink-0 items-center gap-1 self-center text-sm font-medium text-primary hover:underline sm:flex"
-                  >
-                    {step.cta}
-                    <ArrowRight className="size-3.5" />
-                  </Link>
-                )}
+        {milestones.map((milestone) => {
+          const groupSteps = steps.filter((s) => s.milestone === milestone);
+          const groupDone = groupSteps.filter((s) => completed.includes(s.id)).length;
+          return (
+            <div key={milestone} className="mt-6 first:mt-6">
+              <div className="mb-1 flex items-baseline justify-between">
+                <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                  {MILESTONE_LABEL[milestone]}
+                </p>
+                <p className="text-xs text-muted-foreground tabular-nums">
+                  {groupDone}/{groupSteps.length}
+                </p>
               </div>
-            );
-          })}
-        </div>
+              <div className="flex flex-col divide-y divide-border">
+                {groupSteps.map((step) => {
+                  const isDone = completed.includes(step.id);
+                  const Icon = step.icon;
+                  return (
+                    <div key={step.id} className="flex items-start gap-3.5 py-4 first:pt-3 last:pb-0">
+                      <Checkbox
+                        checked={isDone}
+                        onCheckedChange={() => toggle(step.id)}
+                        aria-label={`${step.title} als erledigt markieren`}
+                        className="mt-0.5"
+                      />
+                      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                        <Icon className="size-4.5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className={cn("font-medium", isDone && "text-muted-foreground line-through")}>
+                          {step.title}
+                        </p>
+                        <p className="mt-0.5 text-sm text-muted-foreground">{step.description}</p>
+                      </div>
+                      {step.href && (
+                        <Link
+                          href={step.href}
+                          className="hidden shrink-0 items-center gap-1 self-center text-sm font-medium text-primary hover:underline sm:flex"
+                        >
+                          {step.cta}
+                          <ArrowRight className="size-3.5" />
+                        </Link>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );
