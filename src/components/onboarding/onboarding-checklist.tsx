@@ -14,11 +14,14 @@ import {
   Presentation,
   Settings,
   ArrowRight,
+  RotateCcw,
   type LucideIcon,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { AlertDialog } from "@/components/shared/alert-dialog";
 import { cn } from "@/lib/utils";
 import type { Role } from "@prisma/client";
 
@@ -172,6 +175,7 @@ export function OnboardingChecklist({
   const steps = buildSteps(role, openTaskCount);
   const [completed, setCompleted] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
 
   useEffect(() => {
     try {
@@ -198,16 +202,47 @@ export function OnboardingChecklist({
   return (
     <Card>
       <CardContent className="p-6">
-        <div className="mb-5 flex items-center justify-between gap-4">
+        <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-[1.05rem] font-semibold tracking-tight">Ihre Einstiegs-Checkliste</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {completed.length} von {steps.length} Schritten erledigt
-            </p>
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <p className="text-sm text-muted-foreground">
+                {completed.length} von {steps.length} Schritten erledigt
+              </p>
+              {completed.length > 0 && (
+                <>
+                  <span className="text-muted-foreground" aria-hidden>
+                    ·
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-auto px-1.5 py-0.5 text-muted-foreground"
+                    onClick={() => setResetOpen(true)}
+                  >
+                    <RotateCcw />
+                    Fortschritt zurücksetzen
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
-          <span className="shrink-0 text-2xl font-semibold tabular-nums text-primary">{progress}%</span>
+          <span className="shrink-0 text-2xl font-semibold tabular-nums text-primary transition-all duration-300">
+            {progress}%
+          </span>
         </div>
         <Progress value={progress} className="mb-2" />
+
+        <AlertDialog
+          open={resetOpen}
+          onOpenChange={setResetOpen}
+          title="Fortschritt zurücksetzen?"
+          description="Alle erledigten Schritte dieser Checkliste werden als offen markiert. Das lässt sich nicht rückgängig machen."
+          confirmLabel="Zurücksetzen"
+          destructive
+          onConfirm={() => setCompleted([])}
+        />
 
         {milestones.map((milestone) => {
           const groupSteps = steps.filter((s) => s.milestone === milestone);
@@ -238,7 +273,12 @@ export function OnboardingChecklist({
                         <Icon className="size-4.5" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={cn("font-medium", isDone && "text-muted-foreground line-through")}>
+                        <p
+                          className={cn(
+                            "font-medium transition-colors duration-200",
+                            isDone && "text-muted-foreground line-through"
+                          )}
+                        >
                           {step.title}
                         </p>
                         <p className="mt-0.5 text-sm text-muted-foreground">{step.description}</p>
