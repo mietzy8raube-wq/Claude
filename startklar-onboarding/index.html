@@ -427,8 +427,9 @@ main{padding:0 28px 90px}
 .flip-card.flipped .flip-card-front{pointer-events:none}
 .flip-card-back{
   position:absolute; inset:0; backface-visibility:hidden; transform:rotateY(180deg);
-  display:flex; flex-direction:column; pointer-events:none;
+  display:flex; flex-direction:column; pointer-events:none; transition:none;
 }
+.flip-card-back:hover{transform:rotateY(180deg); box-shadow:var(--shadow)}
 .flip-card.flipped .flip-card-back{pointer-events:auto}
 .flip-badge{
   position:absolute; top:14px; right:14px; width:13px; height:13px; border-radius:50%;
