@@ -74,4 +74,4 @@ Neue `index.html` einspielen und (bei Docker) `docker compose up -d --build` ern
 
 ## Offene Punkte
 
-Die Tabelle "Projekt- & Bürowerkzeuge" in Etappe 07 enthält bislang Platzhalter-Zeilen (Projektmanagement-Tool, Angebots-/Kalkulationstool, Dokumentenablage, Kommunikation/Chat, ERP/Buchhaltung) — die echten Namen und internen Links müssen noch ergänzt werden, sobald sie feststehen.
+Die Tabelle "Projekt- & Bürowerkzeuge" in Etappe 07 ist inzwischen größtenteils befüllt (HR-System: Factorial, DMS: DocuWare, ERP: IN-FORM PROfessional) — offen ist noch die Wahl des Kommunikation/Chat-Tools; Name und interner Link folgen, sobald das feststeht.

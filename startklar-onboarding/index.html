@@ -494,6 +494,7 @@ td.wide{white-space:normal; min-width:220px}
 .sys-group-title:first-of-type{margin-top:16px}
 .tbd-tag{display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px; background:var(--surface-sunk); color:var(--ink-faint); font-size:10px; letter-spacing:.03em; text-transform:none; vertical-align:middle}
 .tbd-hint{display:block; font-style:normal; font-size:11px; color:var(--ink-faint); margin-top:2px}
+.sys-name-resolved{display:block; font-style:normal; font-size:11px; font-weight:700; color:var(--accent-text); margin-top:2px}
 
 .route{display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding:6px 2px 14px}
 .rchip{flex:none; width:150px; display:flex; flex-direction:column; align-items:center; text-align:center; text-decoration:none; color:var(--ink); position:relative; padding:0 6px; transition:transform .22s var(--ease-snap)}
@@ -742,7 +743,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
             <div class="hero-logo hero-anim" style="animation-delay:0s"><div class="mk"><svg viewBox="0 0 64 64"><use href="#logo-mark"/></svg></div><span>druckluft technik <b>Chemnitz</b> GmbH</span></div>
             <div class="kicker hero-anim" style="animation-delay:.05s">für neue Kolleg:innen</div>
             <h1 class="hero-anim" style="animation-delay:.15s">STARTKLAR.</h1>
-            <p class="lead hero-anim" style="animation-delay:.3s">Dein Weg durch die ersten 90 Tage — von der Unterschrift bis zum ersten eigenständig geführten Auftrag. Dreizehn Etappen, ein roter Faden.</p>
+            <p class="lead hero-anim" style="animation-delay:.3s">Dein Weg durch die ersten 90 Tage — von der Unterschrift bis zum ersten eigenständig geführten Projekt. Dreizehn Etappen, ein roter Faden.</p>
             <div class="badges hero-anim" style="animation-delay:.4s">
               <span class="badge">WIR. die macher.</span>
               <span class="badge">WIR. zusammen.</span>
@@ -837,7 +838,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <!-- 01 -->
         <section class="stage" id="s1">
           <div class="stage-head"><span class="stage-num">01 / 13</span><h2>Deine Route</h2></div>
-          <p class="stage-lead">Dreizehn Etappen bringen dich von der Vorbereitung bis zum eigenständigen Arbeiten. Jede Etappe beantwortet drei Fragen: Was muss ich wissen? Was muss ich können? Wen sollte ich kennen?</p>
+          <p class="stage-lead"><b>Dreizehn Etappen</b> begleiten dich von der Vorbereitung bis zum <b>selbstständigen Arbeiten</b>. Schritt für Schritt erfährst du, <b>welches Wissen du brauchst, welche Aufgaben und Abläufe wichtig sind</b> und <b>welche Ansprechpartner dich dabei unterstützen</b>.</p>
           <div class="route" id="routeStrip">
             <a class="rchip" data-p="0" data-scope="s2" href="#s2"><span class="rnum">02</span><span class="rlabel">Vor dem Start</span><span class="rsub">Preboarding</span></a>
             <a class="rchip" data-p="0" data-scope="s3" href="#s3"><span class="rnum">03</span><span class="rlabel">Tag 1</span><span class="rsub">Ankommen</span></a>
@@ -854,7 +855,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
           </div>
           <div class="tip">
             <div class="mk"><svg class="icon"><use href="#i-compass"/></svg></div>
-            <p><b>Lotse:</b> Du musst diese Seite nicht linear lesen. Nutze die Suche oben, wenn du gezielt etwas nachschlagen willst — die Route hilft dir, wenn du wissen willst, was als Nächstes kommt.</p>
+            <p><b>Lotse:</b> Du musst den Onboarding-Kompass nicht von Anfang bis Ende lesen. Wenn du eine konkrete Information suchst, nutze einfach die Suche oben. Möchtest du wissen, welcher Schritt als Nächstes ansteht, orientiere dich an der Route.</p>
           </div>
         </section>
 
@@ -866,9 +867,9 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
             <div class="card">
               <div class="eyebrow">Das bringst du mit</div>
               <div class="checklist">
-                <label class="citem"><input type="checkbox" data-key="pre-ausweis"><span>Personalausweis / Reisepass</span></label>
-                <label class="citem"><input type="checkbox" data-key="pre-sv"><span>Sozialversicherungsausweis</span></label>
-                <label class="citem"><input type="checkbox" data-key="pre-steuerid"><span>Steuer-ID</span></label>
+                <label class="citem"><input type="checkbox" data-key="pre-ausweis"><span>Personalausweis</span></label>
+                <label class="citem"><input type="checkbox" data-key="pre-sv"><span>Notfallrufnummer</span></label>
+                <label class="citem"><input type="checkbox" data-key="pre-steuerid"><span>biometrisches Passbild</span></label>
                 <label class="citem"><input type="checkbox" data-key="pre-bank"><span>Bankverbindung</span></label>
                 <label class="citem"><input type="checkbox" data-key="pre-kk"><span>Krankenkassenbescheinigung</span></label>
                 <label class="citem"><input type="checkbox" data-key="pre-fs"><span>Führerschein, falls erforderlich</span></label>
@@ -888,7 +889,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
           </div>
           <div class="tip">
             <div class="mk"><svg class="icon"><use href="#i-compass"/></svg></div>
-            <p><b>Warum das wichtig ist:</b> Wenn beide Listen vor deinem ersten Tag abgehakt sind, verlierst du am Tag 1 keine Zeit mit Organisatorischem und kannst dich aufs Ankommen konzentrieren.</p>
+            <p><b>Warum das wichtig ist:</b> Wenn beide Listen vor deinem ersten Arbeitstag erledigt sind, musst du dich an Tag 1 nicht mehr mit organisatorischen Themen beschäftigen und kannst dich ganz auf das Ankommen und Kennenlernen konzentrieren.</p>
           </div>
         </section>
 
@@ -902,13 +903,13 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
             <div class="trow"><span class="ttime mono">09:30</span><div><h4>Organisation</h4><p>Personalthemen und Grundlagen des Arbeitsalltags.</p></div></div>
             <div class="trow"><span class="ttime mono">10:30</span><div><h4>IT &amp; MIS</h4><p>Logins einrichten, erste Orientierung in den Systemen.</p></div></div>
             <div class="trow"><span class="ttime mono">12:00</span><div><h4>Gemeinsames Mittagessen</h4><p>Das Team in entspannter Runde kennenlernen.</p></div></div>
-            <div class="trow"><span class="ttime mono">13:00</span><div><h4>Sicherheitsunterweisung <span class="badge accent" style="margin-left:6px">Pflicht</span></h4><p>PSA, Gefahren im Umgang mit Druckluft, Notfall- und Meldewege.</p></div></div>
+            <div class="trow"><span class="ttime mono">13:00</span><div><h4>Sicherheitsunterweisung online (MIS) <span class="badge accent" style="margin-left:6px">Pflicht</span></h4><p>PSA, Gefahren im Umgang mit Druckluft, Notfall- und Meldewege.</p></div></div>
             <div class="trow"><span class="ttime mono">14:30</span><div><h4>Fachlicher Einstieg</h4><p>Aufgaben, Ziele und die ersten Lernschritte gemeinsam mit dem Paten.</p></div></div>
             <div class="trow"><span class="ttime mono">15:30</span><div><h4>Tagesabschluss</h4><p>Kurzer Rückblick: Was war klar? Was ist noch offen?</p></div></div>
           </div>
           <div class="tip">
             <div class="mk"><svg class="icon"><use href="#i-compass"/></svg></div>
-            <p><b>Lotse:</b> Heute musst du noch nicht alles wissen. Wichtig ist, dass du weißt, wen du fragen kannst — das klärt die nächste Etappe.</p>
+            <p><b>Lotse</b>: Heute musst du noch nicht alles wissen. <b>Wichtig ist</b>, dass du weißt, wen du fragen kannst.</p>
           </div>
           <label class="stage-check"><input type="checkbox" data-key="stage-s3-done"><span><b>Etappe gelesen</b><br>Ich habe den Ablauf für meinen ersten Arbeitstag gelesen und verstanden.</span></label>
         </section>
@@ -926,20 +927,20 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
             </div>
             <div class="card">
               <div class="eyebrow"><svg class="icon"><use href="#i-users"/></svg> Vorgesetzter</div>
-              <h3>Ziele &amp; Freigaben</h3>
-              <p>Prioritäten, fachliche Entscheidungen, dein 30/60/90-Gespräch.</p>
+              <h3>Ziele &amp; Entscheidungen</h3>
+              <p>Prioritäten, Entscheidungsrahmen, Eskalationen und deine Entwicklung im 30/60/90-Tage-Zeitraum.</p>
               <div class="pf-field" style="margin-top:12px"><label>Kontakt</label><input type="text" data-key="kontakt-vorgesetzter" placeholder="Name / Durchwahl"></div>
             </div>
             <div class="card">
-              <div class="eyebrow"><svg class="icon"><use href="#i-route"/></svg> Disposition</div>
-              <h3>Einsatzplanung</h3>
-              <p>Termine, Touren, kurzfristige Änderungen im Tagesgeschäft.</p>
-              <div class="pf-field" style="margin-top:12px"><label>Kontakt</label><input type="text" data-key="kontakt-disposition" placeholder="Name / Durchwahl"></div>
+              <div class="eyebrow"><svg class="icon"><use href="#i-route"/></svg> Vertrieb / Außendienst</div>
+              <h3>Kunden &amp; Projektübergabe</h3>
+              <p>Kundenanforderungen, Angebote, Projektübergaben und Abstimmungen zu laufenden Projekten.</p>
+              <div class="pf-field" style="margin-top:12px"><label>Kontakt</label><input type="text" data-key="kontakt-vertrieb" placeholder="Name / Durchwahl"></div>
             </div>
             <div class="card">
               <div class="eyebrow"><svg class="icon"><use href="#i-truck"/></svg> Lager / Einkauf</div>
-              <h3>Material &amp; Werkzeug</h3>
-              <p>Entnahme, Nachbestellung, Sonderbeschaffung für Einsätze.</p>
+              <h3>Beschaffung &amp; Verfügbarkeit</h3>
+              <p>Materialverfügbarkeit, Bestellungen, Lieferzeiten und Abstimmung bei projektbezogenen Beschaffungen.</p>
               <div class="pf-field" style="margin-top:12px"><label>Kontakt</label><input type="text" data-key="kontakt-lager" placeholder="Name / Durchwahl"></div>
             </div>
             <div class="card">
@@ -973,7 +974,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
           </div>
           <div class="tip">
             <div class="mk"><svg class="icon"><use href="#i-compass"/></svg></div>
-            <p><b>Lotse:</b> Unsere Werte sind kein Slogan an der Wand. Achte in deinen ersten Wochen bewusst darauf, wie Kolleg:innen sie im Alltag umsetzen — das ist der schnellste Weg, sie selbst zu verinnerlichen.</p>
+            <p><b>Lotse:</b> Unsere Werte zeigen sich <b>im täglichen Miteinander</b>. Achte in deinen ersten Wochen bewusst darauf, wie deine Kolleg:innen sie <b>im Arbeitsalltag leben</b> — so bekommst du schnell ein Gefühl dafür, <b>was uns wichtig ist</b>.</p>
           </div>
           <label class="stage-check"><input type="checkbox" data-key="stage-s5-done"><span><b>Etappe gelesen</b><br>Ich habe die Werte und Leistungen des Unternehmens gelesen und verstanden.</span></label>
         </section>
@@ -981,11 +982,11 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <!-- 06 -->
         <section class="stage" id="s6">
           <div class="stage-head"><span class="stage-num">06 / 13</span><h2>Sicher arbeiten. Immer.<span class="req-flag"><svg class="icon"><use href="#i-alert"/></svg>Pflicht</span></h2></div>
-          <p class="stage-lead">Sicherheit hat bei uns Vorrang vor Tempo. Diese drei Regeln gelten ausnahmslos.</p>
+          <p class="stage-lead"><b>Sicherheit hat Vorrang.</b> Als Projektleiter trägst du nicht nur Verantwortung für dein eigenes sicheres Arbeiten, sondern achtest auch bei Planung, Abstimmung und vor Ort auf sichere Rahmenbedingungen.</p>
           <div class="grid-3">
-            <div class="card tone-accent"><h3>PSA</h3><p>Sicherheitsschuhe, Schutzbrille, Gehörschutz, Handschuhe, Helm — situationsabhängig Pflicht.</p></div>
-            <div class="card"><h3>Druckluft</h3><p>Druck immer entlasten, auf heiße Oberflächen achten, niemals auf Personen zielen.</p></div>
-            <div class="card"><h3>Melden</h3><p>Unfälle, Beinahe-Unfälle und Sicherheitsmängel sofort melden — ohne Ausnahme.</p></div>
+            <div class="card tone-accent"><h3>PSA</h3><p>Informiere dich vor jedem Vor-Ort-Termin über die geltenden Sicherheitsvorgaben. Trage die vorgeschriebene PSA und beachte zusätzliche Anforderungen des Kunden.</p></div>
+            <div class="card"><h3>Sicher vor Ort</h3><p>Beachte Sicherheitsbereiche, Betriebsanweisungen und kundenspezifische Vorgaben. Betritt Anlagen- und Arbeitsbereiche nur, wenn du dazu berechtigt und entsprechend unterwiesen bist.</p></div>
+            <div class="card"><h3>Risiken &amp; Mängel melden</h3><p>Unfälle, Beinahe-Unfälle und erkennbare Sicherheitsmängel sofort ansprechen und über die vorgesehenen Meldewege weitergeben.</p></div>
           </div>
           <div class="tablewrap" style="margin-top:18px">
             <table>
@@ -1024,11 +1025,10 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
             <table>
               <thead><tr><th>System</th><th style="text-align:center">Zugang</th><th style="text-align:center">Einweisung</th><th style="text-align:center">Testaufgabe</th><th style="text-align:center">Selbstständig</th><th>Notiz / Link</th></tr></thead>
               <tbody>
-                <tr><td class="wide">Projektmanagement-Tool <em class="tbd-hint">Name folgt</em></td><td class="tcheck"><input type="checkbox" data-key="sys-pm-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-pm-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-pm-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-pm-selbst"></td><td class="tnote"><input type="text" data-key="sys-pm-note" placeholder="Name / Link / Notiz"></td></tr>
-                <tr><td class="wide">Angebots- &amp; Kalkulationstool <em class="tbd-hint">Name folgt</em></td><td class="tcheck"><input type="checkbox" data-key="sys-kalk-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-kalk-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-kalk-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-kalk-selbst"></td><td class="tnote"><input type="text" data-key="sys-kalk-note" placeholder="Name / Link / Notiz"></td></tr>
-                <tr><td class="wide">Dokumentenablage <em class="tbd-hint">Name folgt</em></td><td class="tcheck"><input type="checkbox" data-key="sys-doc-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-doc-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-doc-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-doc-selbst"></td><td class="tnote"><input type="text" data-key="sys-doc-note" placeholder="Name / Link / Notiz"></td></tr>
-                <tr><td class="wide">Kommunikation / Chat <em class="tbd-hint">Name folgt</em></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-selbst"></td><td class="tnote"><input type="text" data-key="sys-chat-note" placeholder="Name / Link / Notiz"></td></tr>
-                <tr><td class="wide">ERP / Buchhaltung <em class="tbd-hint">Name folgt</em></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-selbst"></td><td class="tnote"><input type="text" data-key="sys-erp-note" placeholder="Name / Link / Notiz"></td></tr>
+                <tr><td class="wide">HR-System / Personalmanagementsystem<span class="sys-name-resolved">Factorial</span></td><td class="tcheck"><input type="checkbox" data-key="sys-hr-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-hr-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-hr-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-hr-selbst"></td><td class="tnote"><input type="text" data-key="sys-hr-note" placeholder="Name / Link / Notiz"></td></tr>
+                <tr><td class="wide">Dokumentenmanagementsystem (DMS)<span class="sys-name-resolved">DocuWare</span></td><td class="tcheck"><input type="checkbox" data-key="sys-dms-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-dms-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-dms-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-dms-selbst"></td><td class="tnote"><input type="text" data-key="sys-dms-note" placeholder="Name / Link / Notiz"></td></tr>
+                <tr><td class="wide">Kommunikation / Chat <em class="tbd-hint">System folgt</em></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-chat-selbst"></td><td class="tnote"><input type="text" data-key="sys-chat-note" placeholder="Name / Link / Notiz"></td></tr>
+                <tr><td class="wide">ERP<span class="sys-name-resolved">IN-FORM PROfessional</span></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-zugang"></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-einw"></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-test"></td><td class="tcheck"><input type="checkbox" data-key="sys-erp-selbst"></td><td class="tnote"><input type="text" data-key="sys-erp-note" placeholder="Name / Link / Notiz"></td></tr>
               </tbody>
             </table>
           </div>
@@ -1082,13 +1082,13 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
           <div class="stage-head"><span class="stage-num">10 / 13</span><h2>30 · 60 · 90 Tage</h2></div>
           <p class="stage-lead">Drei Meilensteine geben deinen ersten drei Monaten Struktur.</p>
           <div class="grid-3">
-            <div class="card tone-brand"><div class="eyebrow">Tag 30</div><h3>Ankommen</h3><p>Team kennen, Systeme verstehen, Grundlagen sicher, erste Aufgaben begleitet.</p></div>
-            <div class="card tone-petrol"><div class="eyebrow">Tag 60</div><h3>Anwenden</h3><p>Erste Aufgaben selbstständig, Dokumentation sicher, Praxis vertiefen.</p></div>
-            <div class="card tone-good"><div class="eyebrow">Tag 90</div><h3>Durchstarten</h3><p>Definierte Aufgaben sicher, offene Punkte geklärt, nächste Ziele vereinbart.</p></div>
+            <div class="card tone-brand"><div class="eyebrow">Tag 30</div><h3>Ankommen</h3><p>Du kennst das Team und deine wichtigsten Ansprechpartner, hast einen Überblick über die relevanten Systeme und verstehst die grundlegenden Zusammenhänge deiner Rolle.</p></div>
+            <div class="card tone-petrol"><div class="eyebrow">Tag 60</div><h3>Anwenden</h3><p>Du findest dich im Arbeitsalltag zunehmend selbstständig zurecht, übernimmst erste Aufgaben in eigener Verantwortung und vertiefst dein Verständnis für die relevanten Abläufe und Schnittstellen.</p></div>
+            <div class="card tone-good"><div class="eyebrow">Tag 90</div><h3>Verantwortung übernehmen</h3><p>Du bewegst dich sicher in deinem Aufgabenbereich, übernimmst vereinbarte Verantwortlichkeiten selbstständig und weißt, wo du bei offenen Fragen oder neuen Situationen Unterstützung findest.</p></div>
           </div>
           <div class="tip">
             <div class="mk"><svg class="icon"><use href="#i-compass"/></svg></div>
-            <p><b>Lotse:</b> Halt an jedem Meilenstein kurz inne: Was kann ich schon? Was fehlt noch? Was ist mein nächster Schritt? Etappe 11 gibt dir dafür feste Gesprächstermine.</p>
+            <p><b>Lotse:</b> Die Meilensteine sind keine Prüfung, sondern eine gemeinsame Standortbestimmung. Nutze sie, um zu schauen, was bereits gut funktioniert, wo noch Unterstützung hilfreich ist und welche nächsten Schritte sinnvoll sind.</p>
           </div>
           <label class="stage-check"><input type="checkbox" data-key="stage-s10-done"><span><b>Etappe gelesen</b><br>Ich kenne die Meilensteine für Tag 30, 60 und 90.</span></label>
         </section>
@@ -1170,10 +1170,10 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
             <div class="card">
               <div class="eyebrow">Häufige Fragen</div>
               <div class="faq">
-                <details><summary>Urlaub — wo beantragen?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Im MIS unter „Abwesenheiten“, mit Frist von mindestens zwei Wochen bei deinem Vorgesetzten.</p></details>
-                <details><summary>Krankheit — wen informieren?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Vor Arbeitsbeginn telefonisch bei Disposition und Vorgesetztem melden, Attest ab dem dritten Tag nachreichen.</p></details>
-                <details><summary>Unfall — was sofort tun?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Erste Hilfe leisten, Vorgesetzten informieren, jeden Unfall und Beinahe-Unfall im Meldebogen dokumentieren.</p></details>
-                <details><summary>Material — wo holen, wie dokumentieren?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Entnahme im Lager, Buchung direkt im MIS beim jeweiligen Auftrag.</p></details>
+                <details><summary>Urlaub — wo beantragen?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Den <b>Urlaubsantrag findest du als Dokument im MIS</b>. Fülle den Antrag vollständig aus und reiche ihn anschließend über den vorgesehenen Weg zur Abstimmung bzw. Genehmigung ein.</p></details>
+                <details><summary>Krankheit — wen informieren?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Bei Krankheit informierst du <b>deinen Vorgesetzten</b> so früh wie möglich. Bis zu <b>drei Karenztage</b> sind ohne Krankenschein möglich. Dauert die Krankheit länger an, ist der <b>Krankenschein innerhalb von drei Tagen einzureichen</b>.</p></details>
+                <details><summary>Unfall — was sofort tun?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Bei einem Unfall ist <b>der Vorgesetzte umgehend zu informieren</b>. Zusätzlich muss das dafür vorgesehene <b>Unfalldokument im MIS vollständig ausgefüllt</b> werden.</p></details>
+                <details><summary>Material — wo holen, wie dokumentieren?<svg class="icon"><use href="#i-chevron"/></svg></summary><p>Material darf <b>nur in Absprache mit dem Lageristen</b> entnommen werden. Kläre die benötigten Materialien deshalb vor der Entnahme mit dem Lager ab.</p></details>
               </div>
             </div>
             <div class="card tone-brand">
@@ -1338,8 +1338,8 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     {t:"Startklar", d:"Dein Abschlussstatus", s:"#s13", grp:"Etappe"},
 
     {t:"Personalausweis", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
-    {t:"Sozialversicherungsausweis", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
-    {t:"Steuer-ID", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
+    {t:"Notfallrufnummer", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
+    {t:"biometrisches Passbild", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
     {t:"Bankverbindung", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
     {t:"Krankenkassenbescheinigung", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
     {t:"Führerschein", d:"Preboarding — das bringst du mit", s:"#s2", grp:"Checkliste"},
@@ -1348,16 +1348,16 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     {t:"Arbeitskleidung & PSA", d:"Das bereiten wir vor", s:"#s2", grp:"Checkliste"},
 
     {t:"Pate / Mentor", d:"Alltagsfragen & Orientierung", s:"#s4", grp:"Rolle"},
-    {t:"Vorgesetzter", d:"Ziele & Freigaben", s:"#s4", grp:"Rolle"},
-    {t:"Disposition", d:"Einsatzplanung, Termine, Touren", s:"#s4", grp:"Rolle"},
-    {t:"Lager / Einkauf", d:"Material & Werkzeug", s:"#s4", grp:"Rolle"},
+    {t:"Vorgesetzter", d:"Ziele & Entscheidungen", s:"#s4", grp:"Rolle"},
+    {t:"Vertrieb / Außendienst", d:"Kunden & Projektübergabe, Angebote", s:"#s4", grp:"Rolle"},
+    {t:"Lager / Einkauf", d:"Beschaffung & Verfügbarkeit", s:"#s4", grp:"Rolle"},
     {t:"IT", d:"Zugänge & Hardware", s:"#s4", grp:"Rolle"},
     {t:"Personal / Verwaltung", d:"Urlaub, Krankheit, Unterlagen", s:"#s4", grp:"Rolle"},
 
     {t:"PSA", d:"Persönliche Schutzausrüstung — Sicherheitsschuhe, Brille, Gehörschutz", s:"#s6", grp:"Sicherheit"},
     {t:"Sicherheitsschuhe", d:"Teil der PSA — situationsabhängig Pflicht", s:"#s6", grp:"Sicherheit"},
-    {t:"Druckluft", d:"Druck entlasten, heiße Oberflächen beachten", s:"#s6", grp:"Sicherheit"},
-    {t:"Unfall melden", d:"Unfälle & Beinahe-Unfälle sofort melden", s:"#s6", grp:"Sicherheit"},
+    {t:"Sicher vor Ort", d:"Sicherheitsbereiche, Betriebsanweisungen beachten", s:"#s6", grp:"Sicherheit"},
+    {t:"Unfall melden", d:"Unfälle & Beinahe-Unfälle über Meldewege melden", s:"#s6", grp:"Sicherheit"},
     {t:"Brandschutz", d:"Pflichtunterweisung an Tag 1", s:"#s6", grp:"Sicherheit"},
     {t:"Datenschutz", d:"IT-Sicherheit & Datenschutz, Woche 1", s:"#s6", grp:"Sicherheit"},
 
@@ -1372,10 +1372,10 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     {t:"Kunde anmelden", d:"Schritt 4 des Auftragsprozesses", s:"#s8", grp:"Prozess"},
     {t:"Dokumentieren", d:"Schritt 6 — Zeit, Material, Ergebnis im MIS", s:"#s8", grp:"Prozess"},
 
-    {t:"Urlaub beantragen", d:"Im MIS unter „Abwesenheiten“, zwei Wochen Frist", s:"#s12", grp:"FAQ"},
-    {t:"Krankmeldung", d:"Disposition und Vorgesetzten informieren", s:"#s12", grp:"FAQ"},
-    {t:"Unfall — was tun?", d:"Erste Hilfe, Vorgesetzten informieren, Meldebogen", s:"#s12", grp:"FAQ"},
-    {t:"Material entnehmen", d:"Lager, Buchung im MIS", s:"#s12", grp:"FAQ"},
+    {t:"Urlaub beantragen", d:"Urlaubsantrag als Dokument im MIS ausfüllen", s:"#s12", grp:"FAQ"},
+    {t:"Krankmeldung", d:"Vorgesetzten informieren, drei Karenztage", s:"#s12", grp:"FAQ"},
+    {t:"Unfall — was tun?", d:"Vorgesetzten informieren, Unfalldokument im MIS", s:"#s12", grp:"FAQ"},
+    {t:"Material entnehmen", d:"Nur in Absprache mit dem Lageristen", s:"#s12", grp:"FAQ"},
     {t:"bar", d:"Druckeinheit für den Betriebsdruck", s:"#s12", grp:"Glossar"},
     {t:"Kompressor", d:"Maschine zur Drucklufterzeugung", s:"#s12", grp:"Glossar"},
     {t:"Leckage", d:"Undichte Stelle, Ursache für Energieverlust", s:"#s12", grp:"Glossar"},
@@ -1383,7 +1383,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     {t:"Dein Profil", d:"Name, Position, Startdatum, Pate", s:"#hero", grp:"Etappe"},
     {t:"Tag 30 — Ankommen", d:"Erster Meilenstein", s:"#s10", grp:"Etappe"},
     {t:"Tag 60 — Anwenden", d:"Zweiter Meilenstein", s:"#s10", grp:"Etappe"},
-    {t:"Tag 90 — Durchstarten", d:"Dritter Meilenstein", s:"#s10", grp:"Etappe"},
+    {t:"Tag 90 — Verantwortung übernehmen", d:"Dritter Meilenstein", s:"#s10", grp:"Etappe"},
     {t:"Kompetenzpfad", d:"gesehen → erklärt → begleitet → selbstständig → freigegeben", s:"#s9", grp:"Etappe"}
   ];
 
