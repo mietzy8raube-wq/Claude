@@ -415,6 +415,53 @@ main{padding:0 28px 90px}
 .card.tone-good{background:var(--good-soft)}
 .card.tone-petrol{background:var(--petrol-soft)}
 
+/* ===== Umdrehbare Notizkarten (Etappe 11: Check-ins) ===== */
+.flip-card{perspective:1400px}
+.flip-card-inner{position:relative; width:100%; transition:transform .55s cubic-bezier(.4,.1,.2,1); transform-style:preserve-3d}
+.flip-card.flipped .flip-card-inner{transform:rotateY(180deg)}
+.flip-card-front{
+  position:relative; width:100%; text-align:left; display:block; backface-visibility:hidden;
+  cursor:pointer; transition:transform .18s var(--ease-snap), box-shadow .2s var(--ease)
+}
+.flip-card-front:hover{transform:translate(-3px,-3px); box-shadow:9px 9px 0 0 rgba(18,17,13,.95)}
+.flip-card.flipped .flip-card-front{pointer-events:none}
+.flip-card-back{
+  position:absolute; inset:0; backface-visibility:hidden; transform:rotateY(180deg);
+  display:flex; flex-direction:column; pointer-events:none;
+}
+.flip-card.flipped .flip-card-back{pointer-events:auto}
+.flip-badge{
+  position:absolute; top:14px; right:14px; width:13px; height:13px; border-radius:50%;
+  background:var(--accent-text); border:2.5px solid var(--surface); box-shadow:0 0 0 1px var(--ink);
+  opacity:0; transform:scale(.3); transition:opacity .2s var(--ease), transform .25s var(--ease-snap);
+}
+.flip-badge.show{opacity:1; transform:scale(1)}
+.flip-hint{
+  display:inline-flex; align-items:center; gap:5px; margin-top:14px; font-family:'IBM Plex Mono';
+  font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.72;
+}
+.flip-hint .icon{width:12px; height:12px}
+.flip-back-head{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px;
+  font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; opacity:.85;
+}
+.flip-close{
+  flex:none; width:22px; height:22px; border-radius:50%; border:1.5px solid currentColor; opacity:.65;
+  display:flex; align-items:center; justify-content:center;
+  transition:opacity .15s var(--ease), transform .12s var(--ease-snap);
+}
+.flip-close:hover{opacity:1}
+.flip-close:active{transform:scale(.9)}
+.flip-close .icon{width:11px; height:11px}
+.flip-note{
+  flex:1; width:100%; min-height:100px; resize:none; border:1.5px solid var(--ink); background:var(--surface);
+  color:var(--ink); font-family:'Source Sans 3'; font-size:13.5px; line-height:1.5; padding:10px 12px;
+  box-shadow:inset 0 1px 4px rgba(18,17,13,.1); transition:border-color .16s var(--ease);
+}
+.flip-note::placeholder{color:var(--ink-faint)}
+.flip-note:focus{outline:2px solid var(--focus); outline-offset:1px}
+@media (prefers-reduced-motion:reduce){.flip-card-inner{transition:none}}
+
 .checklist{display:flex; flex-direction:column; gap:2px}
 .citem{display:flex; align-items:center; gap:11px; padding:9px 6px; border-radius:8px; cursor:pointer; transition:background .14s var(--ease), transform .12s var(--ease-snap)}
 .citem:hover{background:var(--surface-2)}
@@ -592,6 +639,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 20V9"/><polyline points="7,14 12,9 17,14"/><path d="M5 19h14"/></symbol>
 <symbol id="i-external" viewBox="0 0 24 24"><path d="M9 6h9v9"/><line x1="18" y1="6" x2="8" y2="16"/></symbol>
 <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5.5" width="18" height="13" rx="1.6"/><path d="M4 7l8 6.2L20 7"/></symbol>
+<symbol id="i-edit" viewBox="0 0 24 24"><path d="M4.5 19.5l.9-3.8L15.6 5.5l2.9 2.9-10.2 10.2z"/><path d="M14 7.1l2.9 2.9"/><path d="M4 20.5h16"/></symbol>
 <symbol id="i-truck" viewBox="0 0 24 24"><rect x="2.5" y="8" width="11" height="8"/><path d="M13.5 11h4l3 3v2h-7z"/><circle cx="7" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/></symbol>
 <symbol id="i-graph" viewBox="0 0 24 24"><rect x="4" y="13.5" width="3.4" height="6.5"/><rect x="10.3" y="8.5" width="3.4" height="11.5"/><rect x="16.6" y="3.5" width="3.4" height="16.5"/></symbol>
 <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.2"/><circle cx="12" cy="12" r="4.2"/><circle cx="12" cy="12" r=".9" class="fill"/></symbol>
@@ -1046,11 +1094,63 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <section class="stage" id="s11">
           <div class="stage-head"><span class="stage-num">11 / 13</span><h2>Check-ins statt Überraschungen</h2></div>
           <p class="stage-lead">Vier feste Termine, vier feste Fragen — damit Feedback in beide Richtungen fließt.</p>
-          <div class="grid-2">
-            <div class="card tone-accent"><h3>Woche 1</h3><p>Was war hilfreich? Was fehlt? Was ist noch unklar?</p></div>
-            <div class="card tone-brand"><h3>Tag 30</h3><p>Grundlagen, Systeme, Team und erste Aufgaben werden geprüft.</p></div>
-            <div class="card tone-petrol"><h3>Tag 60</h3><p>Selbstständigkeit, Praxis und offene Freigaben werden geprüft.</p></div>
-            <div class="card tone-good"><h3>Tag 90</h3><p>Ziele, Stärken, Entwicklungsfelder und nächste Schritte.</p></div>
+          <div class="grid-2 flip-grid">
+            <div class="flip-card" data-flip-key="woche1">
+              <div class="flip-card-inner">
+                <button type="button" class="flip-card-front card tone-accent">
+                  <span class="flip-badge" aria-hidden="true"></span>
+                  <h3>Woche 1</h3>
+                  <p>Was war hilfreich? Was fehlt? Was ist noch unklar?</p>
+                  <span class="flip-hint"><svg class="icon"><use href="#i-edit"/></svg>Notiz hinzufügen</span>
+                </button>
+                <div class="flip-card-back card tone-accent">
+                  <div class="flip-back-head"><span>Notiz — Woche 1</span><button type="button" class="flip-close" aria-label="Schließen"><svg class="icon"><use href="#i-close"/></svg></button></div>
+                  <textarea class="flip-note" data-key="checkin-note-woche1" placeholder="Was war hilfreich? Was fehlt? Was ist noch unklar?"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="flip-card" data-flip-key="tag30">
+              <div class="flip-card-inner">
+                <button type="button" class="flip-card-front card tone-brand">
+                  <span class="flip-badge" aria-hidden="true"></span>
+                  <h3>Tag 30</h3>
+                  <p>Grundlagen, Systeme, Team und erste Aufgaben werden geprüft.</p>
+                  <span class="flip-hint"><svg class="icon"><use href="#i-edit"/></svg>Notiz hinzufügen</span>
+                </button>
+                <div class="flip-card-back card tone-brand">
+                  <div class="flip-back-head"><span>Notiz — Tag 30</span><button type="button" class="flip-close" aria-label="Schließen"><svg class="icon"><use href="#i-close"/></svg></button></div>
+                  <textarea class="flip-note" data-key="checkin-note-tag30" placeholder="Grundlagen, Systeme, Team, erste Aufgaben — wie lief's?"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="flip-card" data-flip-key="tag60">
+              <div class="flip-card-inner">
+                <button type="button" class="flip-card-front card tone-petrol">
+                  <span class="flip-badge" aria-hidden="true"></span>
+                  <h3>Tag 60</h3>
+                  <p>Selbstständigkeit, Praxis und offene Freigaben werden geprüft.</p>
+                  <span class="flip-hint"><svg class="icon"><use href="#i-edit"/></svg>Notiz hinzufügen</span>
+                </button>
+                <div class="flip-card-back card tone-petrol">
+                  <div class="flip-back-head"><span>Notiz — Tag 60</span><button type="button" class="flip-close" aria-label="Schließen"><svg class="icon"><use href="#i-close"/></svg></button></div>
+                  <textarea class="flip-note" data-key="checkin-note-tag60" placeholder="Selbstständigkeit, Praxis, offene Freigaben — wie lief's?"></textarea>
+                </div>
+              </div>
+            </div>
+            <div class="flip-card" data-flip-key="tag90">
+              <div class="flip-card-inner">
+                <button type="button" class="flip-card-front card tone-good">
+                  <span class="flip-badge" aria-hidden="true"></span>
+                  <h3>Tag 90</h3>
+                  <p>Ziele, Stärken, Entwicklungsfelder und nächste Schritte.</p>
+                  <span class="flip-hint"><svg class="icon"><use href="#i-edit"/></svg>Notiz hinzufügen</span>
+                </button>
+                <div class="flip-card-back card tone-good">
+                  <div class="flip-back-head"><span>Notiz — Tag 90</span><button type="button" class="flip-close" aria-label="Schließen"><svg class="icon"><use href="#i-close"/></svg></button></div>
+                  <textarea class="flip-note" data-key="checkin-note-tag90" placeholder="Ziele, Stärken, Entwicklungsfelder, nächste Schritte"></textarea>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="card" style="margin-top:16px">
             <div class="eyebrow">Bei jedem Check-in</div>
@@ -1550,6 +1650,41 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   }
   updateDinoPop(document.getElementById("pfBirth") ? document.getElementById("pfBirth").value : "");
 
+  /* ---------- Umdrehbare Notizkarten (Etappe 11: Check-ins) ---------- */
+  document.querySelectorAll(".flip-card").forEach(function(card){
+    var front = card.querySelector(".flip-card-front");
+    var closeBtn = card.querySelector(".flip-close");
+    var textarea = card.querySelector(".flip-note");
+    var badge = card.querySelector(".flip-badge");
+    if(!front || !textarea || !badge) return;
+
+    function openCard(){
+      card.classList.add("flipped");
+      setTimeout(function(){ textarea.focus(); }, 300);
+    }
+    function closeCard(){
+      card.classList.remove("flipped");
+    }
+    function syncBadge(){
+      badge.classList.toggle("show", textarea.value.trim().length > 0);
+    }
+
+    var stored = localStorage.getItem(STORE_PREFIX + textarea.dataset.key);
+    if(stored) textarea.value = stored;
+    syncBadge();
+
+    front.addEventListener("click", openCard);
+    if(closeBtn) closeBtn.addEventListener("click", function(e){ e.stopPropagation(); closeCard(); });
+    textarea.addEventListener("input", function(){
+      localStorage.setItem(STORE_PREFIX + textarea.dataset.key, textarea.value);
+      syncBadge();
+    });
+    textarea.addEventListener("blur", closeCard);
+    textarea.addEventListener("keydown", function(e){
+      if(e.key === "Escape"){ closeCard(); textarea.blur(); }
+    });
+  });
+
   /* ---------- Profile switcher UI ---------- */
   var profileBtn = document.getElementById("profileBtn");
   var profileMenu = document.getElementById("profileMenu");
@@ -1898,7 +2033,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   /* ---------- Scroll-reveal choreography ---------- */
   if(!reduceMotion){
     var revealEls = document.querySelectorAll(
-      '.card, .tip, .tablewrap, .trow, .pstep, .srow, .stage-head, .stage-lead, .route, .faq details, dl.glossary > div'
+      '.card:not(.flip-card-front):not(.flip-card-back), .tip, .tablewrap, .trow, .pstep, .srow, .stage-head, .stage-lead, .route, .faq details, dl.glossary > div'
     );
     var byParent = new Map();
     revealEls.forEach(function(el){
