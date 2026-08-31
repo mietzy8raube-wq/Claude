@@ -494,6 +494,12 @@ td.wide{white-space:normal; min-width:220px}
 .sys-group-title:first-of-type{margin-top:16px}
 .tbd-tag{display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px; background:var(--surface-sunk); color:var(--ink-faint); font-size:10px; letter-spacing:.03em; text-transform:none; vertical-align:middle}
 .tbd-hint{display:block; font-style:normal; font-size:11px; color:var(--ink-faint); margin-top:2px}
+
+.stage .wip-flag{display:inline-flex; align-items:center; gap:5px; font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.06em; color:#151310; background:#FFC93C; border:1.5px solid var(--ink); border-radius:0; padding:3px 9px 3px 7px; margin-left:10px; vertical-align:2px; box-shadow:inset 0 -4px 0 -1px #151310}
+.stage .wip-flag .icon{width:11px;height:11px}
+.tip.wip{position:relative; padding-top:24px}
+.tip.wip::before{content:""; position:absolute; top:0; left:0; right:0; height:6px; background:repeating-linear-gradient(135deg,#FFC93C 0 10px,#151310 10px 20px)}
+.tip.wip .mk{background:#FFC93C; color:#151310}
 .sys-name-resolved{display:block; font-style:normal; font-size:11px; font-weight:700; color:var(--accent-text); margin-top:2px}
 
 .route{display:flex; align-items:flex-start; gap:0; overflow-x:auto; padding:6px 2px 14px}
@@ -1041,8 +1047,12 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 
         <!-- 08 -->
         <section class="stage" id="s8">
-          <div class="stage-head"><span class="stage-num">08 / 13</span><h2>So läuft ein Auftrag bei uns</h2></div>
+          <div class="stage-head"><span class="stage-num">08 / 13</span><h2>So läuft ein Auftrag bei uns<span class="wip-flag"><svg class="icon"><use href="#i-alert"/></svg>Baustelle</span></h2></div>
           <p class="stage-lead">Sieben Schritte, immer in dieser Reihenfolge — vom Auftragseingang bis zur Dokumentation.</p>
+          <div class="tip wip">
+            <div class="mk"><svg class="icon"><use href="#i-alert"/></svg></div>
+            <p><b>Baustelle:</b> Diese Etappe zeigt aktuell den groben Ablauf. Die genaue Beschreibung der einzelnen Schritte wird noch ausgearbeitet und hier ergänzt.</p>
+          </div>
           <div class="process">
             <div class="pstep"><span class="pnum mono">01</span><strong>Verstehen</strong><p>Auftrag lesen, Umfang klären.</p></div>
             <div class="pstep"><span class="pnum mono">02</span><strong>Prüfen</strong><p>MIS, Kunde, Termin abgleichen.</p></div>
