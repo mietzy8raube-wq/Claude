@@ -1,5 +1,6 @@
 import {
   LayoutDashboard,
+  Sparkles,
   ListChecks,
   ClipboardList,
   FolderKanban,
@@ -27,7 +28,10 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Übersicht",
-    items: [{ title: "Dashboard", href: "/dashboard", icon: LayoutDashboard }],
+    items: [
+      { title: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+      { title: "Onboarding", href: "/onboarding", icon: Sparkles },
+    ],
   },
   {
     label: "Arbeit",
