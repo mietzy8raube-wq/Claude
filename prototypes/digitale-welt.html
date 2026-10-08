@@ -1,7 +1,7 @@
 <title>Digitale Welt Druckluft-Technik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Tiny5&family=Jersey+10&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700&display=swap">
 <style>
 /* Layout: Blockwelt (Würfel-Landschaft) mit Bedienfeldern im Inventar-Stil; davor: Architekturmodell auf einem hellen Kartentisch, Bedienfelder schweben darüber
    (links Übersicht, rechts Details, unten Ereignisse). Bewusst eine helle Gestaltung. */
@@ -21,10 +21,10 @@
   --bad: #c22a1e;
   --plan: #6a3fb5;
   --shadow: 0 1px 2px rgba(21,38,45,.06), 0 8px 24px rgba(21,38,45,.08);
-  --font-head: "Tiny5", "Courier New", monospace;
-  --font-body: "Tiny5", "Courier New", monospace;
-  --font-data: "Tiny5", "Courier New", monospace;
-  --font-title: "Jersey 10", "Tiny5", "Courier New", monospace;
+  --font-head: "Fredoka", "Nunito", system-ui, sans-serif;
+  --font-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "Nunito", system-ui, sans-serif;
+  --font-title: "Fredoka", "Nunito", system-ui, sans-serif;
 }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
@@ -243,16 +243,16 @@ ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height:
 
 
 /* ════════ Blockwelt-Oberfläche: Inventar-Felder, Pixelschrift, Namensschilder, Chat ════════ */
-*, *::before, *::after { border-radius: 0 !important; }
-body { font-size: 14px; -webkit-font-smoothing: none; }
+
+body { font-size: 14px; }
 #vignette { display: none; }
-.hud { background: var(--paper); border: 2px solid #111; box-shadow: inset 3px 3px 0 #fff, inset -3px -3px 0 #555, 4px 4px 0 rgba(0,0,0,.28); }
-.brand-txt b { font: 400 25px var(--font-title); letter-spacing: .03em; }
-#detail h2 { font: 400 30px/1 var(--font-title); letter-spacing: .02em; }
-.lbl.loc, .lbl.loc.bau { font-family: var(--font-title); font-weight: 400; font-size: 19px; letter-spacing: .03em; }
+.hud { background: var(--paper); border: 2px solid #3a3a3a; border-radius: 14px; box-shadow: inset 0 2px 0 rgba(255,255,255,.75), inset 0 -3px 0 rgba(0,0,0,.18), 0 6px 16px rgba(0,0,0,.22); }
+.brand-txt b { font: 600 20px var(--font-title); letter-spacing: .01em; }
+#detail h2 { font: 600 24px/1.1 var(--font-title); }
+.lbl.loc, .lbl.loc.bau { font-family: var(--font-title); font-weight: 600; font-size: 15px; }
 .lbl.loc small { font-family: var(--font-body); font-size: 11px; }
-.kpi strong { font: 400 22px/1 var(--font-title) !important; }
-* { font-weight: 400 !important; }
+.kpi strong { font: 600 18px/1.1 var(--font-title) !important; }
+
 .mark { background: #5b8731; box-shadow: inset 2px 2px 0 #8fc35c, inset -2px -2px 0 #2f4d14; border: 2px solid #111; }
 .kpis { border: 2px solid #555; background: #8b8b8b; box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff; }
 .kpi { border-right-color: #6a6a6a; color: #ececec; }
@@ -260,7 +260,7 @@ body { font-size: 14px; -webkit-font-smoothing: none; }
 .kpi.warn strong { color: #ffd84a; } .kpi.bad strong { color: #ff6b5e; }
 button.kpi:hover { background: #a5a5a5; }
 .seg, .tabs { border: 2px solid #111; background: #6f6f6f; gap: 0; }
-.seg button, .tabs button, .roadbtn, .menu, .close { background: #a5a5a5; color: #fff; text-shadow: 2px 2px 0 #3f3f3f; box-shadow: inset 2px 2px 0 #dadada, inset -2px -2px 0 #555; border: 0; font-weight: 600; }
+.seg button, .tabs button, .roadbtn, .menu, .close { background: #a5a5a5; color: #fff; text-shadow: 1px 1px 0 #4a4a4a; box-shadow: inset 2px 2px 0 #dadada, inset -2px -2px 0 #555; border: 0; font-weight: 600; }
 .seg button:hover, .tabs button:hover, .roadbtn:hover, .menu:hover, .close:hover { background: #8b9fd4; box-shadow: inset 2px 2px 0 #c0ccf0, inset -2px -2px 0 #3f4f80; }
 .seg button[aria-pressed="true"], .tabs button[aria-selected="true"] { background: #5b8731; color: #fff; box-shadow: inset 2px 2px 0 #8fc35c, inset -2px -2px 0 #2f4d14; }
 .seg button[aria-pressed="true"].plan { background: #6a3fb5; box-shadow: inset 2px 2px 0 #a07de0, inset -2px -2px 0 #3a1f6e; }
@@ -309,9 +309,26 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: #9a9a9a; }
 /* Ereignisse als Chat */
 #feed { background: rgba(0,0,0,.45); border: 0; box-shadow: none; }
 #feed .h { color: #e0e0e0; text-shadow: 1px 1px 0 #000; }
-#events li button { color: #fff; text-shadow: 2px 2px 0 #3f3f3f; font-size: 13.5px; }
+#events li button { color: #fff; text-shadow: 1px 1px 0 #3f3f3f; font-size: 12.5px; }
+#events { gap: 1px; } #events li { font-size: 12.5px; line-height: 1.25; }
 #events li button:hover { color: #ffff55; text-decoration: none; }
 #events time { color: #aaaaaa; }
+/* Abgerundete Formen */
+.seg, .tabs, .kpis { border-radius: 10px; overflow: hidden; }
+.seg button, .tabs button { border-radius: 0; }
+.roadbtn, .menu, .close { border-radius: 9px; }
+.loclist button, .links button, ol.steps > li > button, .links .trow, .live, .note, .msg, .grow { border-radius: 9px; }
+.lbl.loc, .lbl.sys, .lbl.person, .lbl.cust, .lbl.proj, .lbl.step, .lbl.km, .lbl.hw, .lbl.zone.floorlbl { border-radius: 8px; }
+.lbl.person { border-radius: 999px; }
+.lbl.sel { outline-offset: 2px; }
+.pill, .bautag { border-radius: 999px; }
+.dot, .num { border-radius: 50%; }
+.bar, .pb, .bigbar, .costbar, .gb, .bar i, .pb i, .bigbar i, .costbar i { border-radius: 999px; }
+#tip { border-radius: 8px; }
+#feed { border-radius: 14px; }
+.mark { border-radius: 9px; }
+.layers input { border-radius: 4px; }
+#detail .eyebrow, .h { letter-spacing: .06em; }
 
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 500 14px var(--font-head); color: var(--ink-3); }
 
@@ -424,6 +441,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: #9a9a9a; }
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/geometries/RoundedBoxGeometry.js"></script>
 <script>
 (() => {
 'use strict';
@@ -880,7 +898,7 @@ function pix(draw) {
   draw(g, px, rnd);
   return c;
 }
-function noise(base, spread, rnd) { const [r, gg, b] = base; const k = (rnd() - 0.5) * spread; return `rgb(${r + k | 0},${gg + k | 0},${b + k | 0})`; }
+function noise(base, spread, rnd) { const [r, gg, b] = base; const k = (rnd() - 0.5) * spread * 0.55; return `rgb(${r + k | 0},${gg + k | 0},${b + k | 0})`; }
 function fill(px, rnd, base, spread) { for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) px(x, y, noise(base, spread, rnd)); }
 const TEX_SRC = {
   grassTop: pix((g, px, r) => fill(px, r, [104, 160, 64], 34)),
@@ -904,11 +922,28 @@ const TEX_SRC = {
 };
 function blockTex(name, rep = 1) {
   const t = new THREE.CanvasTexture(TEX_SRC[name]);
-  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
   return t;
 }
 function blockMat(name, o = {}) { return new THREE.MeshLambertMaterial(Object.assign({ map: blockTex(name, o.rep || 1), color: 0xffffff }, o, { rep: undefined })); }
+// Abgerundete Würfel: Kantenradius passend zur kleinsten Kante; Texturkoordinaten planar (1 Kachel = B)
+function planarUV(geo) {
+  const pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv;
+  for (let i = 0; i < pos.count; i++) {
+    const ax = Math.abs(nor.getX(i)), ay = Math.abs(nor.getY(i)), az = Math.abs(nor.getZ(i));
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    if (ay >= ax && ay >= az) uv.setXY(i, x / B + 0.5, z / B + 0.5);
+    else if (ax >= az) uv.setXY(i, z / B + 0.5, y / B + 0.5);
+    else uv.setXY(i, x / B + 0.5, y / B + 0.5);
+  }
+  uv.needsUpdate = true; return geo;
+}
+function rbox(w, h, d, rr) {
+  const r = Math.min(rr == null ? 0.05 : rr, Math.min(w, h, d) * 0.45);
+  if (!THREE.RoundedBoxGeometry || r < 0.004) return new THREE.BoxGeometry(w, h, d);
+  return new THREE.RoundedBoxGeometry(w, h, d, 2, r);
+}
 // Box-Kanten auf Blockraster: 1 Texturkachel = B Modell-Einheiten
 function blockUV(geo, w, h, d) {
   const uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
@@ -916,7 +951,7 @@ function blockUV(geo, w, h, d) {
   return geo;
 }
 // Erhöhte Insel aus Blöcken (Gras, darunter Erde); kind(x, z) wählt die Deckschicht
-const VOX_GEO = new THREE.BoxGeometry(B, B, B);
+const VOX_GEO = planarUV(rbox(B, B, B, 0.09));
 const VOX = {
   grass: [blockMat('grassSide'), blockMat('grassSide'), blockMat('grassTop'), blockMat('dirt'), blockMat('grassSide'), blockMat('grassSide')],
   path: [blockMat('dirt'), blockMat('dirt'), blockMat('path'), blockMat('dirt'), blockMat('dirt'), blockMat('dirt')],
@@ -953,7 +988,7 @@ scene.add(ground);
 const clouds = new THREE.Group();
 (() => { const r = rng(42), cm = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, emissive: 0xffffff, emissiveIntensity: 0.35 });
   for (let i = 0; i < 26; i++) { const c = new THREE.Group(), cx = (r() - 0.5) * 240, cz = (r() - 0.5) * 240;
-    for (let k = 0; k < 3 + (r() * 4 | 0); k++) { const w = 4 + (r() * 6 | 0) * 2, d = 3 + (r() * 4 | 0) * 2; const m = new THREE.Mesh(new THREE.BoxGeometry(w, 1.6, d), cm); m.position.set((r() - 0.5) * 10 | 0, 0, (r() - 0.5) * 8 | 0); c.add(m); }
+    for (let k = 0; k < 3 + (r() * 4 | 0); k++) { const w = 4 + (r() * 6 | 0) * 2, d = 3 + (r() * 4 | 0) * 2; const m = new THREE.Mesh(rbox(w, 1.6, d, 0.75), cm); m.position.set((r() - 0.5) * 10 | 0, 0, (r() - 0.5) * 8 | 0); c.add(m); }
     c.position.set(cx, 38 + r() * 6, cz); clouds.add(c); } })();
 scene.add(clouds);
 
@@ -994,7 +1029,7 @@ function tag(mesh, id) { mesh.userData.id = id; pickables.push(mesh); return mes
 function statusOf(d) { return d.plan ? 'plan' : d.status; }
 function presDot(pr) { return pr === 'online' ? 'ok' : pr === 'meet' ? 'meet' : pr === 'away' ? 'away' : 'off'; }
 function local(loc, x, z, y = 0) { return new THREE.Vector3(loc.x + x, y, loc.z + z); }
-function box(w, h, d, m) { const b = new THREE.Mesh(blockUV(new THREE.BoxGeometry(w, h, d), w, h, d), m); b.castShadow = true; b.receiveShadow = true; return b; }
+function box(w, h, d, m) { const b = new THREE.Mesh(planarUV(rbox(w, h, d)), m); b.castShadow = true; b.receiveShadow = true; return b; }
 
 /* ════════════════ Standorte: Platte, Gebäude, Innenleben ════════════════ */
 const PLATE_Y = 0.5;
@@ -1425,7 +1460,7 @@ CUSTOMERS.forEach(c => {
 
 /* ════════════════ Software ════════════════ */
 const sysHomeCount = {};
-const hexGeo = blockUV(new THREE.BoxGeometry(1.4, 1.4, 1.4), 1.4, 1.4, 1.4);
+const hexGeo = planarUV(rbox(1.4, 1.4, 1.4, 0.28));
 SYSTEMS.forEach(s => {
   let pos;
   if (s.home === 'cloud') pos = new THREE.Vector3(s.cx, CLOUD_Y, s.cz);
@@ -1440,7 +1475,7 @@ SYSTEMS.forEach(s => {
   const core = new THREE.Mesh(hexGeo, plan ? ghostMat(0.35) : s.hub ? MC.gold : s.id === 'ki' || s.id === 'gf' ? MC.ore : MC.iron);
   core.castShadow = !plan;
   g.add(tag(core, s.id));
-  const band = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.16, 1.5), new THREE.MeshBasicMaterial({ color: C[st] || C.check }));
+  const band = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.16, 1.5), new THREE.MeshBasicMaterial({ color: C[st] || C.check })); band.geometry = rbox(1.5, 0.16, 1.5, 0.07);
   g.add(band);
   if (s.home !== 'cloud') {
     const loc = byId[s.home].d;
@@ -1456,7 +1491,7 @@ SYSTEMS.forEach(s => {
 });
 
 /* ════════════════ Schnittstellen ════════════════ */
-const particleGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+const particleGeo = rbox(0.3, 0.3, 0.3, 0.1);
 LINKS.forEach(l => {
   const a = objects[l.from].anchor, b = objects[l.to].anchor;
   const mid = a.clone().add(b).multiplyScalar(0.5);
@@ -1533,11 +1568,11 @@ const LOOKS = {
   construct: { top: 0xe07a2c, legs: 0x2f3b45, helmet: 0xffffff },
 };
 const G = {
-  leg: new THREE.BoxGeometry(0.14, 0.36, 0.14), arm: new THREE.BoxGeometry(0.12, 0.34, 0.12), hand: new THREE.BoxGeometry(0.121, 0.08, 0.121),
-  torso: new THREE.BoxGeometry(0.3, 0.38, 0.16), head: new THREE.BoxGeometry(0.28, 0.28, 0.28),
-  hair: new THREE.BoxGeometry(0.3, 0.08, 0.3), hairBack: new THREE.BoxGeometry(0.3, 0.2, 0.05), cap: new THREE.BoxGeometry(0.31, 0.09, 0.34),
-  vest: new THREE.BoxGeometry(0.32, 0.26, 0.18), box: new THREE.BoxGeometry(0.26, 0.2, 0.22), ring: new THREE.RingGeometry(0.26, 0.34, 4, 1, Math.PI / 4),
-  tool: new THREE.BoxGeometry(0.05, 0.2, 0.05), phone: new THREE.BoxGeometry(0.06, 0.11, 0.03),
+  leg: rbox(0.14, 0.36, 0.14, 0.05), arm: rbox(0.12, 0.34, 0.12, 0.05), hand: rbox(0.125, 0.09, 0.125, 0.045),
+  torso: rbox(0.3, 0.38, 0.17, 0.07), head: planarUV(rbox(0.28, 0.28, 0.28, 0.07)),
+  hair: rbox(0.3, 0.08, 0.3, 0.035), hairBack: rbox(0.3, 0.2, 0.05, 0.02), cap: rbox(0.31, 0.09, 0.34, 0.04),
+  vest: rbox(0.32, 0.26, 0.19, 0.07), box: rbox(0.26, 0.2, 0.22, 0.04), ring: new THREE.RingGeometry(0.26, 0.34, 32),
+  tool: rbox(0.05, 0.2, 0.05, 0.02), phone: rbox(0.06, 0.11, 0.03, 0.012),
 };
 // Gesicht als Pixeltextur (8 × 8), je Hautton
 const FACE_SKIN = ['#f0c8a0', '#d9a07a', '#a8704a', '#f3d6b8'];
@@ -1547,7 +1582,7 @@ const FACE_MATS = FACE_SKIN.map((sk, i) => {
   g.fillStyle = '#ffffff'; g.fillRect(1, 4, 2, 1); g.fillRect(5, 4, 2, 1);
   g.fillStyle = ['#3b5bab', '#4a3020', '#2a2a2a', '#3d7a3d'][i]; g.fillRect(2, 4, 1, 1); g.fillRect(5, 4, 1, 1);
   g.fillStyle = 'rgba(80,40,30,.55)'; g.fillRect(3, 6, 2, 1);
-  const t = new THREE.CanvasTexture(c); t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.encoding = THREE.sRGBEncoding;
+  const t = new THREE.CanvasTexture(c); t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearFilter; t.encoding = THREE.sRGBEncoding;
   return new THREE.MeshLambertMaterial({ map: t });
 });
 function makeFigure(p, i) {
@@ -1560,7 +1595,8 @@ function makeFigure(p, i) {
   if (look.accent) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.05, 0.17), mat(look.accent)); a.position.y = 0.66; fig.add(a); }
   const arms = [-0.21, 0.21].map(x => { const pivot = new THREE.Group(); pivot.position.set(x, 0.76, 0); const m = new THREE.Mesh(G.arm, mTop); m.position.y = -0.17; m.castShadow = true; pivot.add(m); const h = new THREE.Mesh(G.hand, skin); h.position.y = -0.3; pivot.add(h); fig.add(pivot); return pivot; });
   const head = new THREE.Group(); head.position.y = 0.92; fig.add(head);
-  const hm = new THREE.Mesh(G.head, [skin, skin, skin, skin, FACE_MATS[si], skin]); hm.castShadow = true; hm.position.y = 0.05; head.add(hm);
+  const hm = new THREE.Mesh(G.head, skin); hm.castShadow = true; hm.position.y = 0.05; head.add(hm);
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), FACE_MATS[si]); face.position.set(0, 0.05, 0.1405); head.add(face);
   const capped = look.vest || look.accent || look.helmet;
   const hairMat = look.helmet ? mat(look.helmet) : look.accent ? mat(0x0b4f66) : look.vest ? mat(0xf0c419) : mat([0x3b2a20, 0x8a6a45, 0x1d1b1a, 0xb7aa98, 0x6b3f22][i % 5]);
   const hair = new THREE.Mesh(capped ? G.cap : G.hair, hairMat); hair.position.set(0, 0.2, capped ? 0.02 : 0); head.add(hair);
@@ -1788,13 +1824,13 @@ function showProcess(id) {
   const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   procGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 40, 0.12, 8), new THREE.MeshBasicMaterial({ color: C.petrol, transparent: true, opacity: 0.75 })));
   for (let i = 0; i < 16; i++) {
-    const m = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), new THREE.MeshBasicMaterial({ color: 0x1f6f8b }));
+    const m = new THREE.Mesh(rbox(0.36, 0.36, 0.36, 0.12), new THREE.MeshBasicMaterial({ color: 0x1f6f8b }));
     m.userData.t = i / 16; procGroup.add(m); procFlow.push({ m, curve });
   }
   const tokGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
   pr.steps.forEach(s => {
     const c = s.state === 'hot' ? C.bad : s.state === 'slow' ? C.warn : C.petrol;
-    const marker = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.8, 0.8), new THREE.MeshBasicMaterial({ color: c }));
+    const marker = new THREE.Mesh(rbox(0.8, 0.8, 0.8, 0.22), new THREE.MeshBasicMaterial({ color: c }));
     marker.position.copy(s.pos);
     procGroup.add(tag(marker, s.id));
     s.marker = marker;
@@ -2253,7 +2289,7 @@ const clock = document.getElementById('clock');
 setInterval(() => { clock.textContent = hhmmss(new Date()); }, 1000);
 clock.textContent = hhmmss(new Date());
 function pulseMesh() {
-  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 0.95, 4, 1, Math.PI / 4), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 0.95, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
   m.rotation.x = -Math.PI / 2; scene.add(m); return m;
 }
 
