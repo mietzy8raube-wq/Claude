@@ -1,0 +1,2292 @@
+<title>Digitale Welt Druckluft-Technik</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: Architekturmodell auf einem hellen Kartentisch, Bedienfelder schweben darüber
+   (links Übersicht, rechts Details, unten Ereignisse). Bewusst eine helle Gestaltung. */
+:root {
+  color-scheme: light;
+  --table: #e9eded;
+  --paper: #ffffff;
+  --paper-2: #f5f7f7;
+  --line: #d9e0e2;
+  --ink: #15262d;
+  --ink-2: #4f6269;
+  --ink-3: #7b8d93;
+  --petrol: #0e6a87;      /* Akzent */
+  --petrol-soft: #e3f0f4;
+  --ok: #1e9467;
+  --warn: #c27c00;
+  --bad: #cf3f36;
+  --plan: #6857c9;
+  --shadow: 0 1px 2px rgba(21,38,45,.06), 0 8px 24px rgba(21,38,45,.08);
+  --font-head: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+[hidden] { display: none !important; }
+html, body { height: 100%; }
+body { background: var(--table); color: var(--ink); font-family: var(--font-body); font-size: 13.5px; overflow: hidden; }
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; outline: none; }
+
+#vignette { position: fixed; inset: 0; pointer-events: none; background: radial-gradient(ellipse at 50% 45%, rgba(233,237,237,0) 55%, rgba(196,208,212,.45) 100%); }
+#labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.lbl { position: absolute; left: 0; top: 0; white-space: nowrap; pointer-events: auto; cursor: pointer; border: 0; padding: 0; background: none;
+  font: 500 12px var(--font-body); color: var(--ink); }
+.lbl:focus-visible { outline: 2px solid var(--petrol); outline-offset: 3px; border-radius: 4px; }
+.lbl.loc { font: 600 13px var(--font-head); letter-spacing: .02em; background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow);
+  padding: 4px 10px 4px 8px; border-radius: 4px; display: flex; gap: 7px; align-items: center; }
+.lbl.loc small { font: 400 11px var(--font-body); color: var(--ink-3); }
+.lbl.loc.bau { border-color: #d9c79f; background: #fffaf0; }
+.lbl.sys { font-size: 11.5px; background: rgba(255,255,255,.92); border: 1px solid var(--line); padding: 2px 7px 2px 5px; border-radius: 3px; display: flex; gap: 5px; align-items: center; }
+.lbl.cust { font-size: 11px; color: var(--ink-2); background: rgba(255,255,255,.75); padding: 1px 6px; border-radius: 3px; }
+.lbl.person { font-size: 10.5px; font-weight: 600; background: var(--paper); border: 1px solid var(--line); padding: 1px 6px 1px 4px; border-radius: 9px; display: flex; gap: 4px; align-items: center; box-shadow: 0 1px 3px rgba(21,38,45,.12); }
+.lbl.person .dot { width: 6px; height: 6px; }
+.lbl.hw { pointer-events: none; cursor: default; font: 600 9.5px var(--font-body); color: #fff; background: #2b5aa8; border: 1.5px solid #fff; box-shadow: 0 0 0 1px #2b5aa8; border-radius: 3px; padding: 0 4px; }
+.lbl.km, .lbl.city, .lbl.zone { pointer-events: none; cursor: default; }
+.lbl.km { font: 500 10.5px var(--font-data); color: var(--petrol); background: rgba(233,237,237,.85); padding: 0 4px; }
+.lbl.city { font: 500 11px var(--font-head); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+.lbl.zone.floorlbl { font: 600 11px var(--font-head); color: #fff; background: var(--petrol); padding: 1px 6px; border-radius: 3px; letter-spacing: .04em; }
+.lbl.zone { font: 600 9.5px var(--font-head); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.lbl.plan { border-style: dashed; border-color: var(--plan); color: var(--plan); }
+.lbl.sel { border-color: var(--petrol); box-shadow: 0 0 0 2px var(--petrol-soft), var(--shadow); }
+.lbl.step { font: 600 11.5px var(--font-body); background: var(--paper); border: 1.5px solid var(--petrol); padding: 2px 8px 2px 2px; border-radius: 12px; display: flex; gap: 6px; align-items: center; box-shadow: var(--shadow); }
+.lbl.step.hot { border-color: var(--bad); } .lbl.step.slow { border-color: var(--warn); }
+.lbl.step b { font: 500 11px var(--font-data); color: var(--ink-3); }
+.num { display: inline-grid; place-items: center; min-width: 18px; height: 18px; border-radius: 9px; background: var(--petrol); color: #fff; font: 600 10.5px var(--font-data); padding: 0 4px; }
+.hot .num { background: var(--bad); } .slow .num { background: var(--warn); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--ok); }
+.dot.ok { background: var(--ok); } .dot.warn, .dot.meet { background: var(--warn); }
+.dot.bad { background: var(--bad); animation: blink 1.2s steps(2) infinite; }
+.dot.plan { background: transparent; border: 1.5px dashed var(--plan); }
+.dot.away { background: var(--ink-3); } .dot.off { background: transparent; border: 1.5px solid var(--ink-3); }
+@keyframes blink { 50% { opacity: .3; } }
+
+#tip { position: fixed; pointer-events: none; background: var(--ink); color: #fff; padding: 4px 8px; border-radius: 3px; font-size: 12px; transform: translate(12px, 14px); }
+
+.hud { position: fixed; background: var(--paper); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); }
+#top { top: calc(12px + env(safe-area-inset-top, 0px)); left: 16px; right: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 8px 12px 8px 14px; }
+.brand { display: flex; align-items: center; gap: 10px; margin-right: auto; min-width: 0; }
+.mark { width: 30px; height: 30px; border-radius: 4px; background: var(--petrol); display: grid; place-items: center; flex: none; }
+.brand-txt { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.brand-txt b { font: 600 16px var(--font-head); letter-spacing: .01em; }
+.brand-txt span { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kpis { display: flex; gap: 0; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.kpi { display: flex; flex-direction: column; padding: 3px 12px; border-right: 1px solid var(--line); font-size: 10.5px; color: var(--ink-3); line-height: 1.25; background: none; border-top: 0; border-bottom: 0; border-left: 0; text-align: left; font-family: var(--font-body); }
+.kpi:last-child { border-right: 0; }
+.kpi strong { font: 500 15px var(--font-data); color: var(--ink); font-variant-numeric: tabular-nums; }
+button.kpi { cursor: pointer; }
+button.kpi:hover { background: var(--paper-2); }
+button.kpi:focus-visible { outline: 2px solid var(--petrol); outline-offset: -2px; }
+.kpi.bad strong { color: var(--bad); } .kpi.warn strong { color: var(--warn); }
+.clock { font: 500 13px var(--font-data); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--paper-2); }
+.seg button { font: 600 12px var(--font-head); letter-spacing: .02em; color: var(--ink-2); background: none; border: 0; padding: 7px 12px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--paper); color: var(--petrol); box-shadow: inset 0 -2px 0 var(--petrol); }
+.seg button[aria-pressed="true"].plan { color: var(--plan); box-shadow: inset 0 -2px 0 var(--plan); }
+.seg button:focus-visible { outline: 2px solid var(--petrol); outline-offset: -2px; }
+.menu { display: none; font: 600 12px var(--font-head); color: var(--petrol); background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 7px 10px; cursor: pointer; }
+
+#left { left: 16px; top: 84px; width: 252px; display: flex; flex-direction: column; max-height: calc(100% - 84px - 114px); overflow: hidden; }
+.lscroll { overflow-y: auto; min-height: 0; padding: 10px; display: flex; flex-direction: column; gap: 14px; }
+.h { font: 600 11px var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 6px; }
+.tabs { margin: 10px 10px 0; flex: none; background: var(--paper); display: grid; grid-template-columns: repeat(4, 1fr); border-bottom: 1px solid var(--line); }
+.tabs button { font: 600 11.5px var(--font-head); background: none; border: 0; color: var(--ink-3); padding: 8px 4px; cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--petrol); }
+.tabs button:focus-visible { outline: 2px solid var(--petrol); outline-offset: -2px; }
+.sub2 { font-size: 12px; color: var(--ink-2); line-height: 1.45; margin: 0 0 8px; }
+.loclist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.loclist button { width: 100%; display: grid; grid-template-columns: 10px 1fr auto; gap: 9px; align-items: center; text-align: left; background: none; border: 1px solid transparent; color: var(--ink);
+  font: 500 13px var(--font-body); padding: 6px 6px; border-radius: 4px; cursor: pointer; }
+.loclist button:hover { background: var(--paper-2); }
+.loclist button.sel { background: var(--petrol-soft); border-color: #bcd9e3; }
+.loclist button:focus-visible { outline: 2px solid var(--petrol); outline-offset: 1px; }
+.loclist small { font: 400 11px var(--font-data); color: var(--ink-3); }
+.loclist .grp { font: 600 10.5px var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); padding: 10px 6px 2px; }
+.who { display: flex; flex-direction: column; min-width: 0; }
+.who em { font-style: normal; font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.loclist .off { opacity: .55; }
+.layers { display: flex; flex-direction: column; gap: 6px; }
+.layers label { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.layers input { accent-color: var(--petrol); width: 15px; height: 15px; }
+.legend { display: grid; grid-template-columns: 16px 1fr; gap: 5px 8px; font-size: 12px; color: var(--ink-2); align-items: center; }
+.legend i { height: 3px; border-radius: 2px; display: block; }
+.note { font-size: 11.5px; color: var(--ink-2); line-height: 1.45; background: var(--paper-2); border: 1px solid var(--line); border-radius: 4px; padding: 8px 10px; margin: 0; }
+.note b { color: var(--ink); }
+
+#detail { right: 16px; top: 84px; width: 336px; max-height: calc(100% - 84px - 114px); overflow: hidden; display: flex; flex-direction: column; }
+/* Scrollen in einem inneren Bereich: verhindert Darstellungsfehler, wenn das Feld über der 3D-Grafik liegt */
+.dbody { overflow-y: auto; min-height: 0; padding: 14px 16px 16px; }
+#detail .eyebrow { font: 600 11px var(--font-head); letter-spacing: .08em; text-transform: uppercase; color: var(--petrol); }
+#detail h2 { font: 600 22px/1.15 var(--font-head); margin: 3px 0 4px; text-wrap: balance; }
+#detail .sub { color: var(--ink-2); margin: 0 0 12px; font-size: 13px; line-height: 1.45; }
+.live { display: flex; gap: 8px; align-items: center; font-size: 13px; background: var(--petrol-soft); border-radius: 4px; padding: 7px 10px; margin: 0 0 12px; color: var(--ink); }
+.live i { width: 7px; height: 7px; border-radius: 50%; background: var(--petrol); flex: none; animation: blink 1.6s infinite; }
+.close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 4px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); cursor: pointer; font-size: 18px; line-height: 1; }
+.close:focus-visible { outline: 2px solid var(--petrol); }
+.pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.pill { display: inline-flex; align-items: center; font: 600 11px var(--font-head); letter-spacing: .03em; padding: 2px 8px; border-radius: 3px; border: 1px solid currentColor; background: var(--paper); }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); } .pill.plan { color: var(--plan); border-style: dashed; }
+.pill.demo { color: var(--ink-3); border-color: var(--line); }
+dl.facts { display: grid; grid-template-columns: auto 1fr; gap: 0; margin: 0 0 14px; font-size: 12.5px; border-top: 1px solid var(--line); }
+dl.facts dt, dl.facts dd { padding: 6px 0; border-bottom: 1px solid var(--line); }
+dl.facts dt { color: var(--ink-2); padding-right: 12px; }
+dl.facts dd { margin: 0; font: 400 12px var(--font-data); text-align: right; font-variant-numeric: tabular-nums; min-width: 0; overflow-wrap: anywhere; }
+.links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.links button { width: 100%; text-align: left; display: grid; grid-template-columns: 10px 1fr; gap: 9px; align-items: center; background: var(--paper); border: 1px solid var(--line); color: var(--ink);
+  border-radius: 4px; padding: 6px 9px; font: 500 12.5px var(--font-body); cursor: pointer; }
+.links button:hover { border-color: var(--petrol); }
+.links button:focus-visible { outline: 2px solid var(--petrol); }
+.links small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; }
+.msg { font-size: 12.5px; line-height: 1.5; padding: 8px 10px; border-left: 3px solid var(--bad); background: #fbeeed; margin: 0 0 12px; border-radius: 0 3px 3px 0; }
+.msg.warn { border-color: var(--warn); background: #fbf3e3; }
+.msg.plan { border-color: var(--plan); background: #f0eefb; }
+.spark { width: 100%; height: 46px; display: block; margin: 0 0 12px; }
+ol.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+ol.steps > li > button { width: 100%; display: grid; grid-template-columns: 22px 1fr auto; gap: 8px; align-items: center; text-align: left; background: var(--paper); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 4px; padding: 6px 8px; cursor: pointer; font: 500 12.5px var(--font-body); }
+ol.steps > li > button:hover { border-color: var(--petrol); }
+ol.steps > li > button:focus-visible { outline: 2px solid var(--petrol); }
+ol.steps > li.on > button { border-color: var(--petrol); background: var(--petrol-soft); }
+ol.steps small { display: block; font-size: 11px; color: var(--ink-3); font-weight: 400; }
+.wip { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; font: 400 11px var(--font-data); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.bar { width: 54px; height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--petrol); }
+.hot .bar i { background: var(--bad); } .slow .bar i { background: var(--warn); }
+.explain { margin: 4px 0 6px 30px; font-size: 12.5px; line-height: 1.5; }
+.explain .links { margin-top: 6px; }
+
+#floorbar { left: 50%; transform: translateX(-50%); bottom: calc(112px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; }
+#floorbar > span { font: 600 12px var(--font-head); color: var(--ink-2); white-space: nowrap; }
+#floorbar .seg button { padding: 6px 10px; }
+#feed { left: 16px; right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); height: 90px; padding: 8px 14px; display: flex; flex-direction: column; gap: 4px; }
+#feed .h { margin: 0; display: flex; justify-content: space-between; }
+#events { list-style: none; margin: 0; padding: 0; overflow: hidden; display: flex; flex-direction: column; gap: 2px; }
+#events li { display: grid; grid-template-columns: 62px 10px 1fr; gap: 8px; align-items: center; font-size: 12.5px; animation: slidein .35s ease-out; }
+#events li button { background: none; border: 0; padding: 0; color: var(--ink); font: inherit; text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+#events li button:hover { color: var(--petrol); text-decoration: underline; }
+#events li button:focus-visible { outline: 2px solid var(--petrol); }
+#events time { font: 400 11px var(--font-data); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+@keyframes slidein { from { opacity: .2; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+
+/* Projekte */
+.lbl.proj { font-size: 11px; font-weight: 600; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--petrol); padding: 2px 7px 2px 6px; border-radius: 3px; display: flex; gap: 6px; align-items: center; box-shadow: 0 1px 3px rgba(21,38,45,.12); }
+.lbl.proj b { font: 500 10.5px var(--font-data); color: var(--ink-3); }
+.lbl.proj.bad { border-left-color: var(--bad); } .lbl.proj.warn { border-left-color: var(--warn); } .lbl.proj.plan { border-left-color: var(--plan); } .lbl.proj.done { border-left-color: var(--ink-3); color: var(--ink-2); }
+.pb { width: 28px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; display: inline-block; flex: none; }
+.pb i { display: block; height: 100%; background: currentColor; color: var(--petrol); background: var(--petrol); }
+.bad .pb i, .pb.bad i { background: var(--bad); } .warn .pb i, .pb.warn i { background: var(--warn); } .plan .pb i, .pb.plan i { background: var(--plan); } .done .pb i, .pb.done i { background: var(--ink-3); }
+.roadbtn { width: 100%; font: 600 12.5px var(--font-head); color: var(--petrol); background: var(--petrol-soft); border: 1px solid #bcd9e3; border-radius: 4px; padding: 7px 10px; cursor: pointer; margin-bottom: 8px; text-align: left; }
+.pfilter { display: grid; grid-template-columns: repeat(3, auto); width: 100%; margin-bottom: 6px; }
+.pfilter button { padding: 5px 4px; font-size: 11.5px; }
+.bautag { display: inline-block; font: 600 9.5px var(--font-head); letter-spacing: .06em; text-transform: uppercase; color: #8a6a1f; background: #f6edd6; border-radius: 2px; padding: 0 4px; margin-right: 5px; vertical-align: 1px; }
+.roadbtn:hover { border-color: var(--petrol); }
+.roadbtn:focus-visible { outline: 2px solid var(--petrol); outline-offset: 1px; }
+.loclist .prog { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+.dot.done { background: var(--ink-3); }
+.dot.check { background: transparent; border: 1.5px dashed var(--ink-3); }
+.dot.idea { background: transparent; border: 1.5px dotted var(--ink-3); }
+.pill.idea { color: var(--ink-3); border-style: dotted; }
+.bautag.dig { color: var(--petrol); background: var(--petrol-soft); }
+.loclist .grpbtn { width: 100%; display: flex; justify-content: space-between; align-items: baseline; gap: 6px; background: none; border: 0; border-top: 1px solid var(--line); padding: 9px 6px 3px; cursor: pointer; text-align: left; font: 600 11px var(--font-head); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-2); }
+.loclist .grpbtn small { font: 400 10.5px var(--font-data); color: var(--ink-3); text-transform: none; letter-spacing: 0; white-space: nowrap; }
+.grpbtn:hover span { color: var(--petrol); }
+.grpbtn:focus-visible { outline: 2px solid var(--petrol); }
+.bigbar { height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; margin: 0 0 14px; }
+.bigbar i { display: block; height: 100%; background: var(--petrol); }
+.bigbar.bad i { background: var(--bad); } .bigbar.warn i { background: var(--warn); } .bigbar.plan i { background: var(--plan); } .bigbar.done i { background: var(--ink-3); }
+ol.ms { list-style: none; margin: 0 0 14px; padding: 0 0 0 4px; display: flex; flex-direction: column; gap: 0; }
+ol.ms li { display: grid; grid-template-columns: 16px 1fr; gap: 8px; font-size: 12.5px; line-height: 1.4; padding: 4px 0; position: relative; }
+ol.ms li::before { content: ''; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); background: var(--paper); margin-top: 3px; box-sizing: border-box; }
+ol.ms li.done::before { background: var(--ok); border-color: var(--ok); }
+ol.ms li.next::before { border-color: var(--petrol); }
+ol.ms li.done span { color: var(--ink-2); }
+ol.ms li.next span { font-weight: 600; }
+ol.phases { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 0; }
+ol.phases li { display: grid; grid-template-columns: 14px 1fr; gap: 8px; align-items: center; font-size: 12.5px; padding: 2px 0; color: var(--ink-3); }
+ol.phases li i { width: 10px; height: 10px; border-radius: 2px; border: 2px solid var(--line); box-sizing: border-box; }
+ol.phases li.done { color: var(--ink-2); } ol.phases li.done i { background: var(--ok); border-color: var(--ok); }
+ol.phases li.now { color: var(--ink); font-weight: 600; } ol.phases li.now i { border-color: var(--petrol); background: var(--petrol-soft); }
+.costbar { position: relative; height: 8px; border-radius: 4px; background: var(--line); margin: -6px 0 6px; }
+.costbar i { display: block; height: 100%; border-radius: 4px; background: #9fb3ba; }
+.costbar i.over { background: var(--warn); }
+.costbar u { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); }
+.hint { font-size: 11.5px; color: var(--ink-3); margin: 0 0 14px; line-height: 1.4; }
+.links .trow { display: grid; grid-template-columns: 10px 1fr; gap: 9px; align-items: center; border: 1px solid var(--line); border-radius: 4px; padding: 6px 9px; font-size: 12.5px; font-weight: 500; }
+.links .trow small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; }
+ul.diary { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+ul.diary li { display: grid; grid-template-columns: 44px 1fr; gap: 8px; font-size: 12.5px; line-height: 1.4; }
+ul.diary time { font: 400 11px var(--font-data); color: var(--ink-3); padding-top: 1px; }
+ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.gantt { position: relative; margin: 0 0 6px; }
+.gscale { display: grid; grid-template-columns: 104px 1fr; font: 400 10px var(--font-data); color: var(--ink-3); margin-bottom: 4px; }
+.gscale div { position: relative; height: 12px; }
+.gscale div span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.grow { display: grid; grid-template-columns: 104px 1fr; gap: 0; align-items: center; width: 100%; background: none; border: 0; border-top: 1px solid var(--line); padding: 5px 0; cursor: pointer; text-align: left; color: var(--ink); font: 500 11.5px var(--font-body); }
+.grow:hover { background: var(--paper-2); }
+.grow:focus-visible { outline: 2px solid var(--petrol); outline-offset: -2px; }
+.grow .gn { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 6px; min-width: 0; }
+.grow .gn small { display: block; font-size: 10.5px; color: var(--ink-3); font-weight: 400; }
+.gt { position: relative; height: 14px; }
+.gb { position: absolute; top: 2px; height: 10px; border-radius: 2px; background: #cfe2e9; overflow: hidden; }
+.gb b { display: block; height: 100%; background: var(--petrol); }
+.gb.bad { background: #f3cfcc; } .gb.bad b { background: var(--bad); }
+.gb.warn { background: #f1e0bd; } .gb.warn b { background: var(--warn); }
+.gb.plan { background: #ddd8f3; } .gb.plan b { background: var(--plan); }
+.gb.done { background: #dfe5e7; } .gb.done b { background: var(--ink-3); }
+.gtoday { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1.5px dashed var(--bad); pointer-events: none; }
+.gtoday span { position: absolute; top: -14px; left: 3px; font: 600 9.5px var(--font-head); color: var(--bad); letter-spacing: .06em; text-transform: uppercase; }
+
+#loading { position: fixed; inset: 0; display: grid; place-items: center; font: 500 14px var(--font-head); color: var(--ink-3); }
+
+@media (max-width: 1100px) { .kpis .kpi.opt { display: none; } }
+@media (max-width: 860px) {
+  #floorbar > span { display: none; }
+  body.has-floorbar #detail { bottom: calc(166px + env(safe-area-inset-bottom, 0px)); max-height: 32%; }
+  .menu { display: inline-block; }
+  .brand-txt span { display: none; }
+  #left { display: none; right: 16px; width: auto; z-index: 5; max-height: 55%; }
+  #left.open { display: flex; }
+  #detail { left: 16px; right: 16px; width: auto; top: auto; bottom: calc(112px + env(safe-area-inset-bottom, 0px)); max-height: 38%; }
+  .kpis .kpi:not(.bad):not(.warn) { display: none; }
+  .clock { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .dot.bad, .live i, #events li { animation: none; } }
+</style>
+
+<div id="stage" aria-label="3D-Modell der Standorte, Mitarbeitenden, Software und Prozesse"></div>
+<div id="vignette" aria-hidden="true"></div>
+<div id="labels"></div>
+<div id="tip" hidden></div>
+<div id="loading">Modell wird aufgebaut …</div>
+
+<header id="top" class="hud">
+  <button type="button" id="menuBtn" class="menu" aria-expanded="false" aria-controls="left">Übersicht</button>
+  <div class="brand">
+    <div class="mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 12.5c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 3.2-2M3 8c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 3.2-2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+    <div class="brand-txt"><b>Digitale Welt dtC</b><span>druckluft-technik Chemnitz GmbH · dtL druckluft-technik Leipzig GmbH</span></div>
+  </div>
+  <div class="kpis" id="kpis"></div>
+  <div class="seg" role="group" aria-label="Ansicht">
+    <button type="button" id="modeNow" aria-pressed="true">Heute</button>
+    <button type="button" id="modePlan" class="plan" aria-pressed="false">Mit Geplantem</button>
+  </div>
+  <span class="clock" id="clock">--:--:--</span>
+</header>
+
+<aside id="left" class="hud" aria-label="Übersicht">
+  <div class="tabs" role="tablist" aria-label="Übersicht">
+    <button type="button" role="tab" id="tabLoc" aria-selected="true" aria-controls="paneLoc">Standorte</button>
+    <button type="button" role="tab" id="tabTeam" aria-selected="false" aria-controls="paneTeam">Team</button>
+    <button type="button" role="tab" id="tabProc" aria-selected="false" aria-controls="paneProc">Prozesse</button>
+    <button type="button" role="tab" id="tabProj" aria-selected="false" aria-controls="paneProj">Projekte</button>
+  </div>
+  <div class="lscroll">
+  <section id="paneLoc" role="tabpanel" aria-labelledby="tabLoc">
+    <button type="button" class="roadbtn" id="companyBtn">Unternehmen: Gesellschaften, Bereiche, Qualität</button>
+    <p class="sub2">Heranzoomen öffnet die Dächer. In Chemnitz fächern sich die drei Etagen auf.</p>
+    <ul class="loclist" id="loclist"></ul>
+  </section>
+  <section id="paneTeam" role="tabpanel" aria-labelledby="tabTeam" hidden>
+    <p class="sub2" id="teamSum"></p>
+    <ul class="loclist" id="teamlist"></ul>
+  </section>
+  <section id="paneProj" role="tabpanel" aria-labelledby="tabProj" hidden>
+    <button type="button" class="roadbtn" id="roadBtn">Roadmap aller Projekte</button>
+    <div class="seg pfilter" role="group" aria-label="Projekte filtern">
+      <button type="button" data-pf="all" aria-pressed="true">Alle</button>
+      <button type="button" data-pf="bau" aria-pressed="false">Bauvorhaben</button>
+      <button type="button" data-pf="digital" aria-pressed="false">Digital & KI</button>
+    </div>
+    <ul class="loclist" id="projlist"></ul>
+  </section>
+  <section id="paneProc" role="tabpanel" aria-labelledby="tabProc" hidden>
+    <p class="sub2">Wähle einen Prozess. Sein Weg durch Standorte und Systeme wird eingeblendet, mit den offenen Vorgängen an jeder Station.</p>
+    <ul class="loclist" id="proclist"></ul>
+  </section>
+  <section>
+    <p class="h">Ebenen</p>
+    <div class="layers">
+      <label><input type="checkbox" id="lyPeople" checked> Mitarbeitende</label>
+      <label><input type="checkbox" id="lySys" checked> Software</label>
+      <label><input type="checkbox" id="lyIf" checked> Schnittstellen</label>
+      <label><input type="checkbox" id="lyVan" checked> Fahrzeuge</label>
+      <label><input type="checkbox" id="lyCust" checked> Anlagen beim Kunden</label>
+      <label><input type="checkbox" id="lyProj" checked> Projekte</label>
+    </div>
+  </section>
+  <section>
+    <p class="h">Legende</p>
+    <div class="legend">
+      <i style="background:var(--ok)"></i><span>läuft · verfügbar</span>
+      <i style="background:var(--warn)"></i><span>verzögert · im Termin</span>
+      <i style="background:var(--bad)"></i><span>Störung</span>
+      <i style="background:repeating-linear-gradient(90deg,var(--ink-3) 0 4px,transparent 4px 7px)"></i><span>Datenfluss zu prüfen</span>
+      <i style="background:repeating-linear-gradient(90deg,var(--plan) 0 4px,transparent 4px 7px)"></i><span>geplant</span>
+    </div>
+  </section>
+  <p class="note"><b>Echt:</b> Gesellschaften, Standorte, Geschäftsführung, Programme, Tätigkeitsgruppen, Prozessschritte und KI-Vorhaben (Bachelorarbeit 2026, Website). <b>Beispiel:</b> Figuren, Mengen, Kunden, Baustellen, Ereignisse, Gebäudeumrisse.</p>
+  </div>
+</aside>
+
+<aside id="detail" class="hud" aria-live="polite" hidden></aside>
+
+<div id="floorbar" class="hud" hidden>
+  <span>Bürogebäude Chemnitz</span>
+  <div class="seg" role="group" aria-label="Etage wählen">
+    <button type="button" data-fv="all" aria-pressed="true">Alle Etagen</button>
+    <button type="button" data-fv="2" aria-pressed="false">2. OG</button>
+    <button type="button" data-fv="1" aria-pressed="false">1. OG</button>
+    <button type="button" data-fv="0" aria-pressed="false">EG</button>
+  </div>
+</div>
+
+<section id="feed" class="hud" aria-label="Live-Ereignisse">
+  <p class="h"><span>Live-Ereignisse</span><span>simuliert</span></p>
+  <ul id="events"></ul>
+</section>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+'use strict';
+
+/* ════════════════════════════════════════════════════════════
+   DATEN — so aufgebaut, dass sie später aus der GF-Suite kommen.
+   Gebäude: Grundrisse als Polygone in Modell-Einheiten (1 Einheit ≈ 8 m),
+   relativ zur Mitte des Standorts; x = Osten, z = Süden.
+   ════════════════════════════════════════════════════════════ */
+const LOCATIONS = [
+  // Größter Standort: Zentrale mit Verwaltung, Vertrieb, Ersatzteilausgabe und Servicetechnikern
+  { id: 'hq', name: 'Chemnitz', company: 'dtc', office: 22, headNote: 'Büro & Verwaltung: 22 (Bachelorarbeit, Sommer 2026). Dazu Montage, Servicetechnik, Werkstatt und Lager.', kind: 'Zentrale · alle Leistungsbereiche', addr: 'Adresse noch eintragen', lat: 50.8357, lon: 12.9214, r: 7.2,
+    openTasks: 23, lead: 'Geschäftsführung', hours: 'Mo–Fr 7–17 Uhr',
+    buildings: [
+      { id: 'b1', name: 'Bürogebäude', floors: 3, fh: 1.35, h: 4.05, floorNames: ['EG', '1. OG', '2. OG'],
+        poly: [[-6, -4.6], [0, -4.6], [0, -1.6], [-2.8, -1.6], [-2.8, 1.2], [-6, 1.2]], door: [-2.8, -0.2], stair: [-0.5, -2.2], hall: [-3.6, -2.0],
+        // Innenwände [x0, z0, x1, z1]: Flurwand mit Türen, Trennwände zwischen den Büros; OG zusätzlich Wand zum Südflügel
+        inner: {
+          all: [[-6, -2.8, -5.3, -2.8], [-4.7, -2.8, -3.3, -2.8], [-2.7, -2.8, -1.3, -2.8], [-0.7, -2.8, 0, -2.8], [-4, -4.6, -4, -2.8], [-2, -4.6, -2, -2.8]],
+          upper: [[-6, -1.0, -4.7, -1.0], [-4.1, -1.0, -2.8, -1.0]],
+        } },
+      { id: 'b2', name: 'Lagerhalle', h: 2.0, poly: [[1.2, -4.8], [6.2, -4.8], [6.2, 0.6], [1.2, 0.6]], door: [3.7, 0.6] },
+    ],
+    // room 1 = Büro am Nordflur, room 2 = Raum im Südflügel (nur OG)
+    zones: {
+      empfang: { n: 'Empfang', b: 'b1', f: 0, x: -4.4, z: 0.3, desks: 1, exit: [[-3.5, 0.6], [-3.6, -2.0]] },
+      service: { n: 'Servicekoordination & Beratung', b: 'b1', f: 0, x: -5, z: -3.7, room: 1, desks: 2 },
+      einkauf: { n: 'Einkauf & Logistik', b: 'b1', f: 0, x: -3, z: -3.7, room: 1, desks: 2 },
+      kueche: { n: 'Küche', b: 'b1', f: 0, x: -1, z: -3.85, room: 1, table: 1 },
+      kfm: { n: 'Kaufmännisches & Rechnungswesen', b: 'b1', f: 1, x: -5, z: -3.7, room: 1, desks: 2 },
+      projekt: { n: 'Projektleitung & techn. Planung', b: 'b1', f: 1, x: -3, z: -3.7, room: 1, desks: 2 },
+      controlling: { n: 'Controlling & Digitalisierung', b: 'b1', f: 1, x: -1, z: -3.7, room: 1, desks: 2 },
+      vertrieb: { n: 'Vertrieb & Marketing', b: 'b1', f: 1, x: -4.4, z: 0.2, room: 2, desks: 2 },
+      gftech: { n: 'GF Technik', b: 'b1', f: 2, x: -5, z: -3.7, room: 1, desks: 1 },
+      gfkfm: { n: 'GF Kaufmännisch', b: 'b1', f: 2, x: -3, z: -3.7, room: 1, desks: 1 },
+      assistenz: { n: 'Assistenz GF', b: 'b1', f: 2, x: -1, z: -3.7, room: 1, desks: 1 },
+      konferenz: { n: 'Konferenz', b: 'b1', f: 2, x: -4.4, z: 0.35, room: 2, table: 2 },
+      werkzeug: { n: 'Werkzeugservice', b: 'b2', x: 5.3, z: -1.0 },
+      lager: { n: 'Ersatzteilausgabe', b: 'b2', x: 3.7, z: -1.5 }, rampe: { n: 'Rampe', b: null, x: 5.0, z: 1.5 }, parkplatz: { n: 'Parkplatz', b: null, x: -3.2, z: 3.15 },
+    },
+    yard: [0.4, 2.6], props: [['racks', 3.2, -3.4, 3], ['benches', 5.3, -2.15, 1], ['cars', -3.2, 4.4, 4], ['pallets', 5.0, 2.7]] },
+  // Kleinster Standort: 2 Mitarbeitende, eine kleine Halle mit Werkstatt und Lager, dazu ein Büroraum
+  { id: 'ws', name: 'Siebenlehn', company: 'dtc', office: 1, total: 2, headNote: '2 Mitarbeitende (Angabe Okt. 2026), davon 1 im Büro (Bachelorarbeit). Funktion des Standorts noch eintragen; hier als Beispiel Werkstatt und Lager.', kind: 'Funktion noch eintragen (Beispiel: Werkstatt & Lager)', addr: 'Adresse noch eintragen', lat: 51.0317, lon: 13.3092, r: 5,
+    openTasks: 4, lead: 'Werkstattmeister', hours: 'Mo–Fr 6–15 Uhr',
+    buildings: [
+      { id: 'b1', name: 'Werkstatt & Lager', h: 2.0, poly: [[-3.2, -3.0], [1.4, -3.0], [1.4, 0.4], [-3.2, 0.4]], door: [-0.9, 0.4] },
+      { id: 'b2', name: 'Büro', h: 1.3, poly: [[2.2, -2.6], [3.8, -2.6], [3.8, -0.4], [2.2, -0.4]], door: [3.0, -0.4] },
+    ],
+    zones: {
+      werkstatt: { n: 'Werkstatt', b: 'b1', x: -1.4, z: -1.1 }, lager: { n: 'Lager', b: 'b1', x: 0.75, z: -0.45 },
+      buero: { n: 'Büro', b: 'b2', x: 3.0, z: -1.9, desks: 1 }, rampe: { n: 'Rampe', b: null, x: 0.6, z: 1.3 },
+    },
+    yard: [-0.6, 2.2], props: [['benches', -1.2, -2.6, 1], ['compressor', -2.75, -1.8], ['racks', 0.75, -2.15, 2], ['pallets', 2.8, 2.4]] },
+  // Zweitgrößter Standort: Büro mit 4 Personen (Vertrieb und Service Raum Leipzig)
+  { id: 'sw', name: 'Zwenkau', company: 'dtl', office: 4, headNote: '4 Personen im Büro (Angabe Okt. 2026). Bachelorarbeit, Sommer 2026: 2 im Büro. Bitte abgleichen.', kind: 'dtL druckluft-technik Leipzig GmbH', addr: 'Baumeisterallee 12, 04442 Zwenkau', lat: 51.2186, lon: 12.3247, r: 6,
+    openTasks: 7, lead: 'Serviceleitung Raum Leipzig', hours: 'Mo–Fr 7–16 Uhr · Notdienst 24/7',
+    buildings: [
+      { id: 'b1', name: 'Bürogebäude', h: 1.6, poly: [[-4, -3.6], [2.6, -3.6], [2.6, 0.4], [-4, 0.4]], door: [-0.7, 0.4] },
+    ],
+    zones: {
+      dispo: { n: 'Disposition & Service', b: 'b1', x: -2.6, z: -2.6, desks: 2 },
+      vertrieb: { n: 'Vertrieb & Kaufmännisches', b: 'b1', x: -0.2, z: -2.6, desks: 2 },
+      besprechung: { n: 'Besprechung', b: 'b1', x: 1.7, z: -1.6, table: 1, front: [-1, 0] },
+      kueche: { n: 'Teeküche', b: 'b1', x: -3.2, z: -0.4 },
+      parkplatz: { n: 'Parkplatz', b: null, x: 2.6, z: 2.6 },
+    },
+    yard: [-0.6, 2.6], props: [['cars', 2.6, 3.6, 3]] },
+  // Baustellen (Bauvorhaben beim Kunden) — eigene kleine Plätze neben dem Kundengelände
+  { id: 'bs1', name: 'Baustelle Kunde D', bau: 'station', project: 'pr9', x: -20.5, z: 28, r: 3.4, kind: 'Neubau Kompressorstation', addr: 'Werksgelände Kunde D (Beispiel)',
+    openTasks: 6, lead: 'Bauleitung', hours: 'Mo–Fr 7–16 Uhr', buildings: [],
+    zones: { montage: { n: 'Montage', b: null, x: 0.3, z: 0.6 }, container: { n: 'Baucontainer', b: null, x: -1.0, z: 0.95 }, material: { n: 'Materiallager', b: null, x: 1.0, z: 1.9 } },
+    yard: [0, 2.2], props: [], slab: [0.3, -0.9, 2.4, 1.6], container: [-1.9, 0.0, 0.6, 1.2], stack: [1.9, 1.3], crane: [-1.8, -1.8], sign: [-1.9, 1.9] },
+  { id: 'bs2', name: 'Baustelle Klinikum', bau: 'pipe', project: 'pr10', x: 21.5, z: 31.5, r: 3.4, kind: 'Neues Druckluftnetz', addr: 'Klinikum, Kunde C (Beispiel)',
+    openTasks: 4, lead: 'Bauleitung', hours: 'Mo–Fr 7–16 Uhr', buildings: [],
+    zones: { graben: { n: 'Rohrgraben', b: null, x: 0.2, z: 0.1 }, material: { n: 'Materiallager', b: null, x: -1.4, z: 1.3 } },
+    yard: [0, 2.2], props: [], trench: [-2.4, 2.4, -0.8], container: [2.0, 0.6, 0.6, 1.2], stack: [-2.5, 0.2], digger: [-1.4, -1.95], sign: [1.2, 2.3] },
+];
+const SITE_R = 7.2;
+
+// Gesellschaften getrennt von Standorten führen
+const COMPANIES = [
+  { id: 'dtc', name: 'druckluft-technik Chemnitz GmbH', short: 'dtC', lead: [['Matthias Baldauf', 'Geschäftsführer Technik'], ['Lutz Kluge', 'Geschäftsführer Kaufmännisch']], sites: ['hq', 'ws'] },
+  { id: 'dtl', name: 'dtL druckluft-technik Leipzig GmbH', short: 'dtL', lead: [], sites: ['sw'] },
+];
+const COMPANY_INFO = {
+  since: 1990, staffTotal: 'über 50 (Stichtag Bachelorarbeit)', office: 25,
+  areas: [
+    ['Industrieanlagenbau', 'Druckluftanlagen, technische Gase, Vakuum, Kälte, Lüftung; Rohrleitungs-, Mess- und Steuerungstechnik'],
+    ['Service', 'Wartung, Reparatur, Prüfungen, Mietgeräte; Wartungsverträge und Dokumentation'],
+    ['Industriewerkzeuge', 'Beratung, Verkauf, Wartung und Reparatur: Druckluft-, Hydraulik-, Elektro- und Akkuwerkzeuge'],
+  ],
+  quality: ['DIN EN ISO 9001:2015 (Qualität)', 'DIN EN ISO 14001:2015 (Umwelt)', 'BG-Gütesiegel „Sicher mit System“', 'Fachbetrieb nach WHG', 'Mitglied im Airgroup-Netzwerk'],
+  mis: ['Arbeitsschutz', 'Qualität', 'Umwelt', 'Energie', 'Allgemeine Apps', 'Dokumentation', 'Normen und Vorschriften'],
+};
+// Tätigkeitsgruppen (Bachelorarbeit) und gewerbliche Funktionen
+const GROUPS = [
+  { id: 'gf', n: 'Geschäftsführung und Assistenz', d: 'Organisation, Kommunikation, Koordination und bereichsübergreifende Entscheidungen.', sys: ['m365', 'mis', 'gf'] },
+  { id: 'kfm', n: 'Kaufmännische Bearbeitung und Rechnungswesen', d: 'Kaufmännische Dokumente, Rechnungen und Verwaltungsinformationen.', sys: ['inform', 'docuware', 'factorial'] },
+  { id: 'einkauf', n: 'Einkauf und Logistik', d: 'Beschaffung, Lieferantenkommunikation und Wareninformationen.', sys: ['inform', 'orsy', 'fleet'] },
+  { id: 'projekt', n: 'Projektleitung und technische Planung', d: 'Technische Projektinformationen, Planung und Dokumentation.', sys: ['cad', 'docuware', 'inform'] },
+  { id: 'service', n: 'Servicekoordination und Beratung', d: 'Kunden- und Serviceinformationen sowie Abstimmung von Servicevorgängen.', sys: ['inform', 'app', 'm365'] },
+  { id: 'vertrieb', n: 'Vertrieb und Marketing', d: 'Kundenkommunikation, Recherche und externe Texte.', sys: ['m365', 'inform', 'ki'] },
+  { id: 'controlling', n: 'Controlling und Digitalisierung', d: 'Auswertungen, Kennzahlen und digitale Prozessinformationen.', sys: ['mis', 'gf', 'ki'] },
+  { id: 'montage', n: 'Montage', field: true, d: 'Führt Anlagenprojekte beim Kunden aus. Übergibt: ausgeführte Leistung, verbautes Material, Abnahmeunterlagen.', sys: ['orsy'] },
+  { id: 'technik', n: 'Servicetechnik', field: true, d: 'Wartung, Reparatur und Prüfungen beim Kunden. Übergibt: Bericht, Materialverbrauch, Unterschrift des Kunden.', sys: ['app', 'fleet', 'orsy'] },
+  { id: 'werkstatt', n: 'Werkstatt', field: true, d: 'Reparatur von Werkzeugen und Komponenten. Übergibt: Reparaturbericht, Material, Rückgabe an den Kunden.', sys: ['orsy'] },
+  { id: 'lager', n: 'Lager', field: true, d: 'Wareneingang, Kommissionierung, Ausgabe. Übergibt: Bestände und Verbrauch.', sys: ['orsy', 'inform'] },
+];
+
+const CITIES = [
+  { n: 'Leipzig', lat: 51.3397, lon: 12.3731 }, { n: 'Dresden', lat: 51.0504, lon: 13.7373 },
+  { n: 'Freiberg', lat: 50.9119, lon: 13.3428 }, { n: 'Zwickau', lat: 50.7189, lon: 12.4964 },
+];
+
+// Autobahnen, schematisch (grob vereinfachter Verlauf zur Orientierung)
+const HIGHWAYS = [
+  { n: 'A4', t: 0.24, pts: [[51.07, 13.70], [51.06, 13.50], [51.065, 13.33], [50.98, 13.13], [50.885, 12.97], [50.865, 12.84], [50.81, 12.68], [50.83, 12.48], [50.88, 12.25]] },
+  { n: 'A72', t: 0.6, pts: [[50.865, 12.84], [50.95, 12.73], [51.06, 12.62], [51.15, 12.49], [51.25, 12.43]] },
+  { n: 'A14', t: 0.4, pts: [[51.065, 13.33], [51.17, 13.05], [51.24, 12.76], [51.33, 12.52], [51.41, 12.24]] },
+  { n: 'A38', t: 0.5, pts: [[51.25, 12.55], [51.255, 12.30], [51.27, 12.05]] },
+];
+
+const CUSTOMERS = [
+  { id: 'kA', name: 'Kunde A · Metallbau', x: 29, z: 4, units: 3, note: '3 Schraubenkompressoren, 1 Kältetrockner' },
+  { id: 'kB', name: 'Kunde B · Lebensmittel', x: -31, z: -3, units: 2, note: '2 ölfreie Kompressoren, Druckluftqualität ISO 8573-1 Klasse 1' },
+  { id: 'kC', name: 'Kunde C · Klinikum', x: 15, z: 29, units: 4, note: '4 Kompressoren, redundante Versorgung' },
+  { id: 'kD', name: 'Kunde D · Kunststofftechnik', x: -14, z: 25, units: 2, note: '2 Kompressoren mit Wärmerückgewinnung' },
+];
+
+// Programme (laut Bachelorarbeit). Alle schweben auf der Systemebene; Inform Professional als ERP in der Mitte.
+const SYSTEMS = [
+  { id: 'inform', name: 'Inform Professional', kind: 'ERP', role: 'Kaufmännische Vorgänge: Kunden, Artikel, Aufträge, Lieferscheine, Rechnungen', status: 'ok', real: true, hub: true },
+  { id: 'docuware', name: 'DocuWare', kind: 'Dokumentenmanagement', role: 'Archiv für Rechnungen, Verträge und Projektunterlagen', status: 'ok', real: true },
+  { id: 'mis', name: 'MIS', kind: 'Management-Informationssystem', role: 'Arbeitsschutz, Qualität, Umwelt, Energie, Formulare, Auswertungen, Nachweise, Normen', status: 'ok', real: true },
+  { id: 'airwiki', name: 'AirWiki', kind: 'Wissen', role: 'Internes Wissen, im MIS verlinkt', status: 'ok', real: true },
+  { id: 'm365', name: 'Microsoft 365', kind: 'Büro & Kommunikation', role: 'Outlook, Teams und Office-Anwendungen', status: 'ok', real: true },
+  { id: 'gf', name: 'GF-Suite', kind: 'Eigenentwicklung', role: 'Aufgaben, Projekte, Entscheidungen, Kennzahlen und diese digitale Übersicht', status: 'ok', statusText: 'in Entwicklung', real: true, owner: 'pmax' },
+  { id: 'ki', name: 'KI-Werkzeuge', kind: 'ChatGPT Business · Claude · Perplexity · PLAUD AI', role: 'Texte, Recherche, Gesprächsnotizen und Programmierung (Claude Code)', status: 'ok', real: true, owner: 'pmax' },
+  { id: 'factorial', name: 'Factorial', kind: 'Personal', role: 'Zeiterfassung und Urlaubsmanagement', status: 'ok', real: true },
+  { id: 'fleet', name: 'Fleetcars', kind: 'Fuhrpark', role: 'Fahrzeuge, Wartung und Einsatzbereitschaft', status: 'ok', real: true },
+  { id: 'orsy', name: 'Würth ORSY', kind: 'Material & Lager', role: 'Lagerverwaltung, Bestellungen und Materialverbrauch', status: 'ok', real: true },
+  { id: 'cad', name: 'CAD', kind: 'Technische Planung', role: 'Technische Zeichnungen und Anlagenplanung', status: 'ok', real: true },
+  { id: 'app', name: 'Service-App', kind: 'Service', role: 'Anwendung im Servicekontext', status: 'check', statusText: 'Stand prüfen', real: true },
+  { id: 'mailag', name: 'E-Mail-Agent', kind: 'KI · geplant', role: 'E-Mails vorsortieren, zuordnen, Antwortentwürfe vorbereiten', status: 'ok', plan: true, owner: 'pmax' },
+  { id: 'callag', name: 'Anruf-Agent', kind: 'KI · geplant', role: 'Anrufe annehmen, Anliegen erfassen und weiterleiten', status: 'ok', plan: true, owner: 'pmax' },
+  { id: 'pilot', name: 'Office-Pilot', kind: 'KI · geplant', role: 'KI direkt in Outlook, Word und Excel', status: 'ok', plan: true, owner: 'pmax' },
+];
+// Lage auf der Systemebene: Ring um das ERP, geplante Systeme innen
+(() => {
+  const ring = SYSTEMS.filter(x => !x.hub && !x.plan), inner = SYSTEMS.filter(x => x.plan);
+  ring.forEach((x, i) => { const a = -Math.PI / 2 + i / ring.length * Math.PI * 2; x.cx = Math.cos(a) * 19 - 2; x.cz = Math.sin(a) * 19 + 2; });
+  inner.forEach((x, i) => { const a = Math.PI * 0.15 + i * 0.75; x.cx = Math.cos(a) * 10 - 2; x.cz = Math.sin(a) * 10 + 2; });
+  SYSTEMS.filter(x => x.hub).forEach(x => { x.cx = -2; x.cz = 2; x.home = 'cloud'; });
+  SYSTEMS.forEach(x => x.home = 'cloud');
+})();
+
+// Informationsbezüge zwischen Programmen. status ok = bestätigt, check = automatische Übertragung zu prüfen, plan = geplant
+const LINKS = [
+  { id: 'l1', from: 'gf', to: 'm365', name: 'Kalender & Excel', desc: 'Die GF-Suite liest und schreibt Outlook-Termine (Microsoft Graph) und importiert/exportiert Excel-Dateien.', status: 'ok', rate: 3, dir: 'both' },
+  { id: 'l2', from: 'inform', to: 'docuware', name: 'Belege archivieren', desc: 'Rechnungen, Lieferscheine und Verträge werden in DocuWare abgelegt.', status: 'check', rate: 2, dir: 'fwd' },
+  { id: 'l3', from: 'app', to: 'inform', name: 'Leistungen aus dem Service', desc: 'Ausgeführte Arbeiten, Material und Berichte aus dem Serviceeinsatz für die Abrechnung.', status: 'check', rate: 2, dir: 'fwd' },
+  { id: 'l4', from: 'orsy', to: 'inform', name: 'Material & Bestellungen', desc: 'Materialverbrauch und Bestellungen zwischen Lager und kaufmännischer Abwicklung.', status: 'check', rate: 2, dir: 'both' },
+  { id: 'l5', from: 'cad', to: 'docuware', name: 'Zeichnungen & Projektunterlagen', desc: 'Technische Zeichnungen und Anlagendokumentation werden archiviert.', status: 'check', rate: 1, dir: 'fwd' },
+  { id: 'l6', from: 'm365', to: 'inform', name: 'Anfragen, Angebote, Aufträge', desc: 'Kundenkommunikation per E-Mail führt zu Vorgängen in Inform.', status: 'check', rate: 2, dir: 'both' },
+  { id: 'l7', from: 'mis', to: 'airwiki', name: 'Wissen verlinkt', desc: 'Das AirWiki ist im MIS als Bereich verlinkt.', status: 'ok', rate: 1, dir: 'both' },
+  { id: 'l8', from: 'ki', to: 'm365', name: 'KI im Büroalltag', desc: 'Texte und Recherche mit KI-Werkzeugen, Ergebnisse landen in Outlook und Office. Keine automatische Übertragung.', status: 'check', rate: 1, dir: 'both' },
+  { id: 'l9', from: 'inform', to: 'mis', name: 'Kennzahlen', desc: 'Auswertungen und Kennzahlen aus den kaufmännischen Daten.', status: 'check', rate: 1, dir: 'fwd' },
+  { id: 'z1', from: 'mailag', to: 'm365', name: 'E-Mails vorsortieren', desc: 'Geplant: Der E-Mail-Agent arbeitet direkt in den Outlook-Postfächern.', status: 'ok', plan: true, rate: 2, dir: 'both' },
+  { id: 'z2', from: 'callag', to: 'm365', name: 'Anrufnotizen', desc: 'Geplant: Der Anruf-Agent legt Gesprächsnotizen und Rückrufbitten in Outlook ab.', status: 'ok', plan: true, rate: 1, dir: 'fwd' },
+  { id: 'z3', from: 'pilot', to: 'm365', name: 'KI in Office', desc: 'Geplant: KI direkt in Outlook, Word und Excel.', status: 'ok', plan: true, rate: 1, dir: 'both' },
+];
+
+const VANS = [
+  { id: 'v1', name: 'Servicewagen 1', plate: 'C-DT 101', home: 'hq', crew: 'Service Chemnitz', job: 'Wartung bei Kunde C', route: ['hq', [11, 17], 'kC', [18, 12]], speed: 0.024 },
+  { id: 'v2', name: 'Servicewagen 2', plate: 'C-DT 102', home: 'hq', crew: 'Service Chemnitz', job: 'Störung Druckabfall bei Kunde B', route: ['hq', [-9, 15], 'kB', [-13, 6]], speed: 0.02 },
+  { id: 'v3', name: 'Lieferwagen', plate: 'C-DT 210', home: 'hq', crew: 'Ersatzteilausgabe Chemnitz', job: 'Holt Teile in Siebenlehn, liefert zu Kunde A', route: ['hq', [11, 6], 'ws', 'kA', [19, 12]], speed: 0.018 },
+];
+
+/* Mitarbeitende: Tagesablauf als Folge von Arbeitsorten (z), Dauer in Sekunden (d), Tätigkeit (a), Beschreibung (t).
+   Tätigkeiten: type = am Rechner · talk = Gespräch · carry = trägt Ware · repair = schraubt · phone = telefoniert · idle = Pause */
+// Figuren: Geschäftsführung und KI-Beauftragter mit Namen, alle anderen als Rollen-Platzhalter.
+// group = Tätigkeitsgruppe, short = Beschriftung über der Figur
+const PEOPLE = [
+  { id: 'pgf1', name: 'Matthias Baldauf', short: 'Baldauf', role: 'Geschäftsführer Technik', group: 'gf', named: true, look: 'suit', at: 'hq', presence: 'online', routine: [
+    { z: 'gftech', s: 0, d: 16, a: 'type', t: 'Prüft die technische Planung einer Kompressorstation' }, { z: 'projekt', d: 8, a: 'talk', t: 'Abstimmung mit der Projektleitung' }, { z: 'konferenz', d: 8, a: 'talk', t: 'Wochenbesprechung' }] },
+  { id: 'pgf2', name: 'Lutz Kluge', short: 'Kluge', role: 'Geschäftsführer Kaufmännisch', group: 'gf', named: true, look: 'suit2', at: 'hq', presence: 'online', routine: [
+    { z: 'gfkfm', s: 0, d: 16, a: 'type', t: 'Gibt Angebote und Rechnungen frei' }, { z: 'kfm', d: 7, a: 'talk', t: 'Abstimmung mit dem Rechnungswesen' }, { z: 'konferenz', d: 8, a: 'talk', t: 'Wochenbesprechung' }] },
+  { id: 'pass', name: 'Assistenz der GF', short: 'Assistenz', role: 'Assistenz der Geschäftsführung', group: 'gf', look: 'office3', at: 'hq', presence: 'online', routine: [
+    { z: 'assistenz', s: 0, d: 14, a: 'type', t: 'Koordiniert Termine der Geschäftsführung' }, { z: 'konferenz', d: 5, a: 'talk', t: 'Bereitet die Wochenbesprechung vor' }] },
+  { id: 'pemp', name: 'Empfang', short: 'Empfang', role: 'Empfang und Telefonzentrale', group: 'gf', look: 'office', at: 'hq', presence: 'online', routine: [
+    { z: 'empfang', s: 0, d: 18, a: 'phone', t: 'Nimmt Anrufe an und leitet weiter' }, { z: 'kueche', d: 5, a: 'idle', t: 'Kaffeepause' }] },
+  { id: 'pkfm1', name: 'Kaufmännische Bearbeitung', short: 'Kaufm.', role: 'Kaufmännische Bearbeitung', group: 'kfm', look: 'office2', at: 'hq', presence: 'online', proc: ['wartung', 7], routine: [
+    { z: 'kfm', s: 0, d: 18, a: 'type', t: 'Schreibt Rechnungen in Inform Professional' }, { z: 'service', d: 6, a: 'talk', t: 'Fragt einen fehlenden Servicebericht nach' }] },
+  { id: 'pkfm2', name: 'Rechnungswesen', short: 'Rewe', role: 'Rechnungswesen', group: 'kfm', look: 'office', at: 'hq', presence: 'online', routine: [
+    { z: 'kfm', s: 1, d: 20, a: 'type', t: 'Archiviert Belege in DocuWare' }, { z: 'kueche', d: 5, a: 'idle', t: 'Kaffeepause' }] },
+  { id: 'pein1', name: 'Einkauf', short: 'Einkauf', role: 'Einkauf', group: 'einkauf', look: 'office3', at: 'hq', presence: 'online', proc: ['werkzeug', 3], routine: [
+    { z: 'einkauf', s: 0, d: 14, a: 'phone', t: 'Bestellt Material beim Lieferanten' }, { z: 'lager', d: 6, a: 'talk', t: 'Klärt einen Wareneingang mit dem Lager' }] },
+  { id: 'pein2', name: 'Logistik', short: 'Logistik', role: 'Logistik', group: 'einkauf', look: 'office2', at: 'hq', presence: 'online', proc: ['anlage', 5], routine: [
+    { z: 'einkauf', s: 1, d: 18, a: 'type', t: 'Plant Material und Fahrzeuge für eine Montage' }] },
+  { id: 'pproj1', name: 'Projektleitung', short: 'Projektleitung', role: 'Projektleitung Anlagenbau', group: 'projekt', look: 'office2', at: 'hq', presence: 'online', proc: ['anlage', 2], routine: [
+    { z: 'projekt', s: 0, d: 16, a: 'type', t: 'Klärt die Anforderungen für eine neue Anlage' }, { z: 'konferenz', d: 7, a: 'talk', t: 'Projektbesprechung' }] },
+  { id: 'pproj2', name: 'Technische Planung', short: 'Planung', role: 'Technische Planung (CAD)', group: 'projekt', look: 'office', at: 'hq', presence: 'online', proc: ['anlage', 7], routine: [
+    { z: 'projekt', s: 1, d: 20, a: 'type', t: 'Zeichnet eine Rohrleitungstrasse im CAD' }] },
+  { id: 'psvc1', name: 'Servicekoordination', short: 'Service', role: 'Servicekoordination', group: 'service', look: 'office', at: 'hq', presence: 'online', proc: ['wartung', 2], routine: [
+    { z: 'service', s: 0, d: 16, a: 'phone', t: 'Stimmt Wartungstermine mit Kunden ab' }, { z: 'einkauf', d: 5, a: 'talk', t: 'Klärt Ersatzteile für einen Einsatz' }] },
+  { id: 'psvc2', name: 'Serviceberatung', short: 'Beratung', role: 'Serviceberatung', group: 'service', look: 'office3', at: 'hq', presence: 'online', proc: ['wartung', 6], routine: [
+    { z: 'service', s: 1, d: 18, a: 'type', t: 'Prüft Serviceberichte auf Vollständigkeit' }] },
+  { id: 'pvt1', name: 'Vertrieb', short: 'Vertrieb', role: 'Vertrieb', group: 'vertrieb', look: 'office2', at: 'hq', presence: 'online', proc: ['anlage', 1], routine: [
+    { z: 'vertrieb', s: 0, d: 14, a: 'phone', t: 'Nimmt eine Anfrage für eine Druckluftanlage auf' }, { z: 'projekt', d: 6, a: 'talk', t: 'Übergibt die Anfrage an die Projektleitung' }] },
+  { id: 'pvt2', name: 'Marketing', short: 'Marketing', role: 'Marketing', group: 'vertrieb', look: 'office', at: 'hq', presence: 'online', routine: [
+    { z: 'vertrieb', s: 1, d: 18, a: 'type', t: 'Schreibt einen Referenztext für die Website' }] },
+  { id: 'pmax', name: 'Max Löffler', short: 'Löffler', role: 'Controlling und Digitalisierung · KI-Beauftragter', group: 'controlling', named: true, look: 'office3', at: 'hq', presence: 'online', routine: [
+    { z: 'controlling', s: 0, d: 18, a: 'type', t: 'Baut die digitale Unternehmensübersicht' }, { z: 'kfm', d: 6, a: 'talk', t: 'Beantwortet eine Frage zu KI-Werkzeugen' }] },
+  { id: 'pctl', name: 'Controlling', short: 'Controlling', role: 'Controlling', group: 'controlling', look: 'office2', at: 'hq', presence: 'online', proc: ['anlage', 9], routine: [
+    { z: 'controlling', s: 1, d: 20, a: 'type', t: 'Wertet Kennzahlen im MIS aus' }] },
+  { id: 'plag', name: 'Lager Chemnitz', short: 'Lager', role: 'Lager', group: 'lager', look: 'warehouse', at: 'hq', presence: 'online', proc: ['werkzeug', 4], routine: [
+    { z: 'lager', d: 12, a: 'carry', t: 'Bucht einen Wareneingang in Würth ORSY' }, { z: 'rampe', d: 6, a: 'carry', t: 'Gibt Material für einen Einsatz aus' }] },
+  { id: 'pwz', name: 'Werkzeugservice', short: 'Werkzeuge', role: 'Werkzeugservice', group: 'werkstatt', look: 'tech', at: 'hq', presence: 'online', routine: [
+    { z: 'werkzeug', d: 16, a: 'repair', t: 'Repariert einen Druckluftschrauber' }, { z: 'lager', d: 5, a: 'carry', t: 'Holt ein Ersatzteil' }] },
+  { id: 'pws1', name: 'Büro Siebenlehn', short: 'Büro', role: 'Büro', group: 'einkauf', look: 'warehouse', at: 'ws', presence: 'online', routine: [
+    { z: 'buero', s: 0, d: 14, a: 'type', t: 'Pflegt Bestände und Bestellungen' }, { z: 'lager', d: 7, a: 'carry', t: 'Kommissioniert Material' }, { z: 'rampe', d: 5, a: 'carry', t: 'Stellt eine Lieferung bereit' }] },
+  { id: 'pws2', name: 'Werkstatt Siebenlehn', short: 'Werkstatt', role: 'Werkstatt', group: 'werkstatt', look: 'tech', at: 'ws', presence: 'online', routine: [
+    { z: 'werkstatt', d: 16, a: 'repair', t: 'Überholt eine Komponente' }, { z: 'lager', d: 5, a: 'carry', t: 'Holt einen Dichtungssatz' }] },
+  { id: 'psw1', name: 'Servicekoordination dtL', short: 'Service dtL', role: 'Servicekoordination', group: 'service', look: 'office2', at: 'sw', presence: 'online', proc: ['wartung', 3], routine: [
+    { z: 'dispo', s: 0, d: 16, a: 'type', t: 'Plant die Einsätze im Raum Leipzig' }, { z: 'besprechung', d: 6, a: 'talk', t: 'Tourenbesprechung' }] },
+  { id: 'psw2', name: 'Serviceberatung dtL', short: 'Beratung dtL', role: 'Serviceberatung', group: 'service', look: 'suit2', at: 'sw', presence: 'online', routine: [
+    { z: 'dispo', s: 1, d: 14, a: 'phone', t: 'Berät einen Kunden zu einer Störung' }, { z: 'besprechung', d: 8, a: 'talk', t: 'Tourenbesprechung' }] },
+  { id: 'psw3', name: 'Vertrieb dtL', short: 'Vertrieb dtL', role: 'Vertrieb', group: 'vertrieb', look: 'office3', at: 'sw', presence: 'online', routine: [
+    { z: 'vertrieb', s: 0, d: 14, a: 'phone', t: 'Telefoniert mit einem Interessenten' }, { z: 'besprechung', d: 8, a: 'talk', t: 'Bespricht ein Angebot' }] },
+  { id: 'psw4', name: 'Kaufmännisches dtL', short: 'Kaufm. dtL', role: 'Kaufmännische Bearbeitung', group: 'kfm', look: 'office', at: 'sw', presence: 'online', routine: [
+    { z: 'vertrieb', s: 1, d: 18, a: 'type', t: 'Bearbeitet Aufträge in Inform' }, { z: 'kueche', d: 5, a: 'idle', t: 'Kaffeepause' }] },
+  { id: 'ptech1', name: 'Servicetechnik 1', short: 'Technik 1', role: 'Servicetechniker', group: 'technik', look: 'tech', at: 'v1', presence: 'online', routine: [], activity: 'Fährt zur Wartung bei Kunde C' },
+  { id: 'ptech2', name: 'Servicetechnik 2', short: 'Technik 2', role: 'Servicetechniker', group: 'technik', look: 'tech', at: 'v2', presence: 'online', proc: ['wartung', 4], routine: [], activity: 'Repariert eine Anlage bei Kunde B' },
+  { id: 'pfahr', name: 'Lieferfahrt', short: 'Fahrt', role: 'Fahrer Lager', group: 'lager', look: 'warehouse', at: 'v3', presence: 'online', proc: ['werkzeug', 5], routine: [], activity: 'Holt Material in Siebenlehn, liefert zu Kunde A' },
+  { id: 'pbau', name: 'Bauleitung', short: 'Bauleitung', role: 'Bauleitung (Projektleitung)', group: 'projekt', look: 'construct', home: 'hq', at: 'bs1', presence: 'online', proc: ['anlage', 6], routine: [
+    { z: 'container', d: 12, a: 'phone', t: 'Stimmt die Kranzeit ab' }, { z: 'montage', d: 9, a: 'talk', t: 'Bespricht den nächsten Montageschritt' }] },
+  { id: 'pmon1', name: 'Montage 1', short: 'Montage 1', role: 'Monteur Anlagenbau', group: 'montage', look: 'construct', home: 'hq', at: 'bs1', presence: 'online', routine: [
+    { z: 'montage', d: 15, a: 'repair', t: 'Schließt einen Kompressor an die Sammelleitung an' }, { z: 'material', d: 6, a: 'carry', t: 'Holt Rohrbögen vom Materiallager' }] },
+  { id: 'pmon2', name: 'Montage 2', short: 'Montage 2', role: 'Monteur Rohrleitungsbau', group: 'montage', look: 'construct', home: 'hq', at: 'bs2', presence: 'online', routine: [
+    { z: 'graben', d: 15, a: 'repair', t: 'Verpresst Edelstahlrohr im Graben' }, { z: 'material', d: 6, a: 'carry', t: 'Holt das nächste Rohrstück' }] },
+];
+// Mitarbeitende je Standort = Personen vor Ort + Besatzung der Fahrzeuge dieses Standorts
+LOCATIONS.forEach(l => { l.staff = PEOPLE.filter(p => (p.at === l.id && !p.home) || p.home === l.id || VANS.some(v => v.id === p.at && v.home === l.id)).length; });
+// Mitarbeiterangaben aus Bachelorarbeit bzw. Angabe der Geschäftsführung (nicht aus den Figuren)
+LOCATIONS.forEach(l => { if (l.office != null) l.headLabel = l.total ? `${l.total} MA` : `${l.office} Büro`; });
+const PRESENCE_TXT = { online: 'verfügbar', meet: 'im Termin', away: 'abwesend', off: 'offline' };
+const ACT_TXT = { type: 'am Rechner', talk: 'im Gespräch', carry: 'trägt Ware', repair: 'arbeitet an einer Anlage', phone: 'telefoniert', idle: 'Pause' };
+
+// Prozesse entlang des Kernablaufs (Bachelorarbeit). who = Tätigkeitsgruppe, gives = Übergabe an den nächsten Schritt,
+// open = offene Übergabe (Beispiel). wip/days sind Beispielwerte, bis echte Daten angebunden sind.
+const PROCESSES = [
+  { id: 'anlage', name: 'Anlagenprojekt', area: 'Industrieanlagenbau', goal: 'Von der Anfrage bis zur Auswertung einer neuen Druckluft- oder Versorgungsanlage.', target: 'Neun Schritte des Kernprozesses', steps: [
+    { n: 'Anfrage', at: 'm365', who: 'vertrieb', sys: 'm365', wip: 5, days: 0.5, gives: 'Kunde, Anliegen, Ansprechpartner', txt: 'Die Kundenanfrage kommt per E-Mail oder Telefon an und wird dem Vertrieb zugeordnet.' },
+    { n: 'Anforderungen klären', at: 'cad', who: 'projekt', sys: 'cad', wip: 3, days: 4, gives: 'Technische und kaufmännische Anforderungen, Skizze', txt: 'Projektleitung und Vertrieb klären Technik, Umfang und kaufmännische Rahmenbedingungen, oft mit Termin beim Kunden.' },
+    { n: 'Angebot', at: 'inform', who: 'vertrieb', sys: 'inform', wip: 4, days: 3, state: 'slow', open: '2 Angebote warten auf die Kalkulation der Technik', gives: 'Angebot', txt: 'Das Angebot entsteht in Inform Professional aus der technischen Planung und der Kalkulation.' },
+    { n: 'Auftrag anlegen', at: 'inform', who: 'kfm', sys: 'inform', wip: 2, days: 0.5, gives: 'Auftrag mit Positionen', txt: 'Nach der Beauftragung legt die kaufmännische Bearbeitung den Auftrag an.' },
+    { n: 'Personal, Material, Termine', at: 'orsy', who: 'einkauf', sys: 'orsy', wip: 3, days: 5, gives: 'Montageplan, bestelltes Material, Fahrzeuge', txt: 'Personal, Material (Würth ORSY), Fahrzeuge (Fleetcars) und Termine (Outlook) werden abgestimmt.' },
+    { n: 'Montage', at: 'bs1', who: 'montage', sys: null, wip: 2, days: 20, gives: 'Ausgeführte Leistung, verbautes Material', txt: 'Die Montage baut die Anlage beim Kunden auf.' },
+    { n: 'Dokumentation', at: 'docuware', who: 'projekt', sys: 'docuware', wip: 2, days: 3, state: 'slow', open: 'Revisionsunterlagen für 1 Anlage fehlen noch', gives: 'Zeichnungen, Prüfprotokolle, Abnahme', txt: 'Leistungen und Unterlagen werden dokumentiert und in DocuWare abgelegt.' },
+    { n: 'Abrechnung & Archiv', at: 'inform', who: 'kfm', sys: 'inform', wip: 1, days: 1, gives: 'Rechnung, archivierter Vorgang', txt: 'Der Vorgang wird abgerechnet und archiviert.' },
+    { n: 'Auswertung', at: 'mis', who: 'controlling', sys: 'mis', wip: 0, days: 0, gives: 'Kennzahlen, Erkenntnisse', txt: 'Die Informationen fließen in Auswertungen und weitere Entscheidungen ein.' },
+  ] },
+  { id: 'wartung', name: 'Wartung & Reparatur', area: 'Service', goal: 'Vom fälligen Wartungstermin oder der Störung bis zum archivierten Bericht.', target: 'Kernfrage: Ist der Bericht vollständig und kann abgerechnet werden?', steps: [
+    { n: 'Fälligkeit oder Störung', at: 'm365', who: 'service', sys: 'm365', wip: 4, days: 0.5, gives: 'Kundenanlage, Anlass', txt: 'Ein Wartungsvertrag wird fällig oder der Kunde meldet eine Störung.' },
+    { n: 'Termin abstimmen', at: 'm365', who: 'service', sys: 'm365', wip: 6, days: 2, gives: 'Termin, Techniker', txt: 'Die Servicekoordination stimmt den Termin mit dem Kunden und dem Techniker ab.' },
+    { n: 'Einsatz vorbereiten', at: 'orsy', who: 'service', sys: 'orsy', wip: 3, days: 1, gives: 'Ersatzteile, Fahrzeug, Auftrag', txt: 'Ersatzteile (Würth ORSY) und Fahrzeug (Fleetcars) werden bereitgestellt.' },
+    { n: 'Einsatz beim Kunden', at: 'kB', who: 'technik', sys: 'app', wip: 2, days: 0.5, gives: 'Ausgeführte Arbeiten, Messwerte', txt: 'Der Servicetechniker wartet oder repariert die Anlage beim Kunden.' },
+    { n: 'Bericht & Material', at: 'app', who: 'technik', sys: 'app', wip: 2, days: 0.5, gives: 'Bericht, Materialverbrauch, Unterschrift', txt: 'Bericht, Material und Unterschrift des Kunden werden erfasst. Wie das heute genau läuft (Service-App oder Papier), bitte prüfen.' },
+    { n: 'Vollständigkeit prüfen', at: 'hq', who: 'service', sys: null, wip: 6, days: 2, state: 'hot', open: '6 Berichte unvollständig: Material oder Unterschrift fehlt', gives: 'Freigabe zur Abrechnung', txt: 'Die Servicekoordination prüft, ob alles da ist. Fehlt etwas, geht der Vorgang zurück an den Techniker. Hier stauen sich Vorgänge.' },
+    { n: 'Abrechnung', at: 'inform', who: 'kfm', sys: 'inform', wip: 3, days: 1, gives: 'Rechnung', txt: 'Die kaufmännische Bearbeitung rechnet in Inform Professional ab.' },
+    { n: 'Archiv', at: 'docuware', who: 'kfm', sys: 'docuware', wip: 0, days: 0.2, gives: 'Archivierter Vorgang', txt: 'Bericht und Rechnung werden in DocuWare archiviert.' },
+  ] },
+  { id: 'werkzeug', name: 'Werkzeuge: Verkauf & Reparatur', area: 'Industriewerkzeuge', goal: 'Von der Beratung bis zur Rechnung für Werkzeuge und Werkzeugreparaturen.', target: 'Druckluft-, Hydraulik-, Elektro- und Akkuwerkzeuge', steps: [
+    { n: 'Beratung & Anfrage', at: 'm365', who: 'vertrieb', sys: 'm365', wip: 4, days: 0.5, gives: 'Bedarf, Werkzeugtyp', txt: 'Kunden fragen Werkzeuge an oder bringen ein Werkzeug zur Reparatur.' },
+    { n: 'Angebot & Auftrag', at: 'inform', who: 'vertrieb', sys: 'inform', wip: 3, days: 1, gives: 'Auftrag', txt: 'Angebot und Auftrag entstehen in Inform Professional.' },
+    { n: 'Bestellung', at: 'inform', who: 'einkauf', sys: 'inform', wip: 5, days: 3, state: 'slow', open: '3 Bestellungen warten auf Lieferantenbestätigung', gives: 'Bestellung, Liefertermin', txt: 'Der Einkauf bestellt beim Lieferanten.' },
+    { n: 'Wareneingang oder Reparatur', at: 'hq', who: 'lager', sys: 'orsy', wip: 4, days: 2, gives: 'Ware bzw. repariertes Werkzeug', txt: 'Das Lager bucht den Wareneingang, der Werkzeugservice repariert.' },
+    { n: 'Ausgabe & Lieferung', at: 'ws', who: 'lager', sys: 'orsy', wip: 2, days: 0.5, gives: 'Lieferschein', txt: 'Ausgabe an den Kunden oder Lieferung mit dem eigenen Fahrzeug.' },
+    { n: 'Rechnung', at: 'inform', who: 'kfm', sys: 'inform', wip: 1, days: 0.5, gives: 'Rechnung', txt: 'Rechnung aus Inform Professional, Archiv in DocuWare.' },
+  ] },
+];
+const GROUP_N = Object.fromEntries(GROUPS.map(g => [g.id, g.n]));
+
+const STATUS_TXT = { ok: 'in Nutzung', warn: 'prüfen', bad: 'Störung', plan: 'geplant', check: 'zu prüfen' };
+const LINK_TXT = { ok: 'bestätigt', check: 'Datenfluss zu prüfen', plan: 'geplant' };
+const C = { ok: 0x1e9467, warn: 0xc27c00, bad: 0xcf3f36, plan: 0x6857c9, petrol: 0x0e6a87, check: 0x8a9ba1 };
+const CLOUD_Y = 17, SYS_Y = 9;
+
+/* Lage aus echten Koordinaten: Chemnitz im Ursprung, Norden = hinten, 1 Karten-Einheit = 2 km */
+const KM_PER_UNIT = 2;
+const ORIGIN = LOCATIONS[0];
+function kmBetween(a, b) {
+  const R = 6371, rad = Math.PI / 180;
+  const dLat = (b.lat - a.lat) * rad, dLon = (b.lon - a.lon) * rad;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function geo(p) {
+  return { x: (p.lon - ORIGIN.lon) * 111.32 * Math.cos(ORIGIN.lat * Math.PI / 180) / KM_PER_UNIT, z: -(p.lat - ORIGIN.lat) * 111.2 / KM_PER_UNIT };
+}
+LOCATIONS.forEach(l => { if (l.lat != null) { Object.assign(l, geo(l)); l.km = l === ORIGIN ? 0 : kmBetween(ORIGIN, l); } });
+CITIES.forEach(c => Object.assign(c, geo(c)));
+HIGHWAYS.forEach(hw => hw.xz = hw.pts.map(([lat, lon]) => geo({ lat, lon })));
+
+const byId = {};
+LOCATIONS.forEach(l => byId[l.id] = { type: 'loc', d: l });
+CUSTOMERS.forEach(c => byId[c.id] = { type: 'cust', d: c });
+SYSTEMS.forEach(s => byId[s.id] = { type: 'sys', d: s });
+LINKS.forEach(l => byId[l.id] = { type: 'link', d: l });
+VANS.forEach(v => byId[v.id] = { type: 'van', d: v });
+PEOPLE.forEach(p => byId[p.id] = { type: 'person', d: p });
+GROUPS.forEach(g => byId['grp-' + g.id] = { type: 'group', d: g });
+byId.company = { type: 'company', d: { name: 'Unternehmen' } };
+PROCESSES.forEach(pr => {
+  byId[pr.id] = { type: 'proc', d: pr };
+  pr.steps.forEach((s, i) => { s.id = pr.id + '-' + (i + 1); s.no = i + 1; s.proc = pr; byId[s.id] = { type: 'step', d: s }; });
+});
+
+/* Projekte — später direkt aus dem Projektmodul der GF-Suite (Projekt, Meilensteine, Risiken, Beteiligte).
+   status: bad = kritisch · warn = verzögert · ok = läuft · plan = geplant · done = abgeschlossen */
+const PROJECTS = [
+  // Digitalisierung und KI (Stand laut Bachelorarbeit; Termine und Fortschritt geschätzt, bitte pflegen)
+  { id: 'd1', kind: 'digital', name: 'KI-Werkzeuge im Büroalltag', short: 'KI im Büro', status: 'ok', progress: 60, owner: 'pmax', team: ['pgf1', 'pgf2'], at: 'hq', systems: ['ki', 'm365', 'airwiki'],
+    start: '2025-09-01', end: '2026-12-31', goal: 'ChatGPT Business, Claude und Claude Code, Perplexity und PLAUD AI sicher und sinnvoll nutzen. Der KI-Beauftragte begleitet Einführung und Fragen.',
+    next: 'Kurzanleitungen je Tätigkeitsgruppe im AirWiki ablegen', decisions: ['Welche Daten dürfen in KI-Werkzeuge eingegeben werden (Richtlinie)?'],
+    ms: [['KI-Beauftragter benannt (Sep. 2025)', 1], ['Werkzeuge eingeführt', 1], ['Fragen der Mitarbeitenden gesammelt', 1], ['Anleitungen im AirWiki', 0], ['Nutzung auswerten', 0]], risks: ['Datenschutz bei Kunden- und Personaldaten'] },
+  { id: 'd5', kind: 'digital', name: 'Digitale Unternehmensübersicht', short: 'Digitale Welt', status: 'ok', progress: 25, owner: 'pmax', team: ['pgf1', 'pgf2'], at: 'hq', systems: ['gf', 'm365'],
+    start: '2026-10-01', end: '2027-03-31', goal: 'Organisation, Prozesse, Programme und Vorhaben verständlich an einem Ort zeigen.',
+    next: 'Echte Personen, Räume und Gebäudeumrisse einpflegen', decisions: ['Welche Daten zuerst live anbinden: Outlook-Anwesenheit, Projekte oder Servicevorgänge?'],
+    ms: [['3D-Prototyp', 1], ['Unternehmenskontext erfasst', 1], ['Echte Stammdaten', 0], ['Einbau in die GF-Suite', 0], ['Erste Live-Daten', 0]], risks: [] },
+  { id: 'd2', kind: 'digital', name: 'E-Mail-Agent', short: 'E-Mail-Agent', status: 'plan', progress: 5, owner: 'pmax', team: ['psvc1', 'pvt1'], at: 'hq', systems: ['mailag', 'm365'],
+    start: '2026-11-15', end: '2027-04-30', goal: 'Eingehende E-Mails vorsortieren, Vorgängen zuordnen und Antwortentwürfe vorbereiten.',
+    next: 'Anwendungsfälle mit Servicekoordination und Vertrieb festlegen', decisions: ['Welche Postfächer zuerst?', 'Fertiges Produkt oder Eigenentwicklung?'],
+    ms: [['Idee beschrieben', 1], ['Anwendungsfälle festlegen', 0], ['Pilot mit einem Postfach', 0], ['Ausrollen', 0]], risks: [] },
+  { id: 'd3', kind: 'digital', name: 'Anruf-Agent', short: 'Anruf-Agent', status: 'plan', progress: 5, owner: 'pmax', team: ['pemp'], at: 'hq', systems: ['callag', 'm365'],
+    start: '2027-01-15', end: '2027-06-30', goal: 'Anrufe bei Spitzen und außerhalb der Bürozeiten annehmen, Anliegen erfassen und weiterleiten.',
+    next: 'Anforderungen mit dem Empfang klären', decisions: ['Bietet die Telefonanlage eine Schnittstelle?'],
+    ms: [['Idee beschrieben', 1], ['Anforderungen klären', 0], ['Anbieter prüfen', 0], ['Pilot', 0]], risks: [] },
+  { id: 'd4', kind: 'digital', name: 'Office-Pilot', short: 'Office-Pilot', status: 'plan', progress: 5, owner: 'pmax', team: ['pass'], at: 'hq', systems: ['pilot', 'm365'],
+    start: '2026-12-01', end: '2027-03-31', goal: 'Bestehende Werkzeuge erweitern: KI direkt in Outlook, Word und Excel.',
+    next: 'Pilotgruppe und Lizenzmodell festlegen', decisions: ['Lizenzkosten pro Person'],
+    ms: [['Idee beschrieben', 1], ['Pilotgruppe festlegen', 0], ['Pilot', 0]], risks: [] },
+  { id: 'd6', kind: 'digital', name: 'KI für Rechnungsdaten', short: 'KI Rechnungen', status: 'idea', progress: 0, owner: 'pmax', team: ['pkfm2'], at: 'hq', systems: ['inform', 'docuware'],
+    goal: 'Rechnungsdaten automatisch auslesen und vorerfassen.', next: 'Heutigen Aufwand erheben', decisions: ['Lohnt sich der Aufwand?'], ms: [], risks: [] },
+  { id: 'd7', kind: 'digital', name: 'KI im Controlling', short: 'KI Controlling', status: 'idea', progress: 0, owner: 'pmax', team: ['pctl'], at: 'hq', systems: ['mis', 'inform'],
+    goal: 'Auswertungen und Kennzahlen schneller erstellen und erklären.', next: 'Wiederkehrende Auswertungen sammeln', decisions: [], ms: [], risks: [] },
+  { id: 'd8', kind: 'digital', name: 'KI für technische Dokumentation', short: 'KI Doku', status: 'idea', progress: 0, owner: 'pmax', team: ['pproj2'], at: 'hq', systems: ['cad', 'docuware'],
+    goal: 'Prüfberichte und Anlagendokumentation schneller erstellen.', next: 'Beispiele aus der Projektleitung sammeln', decisions: [], ms: [], risks: [] },
+  // Bauvorhaben im Industrieanlagenbau (Beispiele, bis echte Projekte eingetragen sind)
+  { id: 'pr9', kind: 'bau', name: 'Neubau Kompressorstation Kunde D', example: true, short: 'Station Kunde D', status: 'ok', progress: 55, owner: 'pproj1', team: ['pbau', 'pmon1', 'pproj2'], at: 'bs1', client: 'kD', systems: ['cad', 'orsy', 'docuware'],
+    start: '2026-08-17', end: '2026-11-27', goal: 'Schlüsselfertige Station mit 3 Kompressoren, Kältetrockner und Wärmerückgewinnung für Kunde D.',
+    phases: ['Planung', 'Fundament', 'Stahlbau', 'Montage Kompressoren', 'Rohrleitungen', 'Inbetriebnahme', 'Abnahme'], phase: 3, budget: 186000, cost: 97400,
+    trades: [['Fundament', 'Bauunternehmen (Beispiel)', 1], ['Stahlbau', 'Metallbau-Partner (Beispiel)', 1], ['Elektro', 'Elektrofirma (Beispiel)', 0], ['Kompressoren & Rohre', 'eigenes Montageteam', 0]],
+    diary: [['07.10.', 'Kompressor 2 gesetzt und ausgerichtet'], ['06.10.', 'Kran für Dachträger eingesetzt'], ['02.10.', 'Stahlbau abgenommen, keine Mängel']], defects: 0,
+    ms: [['Fundament fertig', 1], ['Stahlbau abgenommen', 1], ['Alle Kompressoren gesetzt', 0], ['Inbetriebnahme', 0], ['Abnahme mit dem Kunden', 0]], risks: ['Elektroanschluss durch den Kunden muss bis 30.10. fertig sein'] },
+  { id: 'pr10', kind: 'bau', name: 'Druckluftnetz Klinikum (Kunde C)', example: true, short: 'Netz Klinikum', status: 'warn', progress: 30, owner: 'pproj1', team: ['pbau', 'pmon2', 'ptech1'], at: 'bs2', client: 'kC', systems: ['cad', 'orsy'],
+    start: '2026-09-07', end: '2026-12-18', goal: 'Neues Edelstahl-Ringnetz, 420 m, mit Messstellen für die Fernüberwachung.',
+    phases: ['Planung', 'Freigabe Klinikum', 'Graben & Trassen', 'Rohrverlegung', 'Druckprobe', 'Inbetriebnahme', 'Abnahme'], phase: 3, budget: 124000, cost: 51800,
+    trades: [['Tiefbau', 'Tiefbaufirma (Beispiel)', 0], ['Rohrleitungen', 'eigenes Montageteam', 0], ['Messtechnik', 'eigener Service', 0]],
+    diary: [['07.10.', '120 von 420 m verlegt'], ['05.10.', 'Lieferant meldet: Edelstahlrohre 2 Wochen später'], ['30.09.', 'Trasse Haus B freigegeben']], defects: 1,
+    ms: [['Freigabe durch das Klinikum', 1], ['Trasse Haus A und B', 1], ['Rohre komplett verlegt', 0], ['Druckprobe 12 bar', 0], ['Abnahme', 0]], risks: ['Lieferverzug Edelstahlrohre: 2 Wochen', 'Arbeiten nur außerhalb der OP-Zeiten möglich'] },
+];
+const PROJ_TXT = { bad: 'kritisch', warn: 'verzögert', ok: 'läuft', plan: 'geplant', idea: 'Idee', done: 'abgeschlossen' };
+const PROJ_ORDER = ['bad', 'warn', 'ok', 'plan', 'idea', 'done'];
+PROJECTS.forEach(pr => byId[pr.id] = { type: 'proj', d: pr });
+byId.roadmap = { type: 'roadmap', d: { name: 'Projekt-Roadmap' } };
+const MONTHS_DE = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+const TODAY = new Date();
+function fmtDate(iso) { const d = new Date(iso); return `${d.getDate()}. ${MONTHS_DE[d.getMonth()]} ${d.getFullYear()}`; }
+// Fahnenplätze am hinteren Plattenrand (Standort-Koordinaten), auch für Bäume und Laufwege freigehalten
+const FLAG_ANG = [-70, -110, -50, -130, -30].map(x => x * Math.PI / 180);
+PROJECTS.forEach(pr => { pr.flagged = pr.kind === 'bau' || ['ok', 'warn', 'bad'].includes(pr.status); });
+PROJECTS.filter(pr => pr.flagged).forEach(pr => {
+  const loc = LOCATIONS.find(l => l.id === pr.at), RR = loc.r || 7.2;
+  loc.flags = loc.flags || [];
+  const a = FLAG_ANG[loc.flags.length];
+  pr.fl = [Math.cos(a) * (RR - 0.45), Math.sin(a) * (RR - 0.45)];
+  loc.flags.push(pr.fl);
+});
+function projOf(pid) { return PROJECTS.filter(pr => pr.owner === pid || pr.team.includes(pid)); }
+
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ════════════════ Szene ════════════════ */
+if (!window.THREE || !THREE.OrbitControls) {
+  document.getElementById('loading').textContent = 'Die 3D-Bibliothek konnte nicht geladen werden. Bitte Seite neu laden.';
+  return;
+}
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.92;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+stage.appendChild(renderer.domElement);
+document.getElementById('loading').remove();
+
+const scene = new THREE.Scene();
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; return t;
+}
+scene.background = canvasTex(4, 256, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, 0, h);
+  gr.addColorStop(0, '#c3d3d9'); gr.addColorStop(0.5, '#dfe6e8'); gr.addColorStop(1, '#e6ebec');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+});
+scene.fog = new THREE.Fog(0xe2e8e9, 100, 200);
+// weicher Kontaktschatten (Umgebungsverdeckung) als Textur
+const AO_TEX = canvasTex(128, 128, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, 'rgba(30,45,52,0.55)'); gr.addColorStop(0.55, 'rgba(30,45,52,0.25)'); gr.addColorStop(1, 'rgba(30,45,52,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+});
+function aoPlane(w, d, x, y, z, op = 1) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshBasicMaterial({ map: AO_TEX, transparent: true, depthWrite: false, opacity: op }));
+  m.rotation.x = -Math.PI / 2; m.position.set(x, y, z); m.renderOrder = 1; return m;
+}
+
+const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.3, 500);
+const HOME_CAM = new THREE.Vector3(-2, 70, 84);
+const HOME_TGT = new THREE.Vector3(-2, 2, 8);
+camera.position.copy(HOME_CAM);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.target.copy(HOME_TGT);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.maxPolarAngle = 1.3;
+controls.minDistance = 7;
+controls.maxDistance = 140;
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x9fb0b5, 0.62));
+const sun = new THREE.DirectionalLight(0xfff6ea, 1.35);
+sun.position.set(-35, 60, 28);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+sun.shadow.bias = -0.0004;
+sun.shadow.normalBias = 0.02;
+Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 60, bottom: -60, near: 1, far: 180 });
+scene.add(sun);
+
+const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshStandardMaterial({ roughness: 1, map: canvasTex(512, 512, (g, w, h) => {
+  const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
+  gr.addColorStop(0, '#d2dadc'); gr.addColorStop(0.45, '#d6dddf'); gr.addColorStop(0.75, '#e0e6e7'); gr.addColorStop(1, '#e2e8e9');
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+}) }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
+scene.add(ground);
+const grid = new THREE.GridHelper(140, 70, 0xcbd3d6, 0xcfd7d9);
+grid.position.y = 0.01;
+grid.material.transparent = true; grid.material.opacity = 0.55;
+scene.add(grid);
+
+const cloudGroup = new THREE.Group();
+const cloudRing = new THREE.Mesh(new THREE.RingGeometry(22, 22.12, 128), new THREE.MeshBasicMaterial({ color: 0x8aa3ab, transparent: true, opacity: 0.5, side: THREE.DoubleSide }));
+cloudRing.rotation.x = -Math.PI / 2; cloudRing.position.y = CLOUD_Y;
+cloudGroup.add(cloudRing);
+scene.add(cloudGroup);
+
+/* ════════════════ Helfer ════════════════ */
+const pickables = [];
+const labels = [];
+const objects = {};
+const labelRoot = document.getElementById('labels');
+
+function mat(color, o = {}) { return new THREE.MeshStandardMaterial(Object.assign({ color, roughness: 0.85, metalness: 0.02 }, o)); }
+const M = {
+  white: mat(0xfbfbfa), plate: mat(0xf3f5f4), floor: mat(0xe7ebea), wall: mat(0xf7f7f5), road: mat(0xcfd6d8),
+  floorUp: mat(0xeef0ef), slab: mat(0xdfe4e5), wallIn: mat(0xeceeec), glassIn: new THREE.MeshStandardMaterial({ color: 0x8fb3c1, roughness: 0.2, transparent: true, opacity: 0.6 }),
+  deskTop: mat(0xd8c9ae), screen: mat(0x22323a, { emissive: 0x16404f, emissiveIntensity: 0.6 }), chair: mat(0x4a5a62), pot: mat(0xb5a28a),
+  desk: mat(0xc9d1d3), rack: mat(0x7f939a), box: mat(0xc9a46a), petrol: mat(0x0e6a87, { roughness: 0.6 }), steel: mat(0x9aa8ad, { roughness: 0.5, metalness: 0.3 }),
+  skin: [mat(0xf0d2b6), mat(0xd9ad88), mat(0xa8784f), mat(0xf3dcc4)], hair: [mat(0x3b2a20), mat(0x8a6a45), mat(0x1d1b1a), mat(0xb7aa98), mat(0x6b3f22)],
+};
+function ghostMat(op = 0.22) { return new THREE.MeshBasicMaterial({ color: C.plan, transparent: true, opacity: op, depthWrite: false }); }
+function addLabel(id, cls, html, pos, layer) {
+  const passive = /\b(km|city|zone|hw)\b/.test(cls);
+  const el = document.createElement(passive ? 'div' : 'button');
+  if (!passive) { el.type = 'button'; el.addEventListener('click', e => { e.stopPropagation(); select(id, true); }); }
+  el.className = 'lbl ' + cls;
+  el.innerHTML = html;
+  labelRoot.appendChild(el);
+  const l = { id, el, pos, layer, visible: true, anchorY: /\b(km|city|zone|hw)\b/.test(cls) ? '-50%' : '-100%' };
+  labels.push(l);
+  return l;
+}
+function tag(mesh, id) { mesh.userData.id = id; pickables.push(mesh); return mesh; }
+function statusOf(d) { return d.plan ? 'plan' : d.status; }
+function presDot(pr) { return pr === 'online' ? 'ok' : pr === 'meet' ? 'meet' : pr === 'away' ? 'away' : 'off'; }
+function local(loc, x, z, y = 0) { return new THREE.Vector3(loc.x + x, y, loc.z + z); }
+function box(w, h, d, m) { const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); b.castShadow = true; b.receiveShadow = true; return b; }
+
+/* ════════════════ Standorte: Platte, Gebäude, Innenleben ════════════════ */
+const PLATE_Y = 0.5;
+function polyCentroid(poly) { let x = 0, z = 0; poly.forEach(p => { x += p[0]; z += p[1]; }); return [x / poly.length, z / poly.length]; }
+
+/* Fassaden: Fensterbänder, Tore, Dachaufbauten — gehören zur Außenansicht und blenden mit dem Dach aus */
+function addFacade(loc, b, rec) {
+  const glass = new THREE.MeshStandardMaterial({ color: 0x3e5a66, roughness: 0.2, metalness: 0.35, transparent: true, opacity: 1 });
+  const trim = new THREE.MeshStandardMaterial({ color: 0xa3b1b5, roughness: 0.6, transparent: true, opacity: 1 });
+  const roofM = new THREE.MeshStandardMaterial({ color: 0xe9eceb, roughness: 0.9, transparent: true, opacity: 1 });
+  rec.fade.push(glass, trim, roofM);
+  const office = /Büro/.test(b.name);
+  const c = rec.center;
+  const add = (geo, m, x, y, z, ry = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = true; rec.ext.add(o); return o; };
+  for (let i = 0; i < b.poly.length; i++) {
+    const p0 = b.poly[i], p1 = b.poly[(i + 1) % b.poly.length];
+    const dx = p1[0] - p0[0], dz = p1[1] - p0[1], L = Math.hypot(dx, dz);
+    let nx = dz / L, nz = -dx / L;
+    const mx = (p0[0] + p1[0]) / 2, mz = (p0[1] + p1[1]) / 2;
+    if ((mx - c[0]) * nx + (mz - c[1]) * nz < 0) { nx = -nx; nz = -nz; }
+    const ry = -Math.atan2(dz, dx);
+    if (L > 1.2) {
+      if (office) {
+        const floors = b.floors || Math.max(1, Math.round(b.h / 0.85));
+        for (let f = 0; f < floors; f++) add(new THREE.BoxGeometry(L - 0.5, 0.3, 0.04), glass, mx + nx * 0.02, PLATE_Y + (f + 0.55) * (b.h / floors), mz + nz * 0.02, ry);
+      } else if (L > 2.5) {
+        add(new THREE.BoxGeometry(L * 0.78, 0.2, 0.04), glass, mx + nx * 0.02, PLATE_Y + b.h - 0.42, mz + nz * 0.02, ry);
+      }
+    }
+    // Tor bzw. Eingang
+    const t = ((b.door[0] - p0[0]) * dx + (b.door[1] - p0[1]) * dz) / (L * L);
+    const dist = Math.abs((b.door[0] - p0[0]) * dz - (b.door[1] - p0[1]) * dx) / L;
+    if (dist < 0.05 && t > 0 && t < 1) {
+      if (office) add(new THREE.BoxGeometry(0.7, 0.75, 0.05), glass, b.door[0] + nx * 0.04, PLATE_Y + 0.375, b.door[1] + nz * 0.04, ry);
+      else {
+        const th = Math.min(1.35, b.h * 0.6);
+        add(new THREE.BoxGeometry(1.15, th, 0.05), trim, b.door[0] + nx * 0.04, PLATE_Y + th / 2, b.door[1] + nz * 0.04, ry);
+        for (let k = 1; k < 5; k++) add(new THREE.BoxGeometry(1.15, 0.015, 0.06), glass, b.door[0] + nx * 0.05, PLATE_Y + th * k / 5, b.door[1] + nz * 0.05, ry);
+      }
+      if (loc.id === 'hq' && office) add(new THREE.BoxGeometry(1.7, 0.32, 0.06), M.petrol, b.door[0] + nx * 0.05, PLATE_Y + b.h - 0.3, b.door[1] + nz * 0.05, ry);
+    }
+  }
+  // Dach: Oberlichter (Hallen) und Lüftungsgeräte
+  const xs = b.poly.map(q => q[0]), zs = b.poly.map(q => q[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), z0 = Math.min(...zs), z1 = Math.max(...zs);
+  const top = PLATE_Y + b.h;
+  if (!office && b.poly.length === 4) {
+    const alongX = x1 - x0 >= z1 - z0;
+    const len = alongX ? x1 - x0 : z1 - z0, wid = alongX ? z1 - z0 : x1 - x0;
+    const n = Math.max(2, Math.floor(len / 1.6));
+    for (let k = 0; k < n; k++) {
+      const u = (k + 0.5) / n;
+      const px = alongX ? x0 + u * (x1 - x0) : (x0 + x1) / 2, pz = alongX ? (z0 + z1) / 2 : z0 + u * (z1 - z0);
+      add(alongX ? new THREE.BoxGeometry(0.55, 0.12, wid * 0.5) : new THREE.BoxGeometry(wid * 0.5, 0.12, 0.55), glass, px, top + 0.06, pz);
+    }
+  }
+  add(new THREE.BoxGeometry(0.6, 0.32, 0.45), trim, x0 + 0.9, top + 0.16, z0 + 0.8);
+  if (x1 - x0 > 4) add(new THREE.BoxGeometry(0.45, 0.25, 0.45), trim, x0 + 1.7, top + 0.125, z0 + 0.8);
+  // Dachrand (Attika)
+  const shape = new THREE.Shape(b.poly.map(q => new THREE.Vector2(q[0], -q[1])));
+  const inner = new THREE.Path(b.poly.map(q => new THREE.Vector2(q[0] + (c[0] - q[0]) * 0.04, -(q[1] + (c[1] - q[1]) * 0.04))));
+  shape.holes.push(inner);
+  const parapet = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: false }), roofM);
+  parapet.rotation.x = -Math.PI / 2; parapet.position.y = top;
+  rec.ext.add(parapet);
+}
+
+// Baumbestand, deterministisch je Standort
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const TREE = { trunk: new THREE.CylinderGeometry(0.05, 0.07, 0.4, 6), crown: new THREE.IcosahedronGeometry(0.42, 0), mats: [0x8eab8a, 0x7d9c7a, 0xa2b993, 0x6f8f72].map(c => mat(c, { flatShading: true, roughness: 1 })), bark: mat(0x7a6e62) };
+function yardR(loc) { return Math.min(3.2, (loc.r || SITE_R) * 0.45); }
+function insideBuildings(loc, x, z, margin) {
+  return loc.buildings.some(b => { const xs = b.poly.map(q => q[0]), zs = b.poly.map(q => q[1]); return x > Math.min(...xs) - margin && x < Math.max(...xs) + margin && z > Math.min(...zs) - margin && z < Math.max(...zs) + margin; });
+}
+function addTrees(loc, g, seed) {
+  const r = rng(seed);
+  let placed = 0;
+  for (let k = 0; k < 120 && placed < 16; k++) {
+    const RR = loc.r || SITE_R;
+    const a = r() * Math.PI * 2, rr = RR - 0.5 - r() * 1.2;
+    const x = Math.cos(a) * rr, z = Math.sin(a) * rr;
+    if (insideBuildings(loc, x, z, 0.7)) continue;
+    if ((loc.flags || []).some(f => Math.hypot(x - f[0], z - f[1]) < 1.0)) continue;
+    if (Math.hypot(x - loc.yard[0], z - loc.yard[1]) < yardR(loc) + 0.4) continue;
+    if (Object.values(loc.zones).some(zn => !zn.b && Math.hypot(x - zn.x, z - zn.z) < 1.6)) continue;
+    const tr = new THREE.Group();
+    const s = 0.75 + r() * 0.6;
+    const trunk = new THREE.Mesh(TREE.trunk, TREE.bark); trunk.position.y = 0.2; trunk.castShadow = true;
+    const crown = new THREE.Mesh(TREE.crown, TREE.mats[Math.floor(r() * TREE.mats.length)]); crown.position.y = 0.6; crown.rotation.set(r() * 3, r() * 3, 0); crown.castShadow = true;
+    tr.add(trunk, crown); tr.scale.setScalar(s); tr.position.set(x, PLATE_Y, z);
+    g.add(tr);
+    placed++;
+  }
+}
+
+/* Büroausstattung je Raum: Schreibtische mit Monitor und Stuhl (Sitzplätze), Tische, Pflanzen */
+const TABLE_R = { 1: 0.38, 2: 0.55 };
+function obst(loc, x, z, w, d, f = 0) { (loc.obst = loc.obst || []).push({ x0: x - w / 2, x1: x + w / 2, z0: z - d / 2, z1: z + d / 2, f }); }
+function furnish(loc, g) {
+  Object.values(loc.zones).forEach(z => {
+    const rec = z.b ? loc.bld[z.b] : null;
+    const parent = rec && rec.floors ? rec.floors[z.f || 0].g : g;
+    const by = PLATE_Y + (rec && rec.data.fh ? (z.f || 0) * rec.data.fh : 0);
+    // Weg aus dem Raum zum Flur (Tür, dann Flurmitte); front = Richtung zur Tür
+    if (z.room === 1) { z.exit = [[z.x, -2.8], [z.x, -2.25]]; z.front = [0, 1]; }
+    if (z.room === 2) { z.exit = [[z.x, -1.0], [z.x, -1.9]]; z.front = [0, -1]; }
+    z.seats = [];
+    // Schreibtische stehen auf der der Tür abgewandten Seite, der Stuhl zeigt zur Tür
+    const dfv = z.front || [0, 1];
+    for (let i = 0; i < (z.desks || 0); i++) {
+      const dx = z.x + (i - (z.desks - 1) / 2) * 0.85, dz = z.z - dfv[1] * 0.3;
+      const d = box(0.7, 0.04, 0.38, M.deskTop); d.position.set(dx, by + 0.3, dz); parent.add(d);
+      [-0.3, 0.3].forEach(o => { const l = box(0.04, 0.28, 0.34, M.steel); l.position.set(dx + o, by + 0.14, dz); parent.add(l); });
+      const mon = box(0.3, 0.19, 0.025, M.screen); mon.position.set(dx, by + 0.44, dz - dfv[1] * 0.12); parent.add(mon);
+      const ch = box(0.26, 0.05, 0.26, M.chair); ch.position.set(dx, by + 0.2, dz + dfv[1] * 0.42); parent.add(ch);
+      const bk = box(0.26, 0.26, 0.04, M.chair); bk.position.set(dx, by + 0.36, dz + dfv[1] * 0.56); parent.add(bk);
+      z.seats.push([dx, dz + dfv[1] * 0.42]);
+      obst(loc, dx, dz, 0.7, 0.38, z.f || 0);
+    }
+    if (z.table) {
+      const r = TABLE_R[z.table];
+      const t = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.05, 28), M.deskTop); t.position.set(z.x, by + 0.3, z.z); t.castShadow = true; parent.add(t);
+      const ft = box(0.08, 0.28, 0.08, M.steel); ft.position.set(z.x, by + 0.14, z.z); parent.add(ft);
+      // Stühle an den Seiten (und hinten), die Türseite bleibt frei zum Stehen
+      const fv = z.front || [0, 1], pv = [-fv[1], fv[0]];
+      const spots = [];
+      (z.table === 2 ? [-0.28, 0.28] : [0]).forEach(o => [-1, 1].forEach(sd => spots.push([pv[0] * sd * (r + 0.22) + fv[0] * o, pv[1] * sd * (r + 0.22) + fv[1] * o])));
+      if (z.table === 1) spots.push([-fv[0] * (r + 0.22), -fv[1] * (r + 0.22)]);
+      spots.forEach(([ox, oz]) => {
+        const c = box(0.22, 0.05, 0.22, M.chair); c.position.set(z.x + ox, by + 0.2, z.z + oz); parent.add(c);
+        obst(loc, c.position.x, c.position.z, 0.22, 0.22, z.f || 0);
+      });
+      obst(loc, z.x, z.z, r * 2, r * 2, z.f || 0);
+    }
+    if (z.room) {
+      const pot = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.07, 0.16, 10), M.pot); pot.position.set(z.x + 0.72, by + 0.08, z.z - 0.62); parent.add(pot);
+      const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(0.17, 0), TREE.mats[0]); leaf.position.set(z.x + 0.72, by + 0.3, z.z - 0.62); leaf.castShadow = true; parent.add(leaf);
+    }
+  });
+}
+const FLOOR_GAP = 2.3;
+let floorView = 'all';
+function floorY(loc, bId, f) {
+  if (!bId) return PLATE_Y;
+  const r = loc.bld[bId];
+  return PLATE_Y + f * ((r.data.fh || 0) + FLOOR_GAP * (r.explode || 0));
+}
+function floorLabelShown(loc, bId, f) {
+  if (!bId || floorView === 'all' || !(loc.bld[bId].floors && loc.bld[bId].floors.length > 1)) return true;
+  return Math.round(f) === floorView;
+}
+function floorShown(loc, bId, f) {
+  if (!bId || floorView === 'all' || !(loc.bld[bId].floors && loc.bld[bId].floors.length > 1)) return true;
+  return Math.round(f) <= floorView;
+}
+function zoneName(loc, key) {
+  const z = loc.zones[key];
+  const r = z.b ? loc.bld[z.b] : null;
+  return r && r.data.floorNames ? `${z.n} · ${r.data.floorNames[z.f || 0]}` : z.n;
+}
+
+/* Baustelle: Bauzaun, Baucontainer, Kran bzw. Bagger und Baufortschritt je nach Bauphase */
+const BAU_M = { sand: mat(0xd8ceb9), fence: mat(0xb9c2c5, { metalness: 0.3 }), crane: mat(0xe0b020, { roughness: 0.6 }), concrete: mat(0xbfc3c1), steel: mat(0x8796a0, { metalness: 0.4, roughness: 0.5 }), trench: mat(0x8a7558), pipe: mat(0xc8d0d4, { metalness: 0.5, roughness: 0.35 }), cont: mat(0xf2f3f2) };
+function buildConstruction(loc, g) {
+  const pr = PROJECTS.find(p => p.id === loc.project);
+  const RR = loc.r, prog = pr.progress / 100;
+  // Bauzaun mit Zufahrt zur Hof-Seite
+  const gate = Math.atan2(loc.yard[1], loc.yard[0]);
+  for (let a = 0; a < Math.PI * 2; a += 0.17) {
+    let da = Math.atan2(Math.sin(a - gate), Math.cos(a - gate));
+    if (Math.abs(da) < 0.38) continue;
+    const x = Math.cos(a) * (RR - 0.12), z = Math.sin(a) * (RR - 0.12);
+    const post = box(0.05, 0.55, 0.05, BAU_M.fence); post.position.set(x, PLATE_Y + 0.275, z); g.add(post);
+    const x2 = Math.cos(a + 0.17) * (RR - 0.12), z2 = Math.sin(a + 0.17) * (RR - 0.12);
+    if (Math.abs(Math.atan2(Math.sin(a + 0.17 - gate), Math.cos(a + 0.17 - gate))) < 0.38) continue;
+    const L = Math.hypot(x2 - x, z2 - z);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(L, 0.42, 0.012), new THREE.MeshStandardMaterial({ color: 0xb9c2c5, transparent: true, opacity: 0.45, roughness: 0.8 }));
+    panel.position.set((x + x2) / 2, PLATE_Y + 0.3, (z + z2) / 2); panel.rotation.y = -Math.atan2(z2 - z, x2 - x); g.add(panel);
+  }
+  // Baucontainer
+  const [cx, cz, cw, cd] = loc.container;
+  const c = box(cw, 0.55, cd, BAU_M.cont); c.position.set(cx, PLATE_Y + 0.275, cz); g.add(tag(c, pr.id));
+  const cs = box(cw + 0.01, 0.08, cd + 0.01, M.petrol); cs.position.set(cx, PLATE_Y + 0.42, cz); g.add(cs);
+  obst(loc, cx, cz, cw, cd);
+  // Materiallager: Rohrstapel
+  const [sx, sz] = loc.stack;
+  for (let i = 0; i < 6; i++) {
+    const p = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.0, 10), BAU_M.pipe);
+    p.rotation.x = Math.PI / 2; p.position.set(sx - 0.15 + (i % 3) * 0.15, PLATE_Y + 0.07 + Math.floor(i / 3) * 0.13, sz); p.castShadow = true; g.add(p);
+  }
+  obst(loc, sx, sz, 0.5, 1.0);
+  if (loc.bau === 'station') {
+    // Kompressorstation: Fundament, Stahlgerüst, Kompressoren je nach Fortschritt
+    const [fx, fz, fw, fd] = loc.slab;
+    const slab = box(fw, 0.14, fd, BAU_M.concrete); slab.position.set(fx, PLATE_Y + 0.07, fz); g.add(tag(slab, pr.id));
+    obst(loc, fx, fz, fw, fd);
+    const colH = 1.5;
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([sx2, sz2]) => { const col = box(0.08, colH, 0.08, BAU_M.steel); col.position.set(fx + sx2 * (fw / 2 - 0.08), PLATE_Y + 0.14 + colH / 2, fz + sz2 * (fd / 2 - 0.08)); g.add(col); });
+    [[-1], [1]].forEach(([sz2]) => { const beam = box(fw - 0.1, 0.07, 0.07, BAU_M.steel); beam.position.set(fx, PLATE_Y + 0.14 + colH, fz + sz2 * (fd / 2 - 0.08)); g.add(beam); });
+    if (prog > 0.6) { const roof = box(fw * 0.5, 0.04, fd, new THREE.MeshStandardMaterial({ color: 0xdfe3e3, transparent: true, opacity: 0.85 })); roof.position.set(fx - fw * 0.25, PLATE_Y + 0.14 + colH + 0.06, fz); g.add(roof); }
+    const units = Math.max(1, Math.round(prog * 4));
+    for (let i = 0; i < 3; i++) {
+      const k = box(0.5, 0.55, 0.7, i < units ? M.petrol : new THREE.MeshStandardMaterial({ color: 0x0e6a87, transparent: true, opacity: 0.18 }));
+      k.position.set(fx - fw / 2 + 0.45 + i * 0.7, PLATE_Y + 0.14 + 0.275, fz - 0.2); g.add(tag(k, pr.id));
+    }
+    // Turmdrehkran
+    const [kx, kz] = loc.crane;
+    const mast = box(0.16, 4.6, 0.16, BAU_M.crane); mast.position.set(kx, PLATE_Y + 2.3, kz); g.add(tag(mast, pr.id));
+    const foot = box(0.5, 0.12, 0.5, BAU_M.concrete); foot.position.set(kx, PLATE_Y + 0.06, kz); g.add(foot);
+    obst(loc, kx, kz, 0.5, 0.5);
+    const jib = new THREE.Group(); jib.position.set(kx, PLATE_Y + 4.6, kz);
+    const arm = box(4.2, 0.12, 0.12, BAU_M.crane); arm.position.x = 1.4; jib.add(arm);
+    const cw2 = box(0.4, 0.3, 0.3, BAU_M.concrete); cw2.position.x = -0.55; jib.add(cw2);
+    const cab = box(0.25, 0.22, 0.22, mat(0xf2f3f2)); cab.position.set(0.1, -0.2, 0); jib.add(cab);
+    const rope = box(0.015, 1.8, 0.015, BAU_M.steel); rope.position.set(2.6, -0.9, 0); jib.add(rope);
+    const hookLoad = box(0.25, 0.18, 0.25, BAU_M.pipe); hookLoad.position.set(2.6, -1.85, 0); jib.add(hookLoad);
+    g.add(jib);
+    loc.anim = { jib };
+  } else {
+    // Druckluftnetz: Graben mit verlegten Rohrabschnitten, Minibagger
+    const [tx0, tx1, tz] = loc.trench;
+    const trench = box(tx1 - tx0, 0.04, 0.5, BAU_M.trench); trench.position.set((tx0 + tx1) / 2, PLATE_Y + 0.02, tz); g.add(tag(trench, pr.id));
+    obst(loc, (tx0 + tx1) / 2, tz, tx1 - tx0, 0.5);
+    const laid = (tx1 - tx0) * Math.max(0.15, prog);
+    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, laid, 12), BAU_M.pipe);
+    pipe.rotation.z = Math.PI / 2; pipe.position.set(tx0 + laid / 2, PLATE_Y + 0.1, tz); pipe.castShadow = true; g.add(tag(pipe, pr.id));
+    const [ex, ez] = loc.digger;
+    const body = box(0.7, 0.35, 0.5, BAU_M.crane); body.position.set(ex, PLATE_Y + 0.3, ez); g.add(tag(body, pr.id));
+    const track = box(0.8, 0.14, 0.6, mat(0x3a3f42)); track.position.set(ex, PLATE_Y + 0.07, ez); g.add(track);
+    const armG = new THREE.Group(); armG.position.set(ex + 0.3, PLATE_Y + 0.45, ez);
+    const boom = box(0.9, 0.1, 0.1, BAU_M.crane); boom.position.x = 0.45; boom.rotation.z = -0.5; armG.add(boom);
+    const bucket = box(0.2, 0.18, 0.25, mat(0x4a4f52)); bucket.position.set(0.85, -0.42, 0); armG.add(bucket);
+    g.add(armG);
+    obst(loc, ex, ez, 0.8, 0.6);
+    loc.anim = { arm: armG };
+  }
+  // Bauschild
+  const sign = box(0.9, 0.5, 0.04, mat(0xffffff)); sign.position.set(loc.sign[0], PLATE_Y + 0.75, loc.sign[1]); g.add(tag(sign, pr.id));
+  const signBand = box(0.9, 0.12, 0.05, M.petrol); signBand.position.set(sign.position.x, PLATE_Y + 0.94, sign.position.z); g.add(signBand);
+  [-0.35, 0.35].forEach(o => { const leg = box(0.04, 0.5, 0.04, BAU_M.steel); leg.position.set(sign.position.x + o, PLATE_Y + 0.25, sign.position.z); g.add(leg); });
+  obst(loc, sign.position.x, sign.position.z, 0.9, 0.1);
+}
+
+LOCATIONS.forEach((loc, li) => {
+  const plan = !!loc.plan;
+  const g = new THREE.Group();
+  g.position.set(loc.x, 0, loc.z);
+  const RR = loc.r || SITE_R;
+  const plateGeo = new THREE.CylinderGeometry(RR, RR + 0.15, PLATE_Y, 64);
+  const plate = new THREE.Mesh(plateGeo, plan ? ghostMat(0.08) : loc.bau ? BAU_M.sand : M.plate);
+  plate.position.y = PLATE_Y / 2; plate.receiveShadow = true; plate.castShadow = !plan;
+  g.add(tag(plate, loc.bau ? loc.project : loc.id));
+  if (plan) {
+    const ring = new THREE.Line(new THREE.BufferGeometry().setFromPoints(new THREE.EllipseCurve(0, 0, RR, RR).getPoints(96).map(q => new THREE.Vector3(q.x, PLATE_Y + 0.01, q.y))), new THREE.LineDashedMaterial({ color: C.plan, dashSize: 0.5, gapSize: 0.35 }));
+    ring.computeLineDistances(); g.add(ring);
+  }
+  if (!plan && !loc.bau) {
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(RR + 0.08, 0.05, 6, 96), new THREE.MeshBasicMaterial({ color: 0x0e6a87 }));
+    rim.rotation.x = Math.PI / 2; rim.position.y = PLATE_Y;
+    g.add(rim);
+    loc.rim = rim;
+    // Hof / Zufahrt
+    const yard = new THREE.Mesh(new THREE.CircleGeometry(yardR(loc), 40), M.road);
+    yard.rotation.x = -Math.PI / 2; yard.position.set(loc.yard[0], PLATE_Y + 0.01, loc.yard[1]); yard.receiveShadow = true;
+    g.add(yard);
+  }
+  loc.bld = {};
+  loc.buildings.forEach(b => {
+    const shape = new THREE.Shape(b.poly.map(p => new THREE.Vector2(p[0], -p[1])));
+    // Massivkörper (Ansicht von außen) — blendet beim Heranzoomen aus
+    const solidMat = plan ? ghostMat() : new THREE.MeshStandardMaterial({ color: 0xfbfbfa, roughness: 0.9, transparent: true, opacity: 1 });
+    const solid = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: b.h, bevelEnabled: false }), solidMat);
+    solid.rotation.x = -Math.PI / 2; solid.position.y = PLATE_Y;
+    solid.castShadow = !plan; solid.receiveShadow = true;
+    g.add(tag(solid, loc.id));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(solid.geometry), new THREE.LineBasicMaterial({ color: plan ? C.plan : 0x8d9ea4, transparent: true, opacity: 1 }));
+    edges.rotation.copy(solid.rotation); edges.position.copy(solid.position);
+    g.add(edges);
+    const rec = { solid, edges, data: b, center: polyCentroid(b.poly), fade: [solidMat, edges.material], ext: new THREE.Group() };
+    g.add(rec.ext);
+    if (!plan) addFacade(loc, b, rec);
+    if (!plan) {
+      // Kontaktschatten unter dem Gebäude
+      const xs = b.poly.map(q => q[0]), zs = b.poly.map(q => q[1]);
+      const bw = Math.max(...xs) - Math.min(...xs), bd = Math.max(...zs) - Math.min(...zs);
+      g.add(aoPlane(bw + 1.6, bd + 1.6, (Math.max(...xs) + Math.min(...xs)) / 2, PLATE_Y + 0.012, (Math.max(...zs) + Math.min(...zs)) / 2, 0.55));
+      // Etagen: Boden, Wandsockel, Innenwände, Treppe. Obergeschosse heben sich in der Schnittansicht ab.
+      const floors = b.floors || 1, fh = b.fh || 0;
+      rec.floors = []; rec.explode = 0;
+      for (let f = 0; f < floors; f++) {
+        const fg = new THREE.Group();
+        const baseY = PLATE_Y + f * fh;
+        const floor = new THREE.Mesh(new THREE.ShapeGeometry(shape), f ? M.floorUp : M.floor);
+        floor.rotation.x = -Math.PI / 2; floor.position.y = baseY + 0.02; floor.receiveShadow = true;
+        fg.add(tag(floor, loc.id));
+        if (f) {
+          const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: false }), M.slab);
+          slab.rotation.x = -Math.PI / 2; slab.position.y = baseY - 0.08; slab.castShadow = true; slab.receiveShadow = true;
+          fg.add(slab);
+        }
+        const wh = floors > 1 ? 0.42 : b.h * 0.42;
+        const wallSeg = (x0, z0, x1, z1, hgt, m) => {
+          const dx = x1 - x0, dz = z1 - z0, L = Math.hypot(dx, dz); if (L < 0.02) return;
+          const w = box(L + 0.08, hgt, 0.08, m); w.position.set((x0 + x1) / 2, baseY + hgt / 2, (z0 + z1) / 2); w.rotation.y = -Math.atan2(dz, dx);
+          fg.add(tag(w, loc.id));
+        };
+        for (let i = 0; i < b.poly.length; i++) {
+          const p0 = b.poly[i], p1 = b.poly[(i + 1) % b.poly.length];
+          const dx = p1[0] - p0[0], dz = p1[1] - p0[1], L = Math.hypot(dx, dz);
+          const t = ((b.door[0] - p0[0]) * dx + (b.door[1] - p0[1]) * dz) / (L * L);
+          const dist = Math.abs((b.door[0] - p0[0]) * dz - (b.door[1] - p0[1]) * dx) / L;
+          const segs = f === 0 && dist < 0.05 && t > 0 && t < 1 ? [[0, t - 0.55 / L], [t + 0.55 / L, 1]] : [[0, 1]];
+          segs.forEach(([a0, a1]) => wallSeg(p0[0] + dx * a0, p0[1] + dz * a0, p0[0] + dx * a1, p0[1] + dz * a1, wh, M.wall));
+          if (floors > 1) { const gl = box(Math.max(0.1, L - 0.3), 0.05, 0.1, M.glassIn); gl.castShadow = false; gl.position.set(p0[0] + dx / 2, baseY + wh + 0.03, p0[1] + dz / 2); gl.rotation.y = -Math.atan2(dz, dx); fg.add(gl); }
+        }
+        if (b.inner) [...b.inner.all, ...(f ? b.inner.upper : [])].forEach(q => wallSeg(q[0], q[1], q[2], q[3], 0.36, M.wallIn));
+        if (b.stair) {
+          const [sx, sz] = b.stair;
+          for (let k = 0; k < 4; k++) { const st = box(0.42, 0.06 + k * 0.08, 0.16, M.desk); st.position.set(sx + 0.05, baseY + (0.06 + k * 0.08) / 2, sz - 0.3 + k * 0.17); fg.add(st); }
+        }
+        g.add(fg);
+        rec.floors.push({ g: fg, f });
+      }
+      // Tür: Innen- und Außenpunkt für Laufwege
+      const out = new THREE.Vector2(b.door[0] - rec.center[0], b.door[1] - rec.center[1]);
+      const lenEdge = (() => { for (let i = 0; i < b.poly.length; i++) { const p0 = b.poly[i], p1 = b.poly[(i + 1) % b.poly.length]; const dx = p1[0] - p0[0], dz = p1[1] - p0[1], L = Math.hypot(dx, dz); const dist = Math.abs((b.door[0] - p0[0]) * dz - (b.door[1] - p0[1]) * dx) / L; if (dist < 0.05) return new THREE.Vector2(-dz / L, dx / L); } return out.normalize(); })();
+      const n = lenEdge.dot(out) < 0 ? lenEdge.multiplyScalar(-1) : lenEdge;
+      rec.inPt = [b.door[0] - n.x * 0.7, b.door[1] - n.y * 0.7];
+      rec.outPt = [b.door[0] + n.x * 0.8, b.door[1] + n.y * 0.8];
+    }
+    loc.bld[b.id] = rec;
+  });
+  (loc.flags || []).forEach(f => obst(loc, f[0], f[1], 0.4, 0.4));
+  if (loc.bau) { buildConstruction(loc, g); g.add(aoPlane(loc.r * 2.9, loc.r * 2.9, 0.6, 0.015, 0.6, 0.7)); }
+  if (!plan && !loc.bau) {
+    furnish(loc, g);
+    addTrees(loc, g, 1234 + li * 77);
+    // Parkplatz-Markierungen
+    const pz = loc.zones.parkplatz;
+    if (pz) for (let i = 0; i < 6; i++) { const ln = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 1.1), new THREE.MeshBasicMaterial({ color: 0xffffff })); ln.rotation.x = -Math.PI / 2; ln.position.set(pz.x - 2 + i * 0.8, PLATE_Y + 0.03, pz.z + (loc.id === 'hq' ? 1.25 : 1.0)); g.add(ln); }
+    // Schatten der Platte auf der Karte
+    g.add(aoPlane(RR * 2.9, RR * 2.9, 0.6, 0.015, 0.6, 0.7));
+  }
+  // Ausstattung
+  const P = loc.props || [];
+  P.forEach(([kind, x, z, n = 1]) => {
+    if (kind === 'racks') for (let i = 0; i < n; i++) obst(loc, x + (i - (n - 1) / 2) * 0.9, z, 0.35, 1.6);
+    if (kind === 'benches') for (let i = 0; i < n; i++) obst(loc, x + (i - (n - 1) / 2) * 1.4, z, 1.1, 0.45);
+    if (kind === 'compressor') { obst(loc, x, z, 0.8, 1.1); obst(loc, x + 0.6, z, 0.4, 0.4); }
+    if (kind === 'pallets') obst(loc, x, z, 1.7, 0.5);
+    if (kind === 'cars') obst(loc, x, z, n * 0.8, 1.0);
+    if (kind === 'desks') for (let i = 0; i < n; i++) { const d = box(0.7, 0.32, 0.4, M.desk); d.position.set(x + (i - (n - 1) / 2) * 0.85, PLATE_Y + 0.16, z); g.add(d); const s = box(0.3, 0.2, 0.03, M.steel); s.position.set(d.position.x, PLATE_Y + 0.42, z - 0.12); g.add(s); }
+    if (kind === 'table') { const t = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.06, 24), M.desk); t.position.set(x, PLATE_Y + 0.32, z); t.castShadow = true; g.add(t); const f = box(0.08, 0.3, 0.08, M.steel); f.position.set(x, PLATE_Y + 0.15, z); g.add(f); }
+    if (kind === 'racks') for (let i = 0; i < n; i++) { const r = box(0.35, 1.0, 1.6, M.rack); r.position.set(x + (i - (n - 1) / 2) * 0.9, PLATE_Y + 0.5, z); g.add(r); for (let k = 0; k < 3; k++) { const bx = box(0.3, 0.2, 0.3, M.box); bx.position.set(r.position.x, PLATE_Y + 0.25 + k * 0.32, z - 0.5 + k * 0.45); g.add(bx); } }
+    if (kind === 'benches') for (let i = 0; i < n; i++) { const b = box(1.1, 0.36, 0.45, M.steel); b.position.set(x + (i - (n - 1) / 2) * 1.4, PLATE_Y + 0.18, z); g.add(b); }
+    if (kind === 'compressor') { const k = box(0.8, 0.7, 1.1, M.petrol); k.position.set(x, PLATE_Y + 0.35, z); g.add(k); const tnk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.9, 16), M.steel); tnk.position.set(x + 0.6, PLATE_Y + 0.45, z); tnk.castShadow = true; g.add(tnk); }
+    if (kind === 'pallets') for (let i = 0; i < 3; i++) { const p = box(0.5, 0.35, 0.5, M.box); p.position.set(x + i * 0.6 - 0.6, PLATE_Y + 0.175, z); g.add(p); }
+    if (kind === 'cars') for (let i = 0; i < n; i++) { const cc = [0xb8c2c5, 0x4d5d63, 0xe0e4e4, 0x7b8f96][i % 4]; const c = box(0.55, 0.3, 1.0, mat(cc)); c.position.set(x + (i - (n - 1) / 2) * 0.8, PLATE_Y + 0.15, z); g.add(c); const cab = box(0.48, 0.2, 0.5, mat(0x9fb0b6)); cab.position.set(c.position.x, PLATE_Y + 0.4, z + 0.05); g.add(cab); }
+  });
+  scene.add(g);
+  objects[loc.id] = { group: g, anchor: new THREE.Vector3(loc.x, PLATE_Y, loc.z), cut: 0 };
+  // Raumbezeichnungen (sichtbar in der Schnittansicht)
+  loc.zoneLabels = Object.entries(loc.zones).filter(([k, z]) => z.b && !/2$/.test(k)).map(([, z]) => {
+    const l = addLabel(null, 'zone', z.n, local(loc, z.x, z.room === 1 ? z.z - 0.75 : z.z + 0.75, PLATE_Y + 0.1), 'zone');
+    l.zone = z; return l;
+  });
+  loc.buildings.forEach(b => (b.floorNames || []).forEach((fnm, f) => {
+    const l = addLabel(null, 'zone floorlbl', fnm, local(loc, b.poly[1][0] + 0.5, b.poly[1][1] + 0.4, PLATE_Y), 'zone');
+    l.zone = { b: b.id, f, floorLabel: true }; loc.zoneLabels.push(l);
+  }));
+  loc.zoneLabels.forEach(l => l.loc = loc);
+  if (loc.km) {
+    const dir = new THREE.Vector3(loc.x, 0, loc.z).normalize();
+    const a = dir.clone().multiplyScalar(SITE_R + 0.8), b = new THREE.Vector3(loc.x, 0, loc.z).sub(dir.clone().multiplyScalar(RR + 0.8));
+    a.y = b.y = 0.03;
+    const kmLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineDashedMaterial({ color: 0x0e6a87, dashSize: 0.7, gapSize: 0.5, transparent: true, opacity: 0.6 }));
+    kmLine.computeLineDistances();
+    scene.add(kmLine);
+    addLabel(null, 'km', `${Math.round(loc.km)} km Luftlinie`, a.clone().add(b).multiplyScalar(0.5), 'map');
+  }
+  const pin = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(loc.x, PLATE_Y, loc.z - (plan ? 0 : RR - 0.6)), new THREE.Vector3(loc.x, 4.0, loc.z - (plan ? 0 : RR - 0.6))]), new THREE.LineBasicMaterial({ color: plan ? C.plan : 0x5f747b }));
+  scene.add(pin);
+  if (loc.bau) { const bp = PROJECTS.find(p => p.id === loc.project); addLabel(bp.id, 'loc bau', `<span class="dot ${bp.status}"></span>${loc.name}<small>${bp.phases[bp.phase]} · ${bp.progress} %</small>`, new THREE.Vector3(loc.x, 4.2, loc.z - RR + 0.6), 'loc'); return; }
+  addLabel(loc.id, 'loc' + (plan ? ' plan' : ''), `<span class="dot ${plan ? 'plan' : 'ok'}"></span>${loc.name}${plan ? '' : `<small>${loc.headLabel}</small>`}`, new THREE.Vector3(loc.x, 4.2, loc.z - (plan ? 0 : RR - 0.6)), plan ? 'plan' : 'loc');
+});
+HIGHWAYS.forEach(hw => {
+  const curve = new THREE.CatmullRomCurve3(hw.xz.map(p => new THREE.Vector3(p.x, 0, p.z)), false, 'centripetal');
+  const N = 160, wdt = 0.55, pos = [], idx = [];
+  for (let i = 0; i <= N; i++) {
+    const p = curve.getPointAt(i / N), tg = curve.getTangentAt(i / N);
+    const nx = -tg.z, nz = tg.x;
+    pos.push(p.x + nx * wdt, 0.02, p.z + nz * wdt, p.x - nx * wdt, 0.02, p.z - nz * wdt);
+    if (i < N) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); }
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geom.setIndex(idx); geom.computeVertexNormals();
+  const road = new THREE.Mesh(geom, new THREE.MeshStandardMaterial({ color: 0xbfc9cc, roughness: 1, side: THREE.DoubleSide }));
+  road.receiveShadow = true;
+  scene.add(road);
+  const mid = curve.getPointAt(hw.t);
+  addLabel(null, 'hw', hw.n, new THREE.Vector3(mid.x, 0.1, mid.z), 'map');
+});
+CITIES.forEach(c => {
+  const dot = new THREE.Mesh(new THREE.CircleGeometry(0.35, 20), new THREE.MeshBasicMaterial({ color: 0xa3b2b7 }));
+  dot.rotation.x = -Math.PI / 2; dot.position.set(c.x, 0.03, c.z);
+  scene.add(dot);
+  addLabel(null, 'city', c.n, new THREE.Vector3(c.x, 0.1, c.z + 1.2), 'map');
+});
+
+/* ════════════════ Kunden-Anlagen ════════════════ */
+CUSTOMERS.forEach(c => {
+  const g = new THREE.Group();
+  g.position.set(c.x, 0, c.z);
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.5, 0.25, 40), M.plate);
+  pad.position.y = 0.125; pad.receiveShadow = true;
+  g.add(tag(pad, c.id));
+  const hall = box(3, 1.2, 1.8, M.white); hall.position.set(-0.3, 0.85, -0.5); g.add(tag(hall, c.id));
+  g.add(aoPlane(7, 7, 0.4, 0.013, 0.4, 0.6), aoPlane(4, 3, -0.3, 0.26, -0.5, 0.5));
+  for (let i = 0; i < c.units; i++) {
+    const k = box(0.45, 0.5, 0.6, M.petrol);
+    k.position.set(-1.3 + i * 0.6, 0.5, 1); g.add(tag(k, c.id));
+  }
+  scene.add(g);
+  objects[c.id] = { group: g, anchor: new THREE.Vector3(c.x, 1.5, c.z) };
+  addLabel(c.id, 'cust', c.name, new THREE.Vector3(c.x, 2.6, c.z), 'cust');
+});
+
+/* ════════════════ Software ════════════════ */
+const sysHomeCount = {};
+const hexGeo = new THREE.CylinderGeometry(1.15, 1.15, 0.36, 6);
+SYSTEMS.forEach(s => {
+  let pos;
+  if (s.home === 'cloud') pos = new THREE.Vector3(s.cx, CLOUD_Y, s.cz);
+  else {
+    const loc = byId[s.home].d;
+    const n = sysHomeCount[s.home] = (sysHomeCount[s.home] || 0) + 1;
+    pos = new THREE.Vector3(loc.x + (n === 1 ? -2.2 : 2.2), SYS_Y + (n - 1) * 0.8, loc.z - 1.5);
+  }
+  const plan = !!s.plan, st = statusOf(s);
+  const g = new THREE.Group();
+  g.position.copy(pos);
+  const core = new THREE.Mesh(hexGeo, plan ? ghostMat() : mat(0xffffff, { roughness: 0.4 }));
+  core.castShadow = !plan;
+  g.add(tag(core, s.id));
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(1.19, 1.19, 0.1, 6, 1, true), new THREE.MeshBasicMaterial({ color: C[st], side: THREE.DoubleSide }));
+  g.add(band);
+  if (s.home !== 'cloud') {
+    const loc = byId[s.home].d;
+    const stem = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, -0.2, 0), new THREE.Vector3(loc.x - pos.x, 3 - pos.y, loc.z - pos.z)]),
+      new THREE.LineDashedMaterial({ color: 0x7f939a, dashSize: 0.25, gapSize: 0.2 }));
+    stem.computeLineDistances();
+    g.add(stem);
+  }
+  scene.add(g);
+  if (s.hub) g.scale.setScalar(1.5);
+  objects[s.id] = { group: g, anchor: pos.clone(), core, band, baseY: pos.y, phase: Math.random() * 6 };
+  addLabel(s.id, 'sys' + (plan ? ' plan' : ''), `<span class="dot ${plan ? 'plan' : st}"></span>${s.name}`, pos.clone().add(new THREE.Vector3(0, s.hub ? 2.1 : 1.5, 0)), plan ? 'plansys' : 'sys');
+});
+
+/* ════════════════ Schnittstellen ════════════════ */
+const particleGeo = new THREE.SphereGeometry(0.17, 10, 8);
+LINKS.forEach(l => {
+  const a = objects[l.from].anchor, b = objects[l.to].anchor;
+  const mid = a.clone().add(b).multiplyScalar(0.5);
+  mid.y = Math.max(a.y, b.y) + 2.5 + a.distanceTo(b) * 0.1;
+  const curve = new THREE.QuadraticBezierCurve3(a.clone(), mid, b.clone());
+  const plan = !!l.plan, st = statusOf(l);
+  const g = new THREE.Group();
+  let line;
+  if (plan || st === 'check') {
+    line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(60)), new THREE.LineDashedMaterial({ color: plan ? C.plan : 0x7d9097, dashSize: 0.6, gapSize: 0.45, transparent: true, opacity: 0.85 }));
+    line.computeLineDistances();
+  } else {
+    line = new THREE.Mesh(new THREE.TubeGeometry(curve, 60, st === 'ok' ? 0.05 : 0.08, 6), new THREE.MeshBasicMaterial({ color: st === 'ok' ? C.petrol : C[st], transparent: true, opacity: st === 'ok' ? 0.45 : 0.9 }));
+  }
+  g.add(line);
+  g.add(tag(new THREE.Mesh(new THREE.TubeGeometry(curve, 30, 0.55, 5), new THREE.MeshBasicMaterial({ visible: false })), l.id));
+  const parts = [];
+  const n = l.rate * (l.dir === 'both' ? 2 : 1);
+  for (let i = 0; i < n; i++) {
+    const p = new THREE.Mesh(particleGeo, new THREE.MeshBasicMaterial({ color: st === 'ok' ? C.petrol : C[st] }));
+    p.userData.t = i / n; p.userData.rev = l.dir === 'both' && i % 2 === 1;
+    g.add(p); parts.push(p);
+  }
+  scene.add(g);
+  objects[l.id] = { group: g, curve, parts, line, anchor: curve.getPoint(0.5) };
+});
+
+/* ════════════════ Fahrzeuge ════════════════ */
+// Fahrzeuge halten an der Zufahrt (Rand der Standortplatte) bzw. vor dem Kundengelände, nie mitten im Gelände
+function routeXZ(id) {
+  if (Array.isArray(id)) return { x: id[0], z: id[1] };
+  const d = byId[id].d; return { x: d.x, z: d.z };
+}
+function routePoint(id, i, route) {
+  if (Array.isArray(id)) return new THREE.Vector3(id[0], 0.05, id[1]);
+  const h = byId[id];
+  if (h.type === 'cust') {
+    const a = routeXZ(route[(i - 1 + route.length) % route.length]), b = routeXZ(route[(i + 1) % route.length]);
+    const n = new THREE.Vector2((a.x + b.x) / 2 - h.d.x, (a.z + b.z) / 2 - h.d.z).normalize();
+    return new THREE.Vector3(h.d.x + n.x * 3.7, 0.05, h.d.z + n.y * 3.7);
+  }
+  const l = h.d, n = new THREE.Vector2(l.yard[0], l.yard[1]).normalize();
+  const gr = (l.r || SITE_R) + 1.6;
+  return new THREE.Vector3(l.x + n.x * gr, 0.05, l.z + n.y * gr);
+}
+VANS.forEach((v, idx) => {
+  const pts = v.route.map((id, i) => routePoint(id, i, v.route));
+  const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+  const road = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(240)), new THREE.LineBasicMaterial({ color: 0xb4c0c4 }));
+  scene.add(road);
+  const g = new THREE.Group();
+  const body = box(1.5, 0.75, 0.8, M.white); body.position.set(-0.15, 0.45, 0);
+  const cab = box(0.55, 0.55, 0.8, M.white); cab.position.set(0.85, 0.35, 0);
+  const stripe = box(1.52, 0.1, 0.82, M.petrol); stripe.position.set(-0.15, 0.4, 0);
+  const glass = box(0.05, 0.25, 0.7, mat(0x2c3c42)); glass.position.set(1.13, 0.48, 0);
+  const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.25), new THREE.MeshBasicMaterial({ color: idx === 1 ? C.warn : 0x0e6a87 }));
+  beacon.position.set(0.5, 0.88, 0);
+  g.add(tag(body, v.id), tag(cab, v.id), stripe, glass, beacon);
+  g.position.y = 0.05;
+  g.scale.setScalar(0.8);
+  scene.add(g);
+  objects[v.id] = { group: g, curve, road, beacon, t: idx * 0.31, anchor: new THREE.Vector3() };
+});
+
+/* ════════════════ Mitarbeitende als Figuren ════════════════ */
+const LOOKS = {
+  suit: { top: 0x26343f, legs: 0x26343f },
+  suit2: { top: 0x3c4a53, legs: 0x2b3238 },
+  office: { top: 0x8fb6c9, legs: 0x3f4b54 },
+  office2: { top: 0xe8e2d6, legs: 0x4a5560 },
+  office3: { top: 0xb7c6a4, legs: 0x3f4b54 },
+  tech: { top: 0x0e6a87, legs: 0x0e6a87, accent: 0xe08a1e },
+  warehouse: { top: 0x34495a, legs: 0x34495a, vest: 0xf0c419 },
+  construct: { top: 0xe07a2c, legs: 0x2f3b45, helmet: 0xffffff },
+};
+const G = {
+  leg: new THREE.BoxGeometry(0.12, 0.36, 0.13), arm: new THREE.BoxGeometry(0.09, 0.32, 0.1),
+  torso: new THREE.CapsuleGeometry(0.15, 0.16, 4, 10), head: new THREE.SphereGeometry(0.135, 16, 12),
+  hair: new THREE.SphereGeometry(0.142, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.5), cap: new THREE.CylinderGeometry(0.15, 0.15, 0.06, 16),
+  vest: new THREE.CylinderGeometry(0.165, 0.165, 0.22, 12, 1, true), box: new THREE.BoxGeometry(0.26, 0.2, 0.22), ring: new THREE.RingGeometry(0.26, 0.34, 28),
+  tool: new THREE.BoxGeometry(0.04, 0.2, 0.04), phone: new THREE.BoxGeometry(0.05, 0.1, 0.02),
+};
+function makeFigure(p, i) {
+  const look = LOOKS[p.look];
+  const fig = new THREE.Group();
+  const mTop = mat(look.top), mLegs = mat(look.legs), skin = M.skin[i % M.skin.length];
+  const legs = [-0.07, 0.07].map(x => { const pivot = new THREE.Group(); pivot.position.set(x, 0.38, 0); const m = new THREE.Mesh(G.leg, mLegs); m.position.y = -0.18; m.castShadow = true; pivot.add(m); fig.add(pivot); return pivot; });
+  const torso = new THREE.Mesh(G.torso, mTop); torso.position.y = 0.6; torso.castShadow = true; fig.add(torso);
+  if (look.vest) { const v = new THREE.Mesh(G.vest, mat(look.vest, { side: THREE.DoubleSide })); v.position.y = 0.62; fig.add(v); }
+  if (look.accent) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.04, 0.22), mat(look.accent)); a.position.y = 0.66; fig.add(a); }
+  const arms = [-0.2, 0.2].map(x => { const pivot = new THREE.Group(); pivot.position.set(x, 0.76, 0); const m = new THREE.Mesh(G.arm, mTop); m.position.y = -0.15; m.castShadow = true; pivot.add(m); const h = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), skin); h.position.y = -0.32; pivot.add(h); fig.add(pivot); return pivot; });
+  const head = new THREE.Group(); head.position.y = 0.96; fig.add(head);
+  const hm = new THREE.Mesh(G.head, skin); hm.castShadow = true; head.add(hm);
+  const capped = look.vest || look.accent || look.helmet;
+  const hair = new THREE.Mesh(look.helmet ? new THREE.SphereGeometry(0.155, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.55) : capped ? G.cap : G.hair, look.helmet ? mat(look.helmet, { roughness: 0.4 }) : look.accent ? mat(0x0b4f66) : look.vest ? mat(0xf0c419) : M.hair[i % M.hair.length]);
+  hair.position.y = look.helmet ? 0.02 : capped ? 0.1 : 0.015; head.add(hair);
+  const carry = new THREE.Mesh(G.box, M.box); carry.position.set(0, 0.62, 0.24); carry.visible = false; carry.castShadow = true; fig.add(carry);
+  const tool = new THREE.Mesh(G.tool, M.steel); tool.position.y = -0.38; arms[1].add(tool); tool.visible = false;
+  const phone = new THREE.Mesh(G.phone, mat(0x1f2a30)); phone.position.set(0, -0.34, 0.05); arms[1].add(phone); phone.visible = false;
+  const ring = new THREE.Mesh(G.ring, new THREE.MeshBasicMaterial({ color: p.presence === 'online' ? C.ok : p.presence === 'meet' ? C.warn : 0x8a9ba1, transparent: true, opacity: 0.9, side: THREE.DoubleSide }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.02; fig.add(ring);
+  fig.traverse(o => { if (o.isMesh) tag(o, p.id); });
+  pickables.splice(pickables.indexOf(ring), 1);
+  return { fig, legs, arms, head, torso, carry, tool, phone, ring };
+}
+
+function personOffset(i) { const a = i * 2.39996; return [Math.cos(a) * 0.35, Math.sin(a) * 0.35]; }
+// Standplatz im Raum: Sitzplatz am Schreibtisch, Platz am Tisch oder Besucherplatz vor den Schreibtischen — nie in Möbeln
+// Feste Stehplätze je Raum; jede Person reserviert beim Losgehen einen freien Platz
+function spotsFor(z) {
+  if (z.spotList) return z.spotList;
+  const fv = z.front || [0, 1], pv = [-fv[1], fv[0]];
+  if (z.table) { const d = TABLE_R[z.table] + 0.42; z.spotList = [-0.36, 0.36, 0].map(k => [z.x + fv[0] * d + pv[0] * k, z.z + fv[1] * d + pv[1] * k]); }
+  else if (z.desks) z.spotList = [-0.45, 0.45, 0].map(k => [z.x + pv[0] * k + fv[0] * 0.55, z.z + pv[1] * k + fv[1] * 0.55]);
+  else z.spotList = [[0, 0], [0.45, 0], [-0.45, 0], [0, 0.45], [0, -0.45], [0.32, 0.32], [-0.32, -0.32]].map(([a, b]) => [z.x + a, z.z + b]);
+  return z.spotList;
+}
+function claimSpot(loc, step, pid) {
+  if (step.s != null) return -1;
+  const z = loc.zones[step.z]; z.occ = z.occ || {};
+  const list = spotsFor(z);
+  let idx = list.findIndex((_, i) => !z.occ[i] || z.occ[i] === pid);
+  if (idx < 0) idx = 0;
+  z.occ[idx] = pid; return idx;
+}
+function releaseSpot(loc, step, idx, pid) { const z = loc.zones[step.z]; if (idx >= 0 && z.occ && z.occ[idx] === pid) delete z.occ[idx]; }
+function zonePoint(loc, step, spot) {
+  const z = loc.zones[step.z];
+  if (step.s != null && z.seats && z.seats[step.s]) return z.seats[step.s];
+  return spotsFor(z)[Math.max(0, spot)];
+}
+function actFacing(loc, step, pos) {
+  const z = loc.zones[step.z];
+  if (z.table) return Math.atan2(z.x - pos.x, z.z - pos.z);
+  if (z.desks) { const fv = z.front || [0, 1]; return Math.atan2(-fv[0], -fv[1]); }
+  return null;
+}
+/* Laufweg in Standort-Koordinaten {x, z, f = Etage, b = Gebäude}:
+   Sitzplatz → Bürotür → Flur → Treppe (Etage wechseln) → Flur → Bürotür → Ziel; zwischen Gebäuden über Haustür und Hof */
+function buildPath(loc, from, to, spotA, spotB) {
+  const A = loc.zones[from.z], B = loc.zones[to.z];
+  const fA = A.f || 0, fB = B.f || 0;
+  const pts = [];
+  const push = (xz, f, b) => pts.push({ x: xz[0], z: xz[1], f, b });
+  const exitRoom = (Z, f) => (Z.exit || []).forEach(q => push(q, f, Z.b));
+  const enterRoom = (Z, f) => (Z.exit || []).slice().reverse().forEach(q => push(q, f, Z.b));
+  const startPt = zonePoint(loc, from, spotA), endPt = zonePoint(loc, to, spotB);
+  const tableFront = Z => { const fv = Z.front || [0, 1], d = TABLE_R[Z.table] + 0.42; return [Z.x + fv[0] * d, Z.z + fv[1] * d]; };
+  push(startPt, fA, A.b);
+  if (A.table && A !== B) push(tableFront(A), fA, A.b);
+  // vom Schreibtischstuhl erst nach hinten aufstehen
+  if (from.s != null && A.seats && A.seats.length && !(A === B && to.s === from.s)) push([startPt[0], startPt[1] + (A.front || [0, 1])[1] * 0.35], fA, A.b);
+  if (A !== B) {
+    if (A.b && A.b === B.b) {
+      exitRoom(A, fA);
+      if (fA !== fB) { const st = loc.bld[A.b].data.stair; push(st, fA, A.b); push(st, fB, A.b); }
+      enterRoom(B, fB);
+    } else {
+      if (A.b) { const r = loc.bld[A.b]; exitRoom(A, fA); if (fA) { push(r.data.stair, fA, A.b); push(r.data.stair, 0, A.b); } if (r.data.hall) push(r.data.hall, 0, A.b); push(r.inPt, 0, A.b); push(r.outPt, 0, null); }
+      push(loc.yard, 0, null);
+      if (B.b) { const r = loc.bld[B.b]; push(r.outPt, 0, null); push(r.inPt, 0, B.b); if (r.data.hall) push(r.data.hall, 0, B.b); if (fB) { push(r.data.stair, 0, B.b); push(r.data.stair, fB, B.b); } enterRoom(B, fB); }
+    }
+  }
+  if (B.table && A !== B) push(tableFront(B), fB, B.b);
+  if (to.s != null && B.seats && B.seats.length && !(A === B && to.s === from.s)) push([endPt[0], endPt[1] + (B.front || [0, 1])[1] * 0.35], fB, B.b);
+  push(endPt, fB, B.b);
+  return pts;
+}
+
+const WALK_SPEED = 1.15;
+PEOPLE.forEach((p, i) => {
+  const host = byId[p.at];
+  if (host.type === 'van') { objects[p.id] = { inVan: p.at, group: objects[p.at].group, anchor: objects[p.at].group.position }; return; }
+  if (p.presence === 'off' || !p.routine.length) { objects[p.id] = { group: new THREE.Group(), anchor: new THREE.Vector3(host.d.x, 1, host.d.z), hidden: true }; return; }
+  const loc = host.d;
+  const f = makeFigure(p, i);
+  const off = personOffset(i);
+  const step0 = Math.floor(Math.random() * p.routine.length);
+  const z0 = loc.zones[p.routine[step0].z];
+  const spot0 = claimSpot(loc, p.routine[step0], p.id);
+  const pt = zonePoint(loc, p.routine[step0], spot0);
+  f.fig.scale.setScalar(1.1);
+  scene.add(f.fig);
+  const o = objects[p.id] = Object.assign(f, {
+    group: f.fig, anchor: f.fig.position, loc, off, step: step0, mode: 'act', timer: Math.random() * p.routine[step0].d,
+    path: null, seg: 0, spot: spot0, lp: { x: pt[0], z: pt[1], f: z0.f || 0 }, bY: z0.b, inside: !!z0.b,
+    phase: Math.random() * 6, labelPos: new THREE.Vector3(), face: Math.random() * 6,
+  });
+  o.label = addLabel(p.id, 'person', `<span class="dot ${presDot(p.presence)}"></span>${p.short || p.name.split(' ')[0]}`, o.labelPos, 'person');
+});
+function currentActivity(p) {
+  const o = objects[p.id];
+  if (!o || o.inVan || o.hidden) return p.activity || '';
+  if (o.mode === 'walk') return `Geht zu: ${zoneName(o.loc, p.routine[o.step].z)}`;
+  return p.routine[o.step].t;
+}
+PEOPLE.forEach(p => { if (!p.activity) p.activity = p.routine[0] ? p.routine[0].t : ''; });
+
+function updatePerson(p, dt, t) {
+  const o = objects[p.id];
+  if (!o || o.inVan || o.hidden) return;
+  const r = p.routine;
+  const speedK = reduceMotion ? 0.5 : 1;
+  if (o.mode === 'act') {
+    o.timer += dt;
+    if (o.timer >= r[o.step].d && r.length > 1) {
+      const from = r[o.step];
+      o.step = (o.step + 1) % r.length;
+      releaseSpot(o.loc, from, o.spot, p.id);
+      const ns = claimSpot(o.loc, r[o.step], p.id);
+      o.path = buildPath(o.loc, from, r[o.step], o.spot, ns);
+      o.spot = ns;
+      o.seg = 0; o.mode = 'walk';
+    }
+  }
+  if (o.mode === 'walk') {
+    let budget = WALK_SPEED * dt * speedK;
+    let guard = 0;
+    while (budget > 1e-6 && o.mode === 'walk' && guard++ < 12) {
+      const a = o.path[o.seg], b = o.path[o.seg + 1];
+      o.bY = a.b || b.b; o.inside = !!(a.b && b.b);
+      const dx = b.x - o.lp.x, dz = b.z - o.lp.z, df = b.f - o.lp.f, dh = Math.hypot(dx, dz);
+      if (dh < 1e-4 && Math.abs(df) > 1e-4) {            // Treppe
+        const climb = Math.min(Math.abs(df), budget * 0.6);
+        o.lp.f += Math.sign(df) * climb; budget -= climb / 0.6;
+        if (Math.abs(b.f - o.lp.f) < 1e-4) { o.lp.f = b.f; o.seg++; }
+      } else if (dh <= budget) {
+        o.lp.x = b.x; o.lp.z = b.z; o.lp.f = b.f; budget -= dh; o.seg++;
+        if (dh > 1e-3) o.face = Math.atan2(dx, dz);
+      } else {
+        o.lp.x += dx / dh * budget; o.lp.z += dz / dh * budget; o.face = Math.atan2(dx, dz); budget = 0;
+      }
+      if (o.seg >= o.path.length - 1) { o.mode = 'act'; o.timer = 0; const z = o.loc.zones[r[o.step].z]; o.bY = z.b; o.inside = !!z.b; }
+    }
+  }
+  const step = r[o.step];
+  const act = o.mode === 'walk' ? 'walk' : step.a;
+  const seated = o.mode === 'act' && step.s != null && (act === 'type' || act === 'phone');
+  if (seated) { const fv = o.loc.zones[step.z].front || [0, 1]; o.face = Math.atan2(-fv[0], -fv[1]); }
+  else if (o.mode === 'act') { const fc = actFacing(o.loc, step, o.lp); if (fc != null) o.face = fc; }
+  // Ausrichtung weich nachführen
+  let dy = o.face - o.fig.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  o.fig.rotation.y += dy * Math.min(1, dt * 8);
+  // Gliedmaßen
+  const walkPh = t * 9 + o.phase;
+  const L = o.legs, A = o.arms;
+  let la = 0, ra = 0, ll = 0, rl = 0, bob = 0, headY = 0, headX = 0;
+  o.carry.visible = act === 'carry' || (act === 'walk' && step.a === 'carry');
+  o.tool.visible = act === 'repair';
+  o.phone.visible = act === 'phone';
+  if (act === 'walk') {
+    if (!reduceMotion) { ll = Math.sin(walkPh) * 0.6; rl = -ll; la = -ll * 0.7; ra = ll * 0.7; bob = Math.abs(Math.sin(walkPh)) * 0.04; }
+    if (o.carry.visible) { la = ra = -1.3; }
+  } else if (act === 'type') { la = ra = -1.05 + (reduceMotion ? 0 : Math.sin(t * 14 + o.phase) * 0.06); headX = 0.2; }
+  else if (act === 'talk') { la = -0.3 + (reduceMotion ? 0 : Math.sin(t * 2.2 + o.phase) * 0.35); headY = reduceMotion ? 0 : Math.sin(t * 0.9 + o.phase) * 0.35; }
+  else if (act === 'carry') { la = ra = -1.3; headX = 0.2; bob = reduceMotion ? 0 : Math.sin(t * 2 + o.phase) * 0.01; }
+  else if (act === 'repair') { la = -0.9; ra = -1.2 + (reduceMotion ? 0 : Math.sin(t * 10 + o.phase) * 0.45); headX = 0.35; }
+  else if (act === 'phone') { ra = -2.6; la = seated ? -0.9 : (reduceMotion ? 0 : Math.sin(t * 1.5 + o.phase) * 0.15); headY = reduceMotion ? 0 : Math.sin(t * 0.7 + o.phase) * 0.25; }
+  else if (act === 'idle') { la = 0.05; ra = -0.6; headY = reduceMotion ? 0 : Math.sin(t * 0.5 + o.phase) * 0.4; }
+  if (seated) { ll = rl = -1.45; }
+  L[0].rotation.x = ll; L[1].rotation.x = rl; A[0].rotation.x = la; A[1].rotation.x = ra;
+  o.head.rotation.set(headX, headY, 0);
+  const loc = o.loc;
+  o.fig.position.set(loc.x + o.lp.x, floorY(loc, o.bY, o.lp.f) + 0.02 + bob - (seated ? 0.2 : 0), loc.z + o.lp.z);
+  o.fig.visible = layerState.people && floorLabelShown(loc, o.bY, o.lp.f) && floorShown(loc, o.bY, o.lp.f);
+  o.ring.visible = !seated;
+  const inProj = selected && byId[selected].type === 'proj' && (byId[selected].d.owner === p.id || byId[selected].d.team.includes(p.id));
+  o.ring.scale.setScalar(selected === p.id || hovered === p.id || inProj ? 1.5 : 1);
+  o.labelPos.set(o.fig.position.x, o.fig.position.y + (seated ? 1.6 : 1.45), o.fig.position.z);
+}
+
+/* ════════════════ Projekt-Fahnen ════════════════ */
+const poleGeo = new THREE.CylinderGeometry(0.035, 0.035, 1, 8);
+PROJECTS.filter(pr => pr.flagged).forEach(pr => {
+  const loc = byId[pr.at].d;
+  const x = loc.x + pr.fl[0], z = loc.z + pr.fl[1];
+  const H = loc.id === 'hq' ? 5.6 : 3.4;
+  const g = new THREE.Group();
+  g.position.set(x, PLATE_Y, z);
+  const col = { bad: C.bad, warn: C.warn, ok: C.petrol, plan: C.plan, idea: 0x9aa8ad, done: 0x7b8d93 }[pr.status];
+  const pole = new THREE.Mesh(poleGeo, M.steel); pole.scale.y = H; pole.position.y = H / 2; pole.castShadow = true;
+  const flag = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.5, 0.04), mat(col, { roughness: 0.6 }));
+  flag.position.set(0.45, H - 0.3, 0); flag.castShadow = true;
+  const fill = new THREE.Mesh(new THREE.BoxGeometry(0.85 * pr.progress / 100 || 0.001, 0.08, 0.05), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  fill.position.set(0.025 + 0.85 * pr.progress / 200, H - 0.5, 0);
+  const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.2, 0.08, 16), M.steel); foot.position.y = 0.04;
+  g.add(tag(pole, pr.id), tag(flag, pr.id), fill, foot);
+  scene.add(g);
+  objects[pr.id] = { group: g, anchor: new THREE.Vector3(x, H - 0.3, z), flag };
+  addLabel(pr.id, 'proj ' + pr.status, `<span class="pb"><i style="width:${pr.progress}%"></i></span>${pr.short}<b>${pr.progress} %</b>`, new THREE.Vector3(x, PLATE_Y + H + 0.35, z), 'proj');
+});
+
+/* ════════════════ Prozess-Overlay ════════════════ */
+let activeProc = null, procGroup = null, procLabels = [], procFlow = [];
+function stepAnchor(s, seen) {
+  const host = byId[s.at];
+  const base = objects[s.at].anchor.clone();
+  if (host.type === 'loc') base.y = 5.5;
+  if (host.type === 'cust') base.y += 1.4;
+  const k = seen[s.at] = (seen[s.at] || 0) + 1;
+  base.y += (k - 1) * 1.7;
+  return base;
+}
+function clearProcess() {
+  if (procGroup) { procGroup.traverse(o => { const i = pickables.indexOf(o); if (i >= 0) pickables.splice(i, 1); }); scene.remove(procGroup); }
+  procLabels.forEach(l => { l.el.remove(); labels.splice(labels.indexOf(l), 1); });
+  procGroup = null; procLabels = []; procFlow = []; activeProc = null;
+}
+function showProcess(id) {
+  if (activeProc === id) return;
+  clearProcess();
+  const pr = byId[id].d;
+  activeProc = id;
+  procGroup = new THREE.Group();
+  const seen = {};
+  const pts = pr.steps.map(s => (s.pos = stepAnchor(s, seen)));
+  const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+  procGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 40, 0.12, 8), new THREE.MeshBasicMaterial({ color: C.petrol, transparent: true, opacity: 0.75 })));
+  for (let i = 0; i < 16; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshBasicMaterial({ color: 0x0e6a87 }));
+    m.userData.t = i / 16; procGroup.add(m); procFlow.push({ m, curve });
+  }
+  const tokGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+  pr.steps.forEach(s => {
+    const c = s.state === 'hot' ? C.bad : s.state === 'slow' ? C.warn : C.petrol;
+    const marker = new THREE.Mesh(new THREE.SphereGeometry(0.45, 20, 14), new THREE.MeshBasicMaterial({ color: c }));
+    marker.position.copy(s.pos);
+    procGroup.add(tag(marker, s.id));
+    s.marker = marker;
+    for (let j = 0; j < Math.min(s.wip, 12); j++) {
+      const tk = new THREE.Mesh(tokGeo, mat(c, { roughness: 0.5 }));
+      tk.position.set(s.pos.x + 0.8 + (j % 3) * 0.45, s.pos.y - 0.2 + Math.floor(j / 3) * 0.45, s.pos.z + 0.3);
+      tk.castShadow = true;
+      procGroup.add(tag(tk, s.id));
+    }
+    procLabels.push(addLabel(s.id, 'step' + (s.state ? ' ' + s.state : ''), `<span class="num">${s.no}</span>${s.n} <b>${s.wip}</b>`, s.pos.clone().add(new THREE.Vector3(0, 1.1, 0)), 'step'));
+  });
+  scene.add(procGroup);
+}
+
+/* ════════════════ Bedienfelder ════════════════ */
+const kpis = document.getElementById('kpis');
+let mode = 'now';
+function renderKpis() {
+  const vis = x => mode === 'plan' || !x.plan;
+  const bad = SYSTEMS.filter(s => !s.plan && s.status === 'bad');
+  const warn = SYSTEMS.filter(s => !s.plan && s.status === 'warn');
+  const openHand = PROCESSES.reduce((a, pr) => a + pr.steps.filter(s => s.open).length, 0);
+  kpis.innerHTML =
+    `<button type="button" class="kpi" data-go="company"><strong>2</strong>Gesellschaften</button>` +
+    `<span class="kpi opt"><strong>${LOCATIONS.filter(l => vis(l) && !l.bau).length}</strong>Standorte</span>` +
+    `<span class="kpi opt"><strong>${SYSTEMS.filter(x => !x.plan).length}</strong>Programme</span>` +
+    `<button type="button" class="kpi opt" data-go="roadmap"><strong>${PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status)).length}</strong>Vorhaben aktiv</button>` +
+    `<button type="button" class="kpi opt" data-go="bauall"><strong>${LOCATIONS.filter(l => l.bau).length}</strong>Baustellen</button>` +
+    `<button type="button" class="kpi warn" data-go="wartung"><strong>${openHand}</strong>Übergaben offen</button>`;
+  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { openTab('tabProj'); setProjFilter('bau'); if (narrow()) { leftEl.classList.add('open'); } return; } select(b.dataset.go, !['roadmap', 'company'].includes(b.dataset.go)); }));
+}
+const loclist = document.getElementById('loclist');
+function renderLocList() {
+  loclist.innerHTML = '';
+  LOCATIONS.filter(l => (mode === 'plan' || !l.plan) && !l.bau).forEach(l => {
+    const sysHere = SYSTEMS.filter(s => s.home === l.id && !s.plan);
+    const worst = sysHere.some(s => s.status === 'bad') ? 'bad' : sysHere.some(s => s.status === 'warn') ? 'warn' : 'ok';
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button" data-id="${l.id}"><span class="dot ${l.plan ? 'plan' : worst}"></span><span class="who">${l.name}<em>${COMPANIES.find(c => c.id === l.company).short} · ${l.headLabel}</em></span><small>${l.plan ? '2027' : l.km ? Math.round(l.km) + ' km' : 'Zentrale'}</small></button>`;
+    li.querySelector('button').addEventListener('click', () => select(l.id, true));
+    loclist.appendChild(li);
+  });
+  const li = document.createElement('li');
+  li.innerHTML = `<button type="button"><span></span><span>Gesamtansicht</span><small>Pos1</small></button>`;
+  li.querySelector('button').addEventListener('click', () => { select(null); flyTo(HOME_TGT, HOME_CAM); });
+  loclist.appendChild(li);
+}
+const teamlist = document.getElementById('teamlist');
+function renderTeam() {
+  document.getElementById('teamSum').textContent = `Gegliedert nach den Tätigkeitsgruppen. Figuren sind Platzhalter, außer Geschäftsführung und KI-Beauftragtem.`;
+  teamlist.innerHTML = '';
+  GROUPS.forEach(g => {
+    const ps = PEOPLE.filter(p => p.group === g.id);
+    const h = document.createElement('li');
+    h.innerHTML = `<button type="button" class="grpbtn" data-id="grp-${g.id}"><span>${g.n}</span><small>${g.field ? 'gewerblich' : 'Büro'} · ${ps.length}</small></button>`;
+    h.querySelector('button').addEventListener('click', () => select('grp-' + g.id, false));
+    teamlist.appendChild(h);
+    ps.forEach(p => {
+      const li = document.createElement('li');
+      li.innerHTML = `<button type="button" data-id="${p.id}"><span class="dot ${presDot(p.presence)}"></span><span class="who">${p.name}<em>${byId[p.at].d.name}${p.named ? ' · ' + p.role : ''}</em></span><small></small></button>`;
+      li.querySelector('button').addEventListener('click', () => select(p.id, true));
+      teamlist.appendChild(li);
+    });
+  });
+}
+const proclist = document.getElementById('proclist');
+function procState(pr) { return pr.steps.some(s => s.state === 'hot') ? 'bad' : pr.steps.some(s => s.state === 'slow') ? 'warn' : 'ok'; }
+function renderProcList() {
+  proclist.innerHTML = '';
+  PROCESSES.forEach(pr => {
+    const li = document.createElement('li');
+    li.innerHTML = `<button type="button" data-id="${pr.id}"><span class="dot ${procState(pr)}"></span><span class="who">${pr.name}<em>${pr.steps.length} Schritte</em></span><small>${pr.steps.reduce((a, s) => a + s.wip, 0)} offen</small></button>`;
+    li.querySelector('button').addEventListener('click', () => select(pr.id, true));
+    proclist.appendChild(li);
+  });
+}
+const projlist = document.getElementById('projlist');
+let projFilter = 'all';
+function setProjFilter(f) { projFilter = f; document.querySelectorAll('[data-pf]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pf === f)); renderProjList(); }
+document.querySelectorAll('[data-pf]').forEach(b => b.addEventListener('click', () => setProjFilter(b.dataset.pf)));
+function renderProjList() {
+  projlist.innerHTML = '';
+  PROJ_ORDER.forEach(st => {
+    const ps = PROJECTS.filter(pr => pr.status === st && (projFilter === 'all' || pr.kind === projFilter));
+    if (!ps.length) return;
+    const h = document.createElement('li'); h.className = 'grp'; h.textContent = `${PROJ_TXT[st]} · ${ps.length}`; projlist.appendChild(h);
+    ps.forEach(pr => {
+      const li = document.createElement('li');
+      li.innerHTML = `<button type="button" data-id="${pr.id}"><span class="dot ${st}"></span><span class="who"><span>${pr.kind === 'bau' ? '<span class="bautag">Bau</span>' : pr.kind === 'digital' ? '<span class="bautag dig">Digital</span>' : ''}${pr.name}</span><em>${pr.kind === 'bau' ? pr.phases[pr.phase] + ' · ' : ''}${byId[pr.owner].d.name} · ${pr.end ? 'bis ' + fmtDate(pr.end) : 'ohne Termin'}</em></span><span class="prog"><small>${pr.status === 'idea' ? 'Idee' : pr.progress + ' %'}</small><span class="pb ${st}"><i style="width:${pr.progress}%"></i></span></span></button>`;
+      li.querySelector('button').addEventListener('click', () => select(pr.id, true));
+      projlist.appendChild(li);
+    });
+  });
+}
+document.getElementById('roadBtn').addEventListener('click', () => select('roadmap', false));
+document.getElementById('companyBtn').addEventListener('click', () => select('company', false));
+const TABS = [['tabLoc', 'paneLoc'], ['tabTeam', 'paneTeam'], ['tabProc', 'paneProc'], ['tabProj', 'paneProj']];
+function openTab(tabId) { TABS.forEach(([t, p]) => { document.getElementById(t).setAttribute('aria-selected', t === tabId); document.getElementById(p).hidden = t !== tabId; }); }
+TABS.forEach(([t]) => document.getElementById(t).addEventListener('click', () => openTab(t)));
+const leftEl = document.getElementById('left'), menuBtn = document.getElementById('menuBtn');
+menuBtn.addEventListener('click', () => { const o = leftEl.classList.toggle('open'); menuBtn.setAttribute('aria-expanded', o); });
+const narrow = () => window.matchMedia('(max-width: 860px)').matches;
+
+/* ════════════════ Detailansicht ════════════════ */
+const detail = document.getElementById('detail');
+let selected = null;
+function linkRow(l, selfId) {
+  const other = byId[l.from === selfId ? l.to : l.from].d;
+  const arrow = l.dir === 'both' ? '⇄' : l.from === selfId ? '→' : '←';
+  return `<li><button type="button" data-go="${l.id}"><span class="dot ${l.plan ? 'plan' : statusOf(l)}"></span><span>${arrow} ${other.name}<small>${l.name} · ${l.plan ? 'geplant' : LINK_TXT[statusOf(l)]}</small></span></button></li>`;
+}
+function sysRow(sid, note) {
+  const sy = byId[sid].d;
+  return `<li><button type="button" data-go="${sid}"><span class="dot ${sy.plan ? 'plan' : statusOf(sy)}"></span><span>${sy.name}<small>${note || sy.kind}</small></span></button></li>`;
+}
+function sparkline(seed, color) {
+  let v = 50; const pts = [];
+  for (let i = 0; i < 40; i++) { v += Math.sin(i * 0.7 + seed) * 6 + Math.sin(seed * 13 + i * 3.1) * 4; v = Math.max(15, Math.min(85, v)); pts.push(v); }
+  const d = pts.map((y, i) => `${i ? 'L' : 'M'}${(i / 39 * 300).toFixed(1)},${(100 - y).toFixed(1)}`).join(' ');
+  return `<svg class="spark" viewBox="0 0 300 100" preserveAspectRatio="none" aria-hidden="true">
+    <line x1="0" y1="50" x2="300" y2="50" stroke="#d9e0e2" stroke-width="1" vector-effect="non-scaling-stroke"/>
+    <path d="${d} L300,100 L0,100 Z" fill="${color}" fill-opacity=".1"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function personRows(ps) {
+  return ps.map(p => `<li><button type="button" data-go="${p.id}"><span class="dot ${presDot(p.presence)}"></span><span>${p.name}<small>${p.named ? p.role + ' · ' : ''}${currentActivity(p)}</small></span></button></li>`).join('');
+}
+function projRows(ps) {
+  return ps.map(pr => `<li><button type="button" data-go="${pr.id}"><span class="dot ${pr.status}"></span><span>${pr.name}<small>${PROJ_TXT[pr.status]}${pr.status === 'idea' ? '' : ` · ${pr.progress} %`} · ${pr.end ? 'bis ' + fmtDate(pr.end) : 'ohne Termin'}</small></span></button></li>`).join('');
+}
+function roadmapHtml() {
+  const t0 = new Date('2026-03-01'), t1 = new Date('2027-12-31'), span = t1 - t0;
+  const pos = d => Math.max(0, Math.min(100, (new Date(d) - t0) / span * 100));
+  const ticks = [];
+  for (let y = 2026, m = 3; y < 2028; m += 3) { if (m > 12) { m -= 12; y++; } if (y > 2027) break; ticks.push([`${y}-${String(m).padStart(2, '0')}-01`, m === 1 ? String(y) : MONTHS_DE[m - 1]]); }
+  const rows = PROJ_ORDER.flatMap(st => PROJECTS.filter(pr => pr.status === st && pr.start));
+  const today = pos(TODAY);
+  return `<div class="gantt"><div class="gscale"><b></b><div>${ticks.map(([d, l]) => `<span style="left:${pos(d).toFixed(1)}%">${l}</span>`).join('')}</div></div>
+    ${rows.map(pr => `<button type="button" class="grow" data-go="${pr.id}"><span class="gn">${pr.kind === 'bau' ? '<span class="bautag">Bau</span>' : ''}${pr.short}<small>${byId[pr.owner].d.name}</small></span><span class="gt"><i class="gb ${pr.status}" style="left:${pos(pr.start).toFixed(1)}%;width:${Math.max(1.2, pos(pr.end) - pos(pr.start)).toFixed(1)}%"><b style="width:${pr.progress}%"></b></i><i class="gtoday" style="left:${today.toFixed(1)}%"></i></span></button>`).join('')}
+  </div>`;
+}
+function demoPill(d) { return d.real ? '<span class="pill ok">echt angebunden</span>' : '<span class="pill demo">Beispiel</span>'; }
+
+// Auf dem Handy deckt das Detailfeld die untere Hälfte ab: Bildmitte dann nach oben verschieben
+function zoomK() { return Math.max(1, 0.9 / camera.aspect) * (narrow() ? 1.35 : 1); }
+function updateViewOffset() {
+  const w = window.innerWidth, h = window.innerHeight;
+  if (narrow() && !detail.hidden) {
+    // Bildmitte in die freie Fläche zwischen Kopfzeile und Detailfeld legen
+    const top = document.getElementById('top').getBoundingClientRect().bottom, bottom = detail.getBoundingClientRect().top;
+    const k = Math.max(0, h - (top + bottom));
+    camera.setViewOffset(w, h + k, 0, k, w, h);
+  } else camera.clearViewOffset();
+}
+function renderDetail(id) {
+  if (!id) { detail.hidden = true; updateViewOffset(); return; }
+  const { type, d } = byId[id];
+  let html = '<button type="button" class="close" aria-label="Details schließen">×</button>';
+  if (type === 'company') {
+    const offices = LOCATIONS.filter(l => !l.bau);
+    html += `<div class="eyebrow">Unternehmen · seit ${COMPANY_INFO.since}</div><h2>druckluft-technik Chemnitz</h2>
+      <p class="sub">Familienunternehmen für Druckluft und industrielle Versorgungstechnik: Anlagenbau, Service und Werkzeuge. Mitglied im Airgroup-Netzwerk.</p>
+      <div class="pills"><span class="pill ok">Angaben aus Bachelorarbeit und Website</span></div>
+      <p class="h">Gesellschaften</p><ul class="links" style="margin-bottom:14px">${COMPANIES.map(c => `<li class="trow"><span class="dot ok"></span><span>${c.name} (${c.short})<small>${c.lead.length ? c.lead.map(l => `${l[0]}, ${l[1]}`).join(' · ') : 'Geschäftsführung noch eintragen'} · Standorte: ${c.sites.map(s => byId[s].d.name).join(', ')}</small></span></li>`).join('')}</ul>
+      <p class="h">Mitarbeitende (Ausgangsstand)</p>
+      <dl class="facts"><dt>Gesamt</dt><dd>${COMPANY_INFO.staffTotal}</dd><dt>Büro & Verwaltung</dt><dd>${COMPANY_INFO.office}</dd>${offices.map(l => `<dt>${l.name}</dt><dd>${l.headLabel}</dd>`).join('')}</dl>
+      <p class="hint">Chemnitz und Siebenlehn gehören zur dtC, Zwenkau zur dtL. Zahlen bitte regelmäßig aktualisieren; für Zwenkau weicht die Angabe von Okt. 2026 von der Bachelorarbeit ab.</p>
+      <p class="h">Leistungsbereiche</p><ul class="links" style="margin-bottom:14px">${COMPANY_INFO.areas.map(a => { const pr = PROCESSES.find(x => x.area === a[0]); return `<li><button type="button" data-go="${pr.id}"><span class="dot ok"></span><span>${a[0]}<small>${a[1]}</small></span></button></li>`; }).join('')}</ul>
+      <p class="h">Tätigkeitsgruppen</p><ul class="links" style="margin-bottom:14px">${GROUPS.map(g => `<li><button type="button" data-go="grp-${g.id}"><span class="dot ${g.field ? 'away' : 'ok'}"></span><span>${g.n}<small>${g.field ? 'gewerblich' : 'Büro'} · ${PEOPLE.filter(p => p.group === g.id).length} im Modell</small></span></button></li>`).join('')}</ul>
+      <p class="h">Qualität & Nachweise</p><ul class="risks">${COMPANY_INFO.quality.map(q => `<li>${q}</li>`).join('')}</ul>
+      <p class="h">Bereiche im MIS</p><p class="sub">${COMPANY_INFO.mis.join(' · ')}</p>`;
+  } else if (type === 'group') {
+    const ppl = PEOPLE.filter(p => p.group === d.id);
+    const steps = PROCESSES.flatMap(pr => pr.steps.filter(s => s.who === d.id));
+    html += `<div class="eyebrow">${d.field ? 'Gewerbliche Funktion' : 'Tätigkeitsgruppe im Büro'}</div><h2>${d.n}</h2><p class="sub">${d.d}</p>
+      <div class="pills"><span class="pill ok">aus der Bachelorarbeit</span><span class="pill demo">${ppl.length} im Modell</span></div>
+      ${ppl.length ? `<p class="h">Personen im Modell</p><ul class="links" style="margin-bottom:14px">${personRows(ppl)}</ul>` : ''}
+      <p class="h">Programme</p><ul class="links" style="margin-bottom:14px">${d.sys.map(sid => sysRow(sid)).join('')}</ul>
+      ${steps.length ? `<p class="h">Zuständig in Prozessschritten</p><ul class="links">${steps.map(s => `<li><button type="button" data-go="${s.id}"><span class="dot ${s.state === 'hot' ? 'bad' : s.state === 'slow' ? 'warn' : 'ok'}"></span><span>${s.proc.name} · ${s.no}. ${s.n}<small>Übergibt: ${s.gives}</small></span></button></li>`).join('')}</ul>` : ''}`;
+  } else if (type === 'loc') {
+    const team = PEOPLE.filter(p => p.at === d.id);
+    const comp = COMPANIES.find(c => c.id === d.company);
+    html += `<div class="eyebrow">Standort${comp ? ' · ' + comp.short : ''}</div><h2>${d.name}</h2><p class="sub">${comp ? comp.name : ''}${d.kind ? '<br>' + d.kind : ''}</p>
+      <div class="pills"><span class="pill ok">in Betrieb</span><span class="pill demo">Grundriss: Platzhalter</span></div>
+      <dl class="facts"><dt>Adresse</dt><dd>${d.addr}</dd>${d.km ? `<dt>Entfernung zu Chemnitz</dt><dd>${Math.round(d.km)} km Luftlinie</dd>` : ''}<dt>Mitarbeitende</dt><dd>${d.headLabel}</dd><dt>Im Modell</dt><dd>${d.staff} Figuren</dd><dt>Gebäude</dt><dd>${d.buildings.map(b => b.name).join(', ')}</dd></dl>
+      <p class="hint">${d.headNote}</p>
+      ${d.id === 'hq' ? `<p class="h">Etagen im Bürogebäude</p><ul class="links" style="margin-bottom:14px">${[2, 1, 0].map(f => {
+        const rooms = Object.values(d.zones).filter(z => z.b === 'b1' && (z.f || 0) === f).map(z => z.n);
+        const n = PEOPLE.filter(p => { const o = objects[p.id]; return o && o.loc === d && !o.hidden && o.bY === 'b1' && Math.round(o.lp.f) === f; }).length;
+        return `<li><button type="button" data-floor="${f}"><span class="dot ${floorView === f ? 'warn' : 'ok'}"></span><span>${d.buildings[0].floorNames[f]} · ${n} ${n === 1 ? 'Person' : 'Personen'}<small>${rooms.join(', ')}</small></span></button></li>`;
+      }).join('')}</ul>` : ''}
+      ${PROJECTS.some(pr => pr.at === d.id) ? `<p class="h">Vorhaben am Standort</p><ul class="links" style="margin-bottom:14px">${projRows(PROJECTS.filter(pr => pr.at === d.id))}</ul>` : ''}
+      ${team.length ? `<p class="h">Im Modell vor Ort</p><ul class="links">${personRows(team)}</ul>` : ''}`;
+  } else if (type === 'sys') {
+    const st = statusOf(d);
+    const ls = LINKS.filter(l => (l.from === d.id || l.to === d.id) && (mode === 'plan' || !l.plan));
+    const users = GROUPS.filter(g => g.sys.includes(d.id));
+    const steps = PROCESSES.flatMap(pr => pr.steps.filter(s => s.sys === d.id));
+    const owner = d.owner ? byId[d.owner].d.name : 'noch eintragen';
+    html += `<div class="eyebrow">Programm · ${d.kind}</div><h2>${d.name}</h2><p class="sub">${d.role}</p>
+      <div class="pills"><span class="pill ${d.plan ? 'plan' : st}">${d.plan ? 'geplant' : d.statusText || STATUS_TXT[st]}</span><span class="pill demo">${d.plan ? 'laut Bachelorarbeit geplant' : 'laut Bachelorarbeit im Einsatz'}</span></div>
+      ${d.status === 'check' ? '<p class="msg warn">Entwicklungs- und Nutzungsstand ist noch zu prüfen.</p>' : ''}
+      <dl class="facts"><dt>Ansprechpartner</dt><dd>${owner}</dd><dt>Zugang</dt><dd>Link noch eintragen</dd><dt>Informationsbezüge</dt><dd>${ls.filter(l => l.status === 'ok' && !l.plan).length} bestätigt · ${ls.filter(l => l.status === 'check').length} zu prüfen</dd></dl>
+      ${users.length ? `<p class="h">Genutzt von</p><ul class="links" style="margin-bottom:14px">${users.map(g => `<li><button type="button" data-go="grp-${g.id}"><span class="dot ${g.field ? 'away' : 'ok'}"></span><span>${g.n}<small>${g.field ? 'gewerblich' : 'Büro'}</small></span></button></li>`).join('')}</ul>` : ''}
+      ${steps.length ? `<p class="h">In Prozessschritten</p><ul class="links" style="margin-bottom:14px">${steps.map(s => `<li><button type="button" data-go="${s.id}"><span class="dot ok"></span><span>${s.proc.name} · ${s.no}. ${s.n}<small>${GROUP_N[s.who]}</small></span></button></li>`).join('')}</ul>` : ''}
+      ${PROJECTS.some(pr => pr.systems.includes(d.id)) ? `<p class="h">Vorhaben</p><ul class="links" style="margin-bottom:14px">${projRows(PROJECTS.filter(pr => pr.systems.includes(d.id)))}</ul>` : ''}
+      ${ls.length ? `<p class="h">Informationsbezüge · ${ls.length}</p><ul class="links">${ls.map(l => linkRow(l, d.id)).join('')}</ul>` : ''}`;
+  } else if (type === 'link') {
+    const st = statusOf(d);
+    const a = byId[d.from].d, b = byId[d.to].d;
+    html += `<div class="eyebrow">Informationsbezug</div><h2>${d.name}</h2><p class="sub">${a.name} ${d.dir === 'both' ? '⇄' : '→'} ${b.name}</p>
+      <div class="pills"><span class="pill ${d.plan ? 'plan' : st === 'check' ? 'warn' : 'ok'}">${d.plan ? 'geplant' : LINK_TXT[st]}</span></div>
+      <p class="sub">${d.desc}</p>
+      ${st === 'check' && !d.plan ? '<p class="msg warn">Ob die Daten automatisch übertragen oder von Hand übernommen werden, ist noch zu prüfen. Erst danach als Schnittstelle eintragen.</p>' : ''}
+      <dl class="facts"><dt>Richtung</dt><dd>${d.dir === 'both' ? 'beidseitig' : 'einseitig'}</dd></dl>
+      <p class="h">Programme</p><ul class="links">${sysRow(a.id, 'Quelle')}${sysRow(b.id, 'Ziel')}</ul>`;
+  } else if (type === 'cust') {
+    html += `<div class="eyebrow">Kunde · Beispiel</div><h2>${d.name}</h2><p class="sub">${d.note}</p>
+      <div class="pills"><span class="pill demo">Beispiel</span></div>
+      <dl class="facts"><dt>Anlagen</dt><dd>${d.units}</dd><dt>Betreut über</dt><dd>Service · Wartungsvertrag</dd></dl>
+      ${PROJECTS.some(pr => pr.client === d.id) ? `<p class="h">Bauvorhaben</p><ul class="links">${projRows(PROJECTS.filter(pr => pr.client === d.id))}</ul>` : ''}`;
+  } else if (type === 'van') {
+    html += `<div class="eyebrow">Fahrzeug · Beispiel</div><h2>${d.name}</h2><p class="sub">${d.job}</p>
+      <div class="pills"><span class="pill ok">unterwegs</span><span class="pill demo">Beispiel</span></div>
+      <dl class="facts"><dt>Besatzung</dt><dd>${d.crew}</dd><dt>Tour</dt><dd>${d.route.filter(r => !Array.isArray(r)).map(r => byId[r].d.name.split(' · ')[0]).join(' → ')}</dd><dt>Fuhrpark</dt><dd>Fleetcars</dd></dl>
+      <p class="h">An Bord</p><ul class="links">${personRows(PEOPLE.filter(p => p.at === d.id))}</ul>`;
+  } else if (type === 'person') {
+    const host = byId[d.at];
+    const step = d.proc ? byId[d.proc[0] + '-' + d.proc[1]].d : null;
+    const o = objects[d.id];
+    const grp = GROUPS.find(g => g.id === d.group);
+    html += `<div class="eyebrow">${d.role}</div><h2>${d.name}</h2>
+      <div class="pills"><span class="pill ${d.presence === 'online' ? 'ok' : d.presence === 'meet' ? 'warn' : 'demo'}">${PRESENCE_TXT[d.presence]}</span><span class="pill demo">${d.named ? 'Tätigkeit: Beispiel' : 'Platzhalter für eine Person'}</span></div>
+      ${d.presence !== 'off' ? `<p class="live"><i></i><span id="liveAct">${currentActivity(d)}</span></p>` : `<p class="sub">${d.activity}</p>`}
+      <dl class="facts"><dt>Standort</dt><dd>${host.d.name}${host.type === 'van' ? ' · unterwegs' : ''}</dd>${o && o.loc ? `<dt>Gerade in</dt><dd id="liveZone">${zoneName(o.loc, d.routine[o.step].z)}</dd>` : ''}</dl>
+      ${grp ? `<ul class="links" style="margin-bottom:14px"><li><button type="button" data-go="grp-${grp.id}"><span class="dot ok"></span><span>${grp.n}<small>Tätigkeitsgruppe</small></span></button></li></ul>` : ''}
+      ${d.routine.length ? `<p class="h">Typischer Ablauf</p><ul class="links" style="margin-bottom:14px">${d.routine.map(r => `<li class="trow"><span class="dot ${r.a === 'idle' ? 'away' : 'ok'}"></span><span>${zoneName(byId[d.at].d, r.z)}<small>${r.t}</small></span></li>`).join('')}</ul>` : ''}
+      ${projOf(d.id).length ? `<p class="h">Vorhaben</p><ul class="links" style="margin-bottom:14px">${projRows(projOf(d.id))}</ul>` : ''}
+      ${step ? `<p class="h">Arbeitet gerade an</p><ul class="links"><li><button type="button" data-go="${step.id}"><span class="dot ${step.state === 'hot' ? 'bad' : step.state === 'slow' ? 'warn' : 'ok'}"></span><span>${step.proc.name} · Schritt ${step.no}<small>${step.n} · ${step.wip} offene Vorgänge</small></span></button></li></ul>` : ''}`;
+  } else if (type === 'roadmap') {
+    const act = PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status));
+    html += `<div class="eyebrow">Projekte</div><h2>Roadmap 2026–2027</h2><p class="sub">Balken = Laufzeit, dunkler Teil = Fortschritt. Die gestrichelte Linie ist heute.</p>
+      <div class="pills"><span class="pill ok">${act.length} aktiv</span>${PROJECTS.some(pr => pr.status === 'bad') ? `<span class="pill bad">${PROJECTS.filter(pr => pr.status === 'bad').length} kritisch</span>` : ''}<span class="pill plan">${PROJECTS.filter(pr => pr.status === 'plan').length} geplant</span><span class="pill demo">${PROJECTS.filter(pr => pr.status === 'idea').length} Ideen</span></div>
+      ${roadmapHtml()}
+      ${PROJECTS.some(pr => !pr.start) ? `<p class="h" style="margin-top:12px">Ideen ohne Termin</p><ul class="links">${projRows(PROJECTS.filter(pr => !pr.start))}</ul>` : ''}
+      <dl class="facts" style="margin-top:12px"><dt>Ø Fortschritt aktiver Projekte</dt><dd>${Math.round(act.reduce((a, pr) => a + pr.progress, 0) / Math.max(1, act.length))} %</dd><dt>Nächstes Projektende</dt><dd>${(() => { const n = act.slice().sort((a, b) => new Date(a.end) - new Date(b.end))[0]; return n ? `${n.short} · ${fmtDate(n.end)}` : '–'; })()}</dd></dl>`;
+  } else if (type === 'proj') {
+    const owner = byId[d.owner].d, loc = byId[d.at].d;
+    const nextIdx = d.ms.findIndex(m => !m[1]);
+    const days = d.end ? Math.round((new Date(d.end) - TODAY) / 864e5) : null;
+    const isBau = d.kind === 'bau';
+    const eur = n => n.toLocaleString('de-DE') + ' €';
+    const costPct = isBau ? Math.round(d.cost / d.budget * 100) : 0;
+    html += `<div class="eyebrow">${isBau ? 'Bauvorhaben' : 'Projekt'} · ${loc.name}</div><h2>${d.name}</h2><p class="sub">${d.goal}</p>
+      <div class="pills"><span class="pill ${d.status === 'done' || d.status === 'idea' ? 'demo' : d.status}">${PROJ_TXT[d.status]}</span><span class="pill demo">${d.example ? 'Beispiel' : d.kind === 'digital' ? 'laut Bachelorarbeit · Termine geschätzt' : 'Beispiel'}</span></div>
+      ${d.status === 'bad' ? `<p class="msg">Kritisch: ${d.risks[0] || 'Termin in Gefahr'}.</p>` : ''}
+      ${d.status !== 'idea' ? `<dl class="facts" style="margin-bottom:6px"><dt>Fortschritt</dt><dd>${d.progress} %</dd></dl>
+      <div class="bigbar ${d.status}"><i style="width:${d.progress}%"></i></div>` : ''}
+      <dl class="facts">${d.start ? `<dt>Zeitraum</dt><dd>${fmtDate(d.start)} – ${fmtDate(d.end)}</dd><dt>${d.status === 'done' ? 'Abgeschlossen' : days >= 0 ? 'Restzeit' : 'Überfällig'}</dt><dd>${d.status === 'done' ? fmtDate(d.end) : Math.abs(days) + ' Tage'}</dd>` : '<dt>Zeitraum</dt><dd>noch nicht terminiert</dd>'}${d.next ? `<dt>Nächster Schritt</dt><dd>${d.next}</dd>` : nextIdx >= 0 ? `<dt>Nächster Meilenstein</dt><dd>${d.ms[nextIdx][0]}</dd>` : ''}</dl>
+      ${d.decisions && d.decisions.length ? `<p class="h">Offene Entscheidungen</p><ul class="risks">${d.decisions.map(x => `<li>${x}</li>`).join('')}</ul>` : ''}
+      ${isBau ? `<p class="h">Bauphase ${d.phase + 1} von ${d.phases.length}</p>
+        <ol class="phases">${d.phases.map((ph, i) => `<li class="${i < d.phase ? 'done' : i === d.phase ? 'now' : ''}"><i></i><span>${ph}</span></li>`).join('')}</ol>
+        <dl class="facts">${d.client ? `<dt>Auftraggeber</dt><dd>${byId[d.client].d.name}</dd>` : '<dt>Auftraggeber</dt><dd>eigenes Vorhaben</dd>'}<dt>Budget</dt><dd>${eur(d.budget)}</dd><dt>Ist-Kosten</dt><dd>${eur(d.cost)} · ${costPct} %</dd><dt>Offene Mängel</dt><dd>${d.defects}</dd></dl>
+        <div class="costbar" aria-hidden="true"><i style="width:${Math.min(100, costPct)}%" class="${costPct > d.progress + 10 ? 'over' : ''}"></i><u style="left:${d.progress}%"></u></div>
+        <p class="hint">Balken = verbrauchtes Budget, Strich = Baufortschritt. ${costPct > d.progress + 10 ? 'Die Kosten laufen dem Fortschritt voraus.' : 'Kosten und Fortschritt passen zusammen.'}</p>` : ''}
+      <p class="h">${isBau ? 'Bauleitung' : 'Verantwortlich'}</p><ul class="links" style="margin-bottom:14px">${personRows([owner])}</ul>
+      ${d.team.length ? `<p class="h">Team</p><ul class="links" style="margin-bottom:14px">${personRows(d.team.map(id => byId[id].d))}</ul>` : ''}
+      ${isBau && d.trades ? `<p class="h">Gewerke</p><ul class="links" style="margin-bottom:14px">${d.trades.map(t => `<li class="trow"><span class="dot ${t[2] ? 'ok' : 'off'}"></span><span>${t[0]}<small>${t[1]}${t[2] ? ' · fertig' : ''}</small></span></li>`).join('')}</ul>` : ''}
+      ${isBau && d.diary ? `<p class="h">Bautagebuch</p><ul class="diary">${d.diary.map(e => `<li><time>${e[0]}</time><span>${e[1]}</span></li>`).join('')}</ul>` : ''}
+      ${isBau && d.client ? `<ul class="links" style="margin-bottom:14px"><li><button type="button" data-go="${d.client}"><span class="dot ok"></span><span>${byId[d.client].d.name}<small>Kundengelände und Anlagen</small></span></button></li></ul>` : ''}
+      ${d.ms.length ? `<p class="h">Meilensteine</p><ol class="ms">${d.ms.map((m, i) => `<li class="${m[1] ? 'done' : i === nextIdx ? 'next' : ''}"><span>${m[0]}</span></li>`).join('')}</ol>` : ''}
+      ${d.risks.length ? `<p class="h">Risiken</p><ul class="risks">${d.risks.map(r => `<li>${r}</li>`).join('')}</ul>` : ''}
+      ${d.systems.length ? `<p class="h">Betroffene Programme</p><ul class="links">${d.systems.map(sid => sysRow(sid)).join('')}</ul>` : ''}`;
+  } else if (type === 'proc' || type === 'step') {
+    const pr = type === 'proc' ? d : d.proc;
+    const open = pr.steps.reduce((a, s) => a + s.wip, 0);
+    const lead = pr.steps.reduce((a, s) => a + s.days, 0);
+    const worst = pr.steps.filter(s => s.state).sort((a, b) => (a.state === 'hot' ? -1 : 1) - (b.state === 'hot' ? -1 : 1))[0];
+    const maxWip = Math.max(...pr.steps.map(s => s.wip), 1);
+    const st = procState(pr);
+    html += `<div class="eyebrow">Prozess · ${pr.area}</div><h2>${pr.name}</h2><p class="sub">${pr.goal}<br>${pr.target}</p>
+      <div class="pills"><span class="pill ${st}">${st === 'bad' ? 'Engpass' : st === 'warn' ? 'verzögert' : 'im Plan'}</span><span class="pill demo">Beispiel</span></div>
+      ${worst ? `<p class="msg ${worst.state === 'slow' ? 'warn' : ''}"><b>Offene Übergabe bei Schritt ${worst.no}, ${worst.n}:</b> ${worst.open}. Zuständig: ${GROUP_N[worst.who]}.</p>` : ''}
+      <p class="hint">Mengen und Liegezeiten sind Beispiele, bis echte Vorgänge angebunden sind. Schritte und Zuständigkeiten folgen dem Kernprozess aus der Bachelorarbeit.</p>
+      <dl class="facts"><dt>Offene Vorgänge</dt><dd>${open}</dd><dt>Ø Durchlaufzeit</dt><dd>${lead.toFixed(1).replace('.', ',')} Tage</dd><dt>Gerade beteiligt</dt><dd>${PEOPLE.filter(p => p.proc && p.proc[0] === pr.id).length} Personen</dd></dl>
+      <p class="h">Ablauf · offen · Ø Liegezeit</p>
+      <ol class="steps">${pr.steps.map(s => {
+        const on = type === 'step' && s.id === d.id;
+        const ppl = PEOPLE.filter(p => p.proc && p.proc[0] === pr.id && p.proc[1] === s.no);
+        return `<li class="${s.state || ''}${on ? ' on' : ''}"><button type="button" data-go="${s.id}" aria-expanded="${on}"><span class="num">${s.no}</span><span>${s.n}<small>${GROUP_N[s.who]}</small></span>
+          <span class="wip">${s.wip} · ${String(s.days).replace('.', ',')} T<span class="bar"><i style="width:${(s.wip / maxWip * 100).toFixed(0)}%"></i></span></span></button>
+          ${on ? `<div class="explain">${s.txt}<dl class="facts" style="margin:8px 0"><dt>Zuständig</dt><dd>${GROUP_N[s.who]}</dd><dt>Übergibt</dt><dd>${s.gives}</dd>${s.open ? `<dt>Offen</dt><dd>${s.open}</dd>` : ''}${s.no < pr.steps.length ? `<dt>Nächster Schritt</dt><dd>${GROUP_N[pr.steps[s.no].who]}</dd>` : ''}</dl><ul class="links"><li><button type="button" data-go="grp-${s.who}"><span class="dot ok"></span><span>${GROUP_N[s.who]}<small>Tätigkeitsgruppe</small></span></button></li>${ppl.length ? personRows(ppl) : ''}${s.sys ? `<li><button type="button" data-go="${s.sys}"><span class="dot ${statusOf(byId[s.sys].d)}"></span><span>${byId[s.sys].d.name}<small>System für diesen Schritt</small></span></button></li>` : ''}${s.link ? `<li><button type="button" data-go="${s.link}"><span class="dot ${statusOf(byId[s.link].d)}"></span><span>${byId[s.link].d.name}<small>Schnittstelle · ${STATUS_TXT[statusOf(byId[s.link].d)]}</small></span></button></li>` : ''}</ul></div>` : ''}</li>`;
+      }).join('')}</ol>`;
+  }
+  detail.innerHTML = `<div class="dbody">${html}</div>`;
+  detail.hidden = false;
+  updateViewOffset();
+  detail.querySelector('.close').addEventListener('click', () => select(null));
+  detail.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go !== id) select(b.dataset.go, true); }));
+  detail.querySelectorAll('[data-floor]').forEach(b => b.addEventListener('click', () => setFloor(b.dataset.floor)));
+}
+
+/* ════════════════ Auswahl & Kamera ════════════════ */
+let fly = null;
+function flyTo(target, camPos, follow) {
+  if (reduceMotion) { controls.target.copy(target); camera.position.copy(camPos); fly = follow ? { t: 1, follow } : null; return; }
+  fly = { t: 0, fromT: controls.target.clone(), toT: target.clone(), fromC: camera.position.clone(), toC: camPos.clone(), follow };
+}
+function select(id, move) {
+  if (!id) clearProcess();
+  else if (byId[id].type === 'proc') showProcess(id);
+  else if (byId[id].type === 'step') showProcess(byId[id].d.proc.id);
+  if (id && narrow()) { leftEl.classList.remove('open'); menuBtn.setAttribute('aria-expanded', false); }
+  selected = id;
+  labels.forEach(l => l.el.classList.toggle('sel', !!id && l.id === id));
+  document.querySelectorAll('.loclist button[data-id]').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
+  renderDetail(id);
+  if (!id || !move) return;
+  const { type, d } = byId[id];
+  if (type === 'proc' || type === 'roadmap') { flyTo(new THREE.Vector3(-3, 6, -4), new THREE.Vector3(-2, 60, 62)); return; }
+  if (type === 'proj' && d.status === 'plan' && d.systems.some(sid => byId[sid].d.plan) && mode !== 'plan') setMode('plan');
+  if (type === 'company' || type === 'group') { flyTo(HOME_TGT, HOME_CAM); return; }
+  const o = type === 'step' ? { anchor: d.pos } : type === 'proj' && (byId[d.at].d.bau || !objects[id]) ? { anchor: objects[d.at].anchor.clone().setY(byId[d.at].d.bau ? 1 : 3) } : objects[id];
+  let follow = null;
+  if (type === 'van') follow = id;
+  else if (type === 'person' && o.inVan) follow = o.inVan;
+  else if (type === 'person' && !o.hidden) follow = id;
+  const tgt = (follow ? objects[follow].group.position : o.anchor).clone();
+  if (id === 'hq') { tgt.x -= 1.8; tgt.z -= 1; tgt.y = floorView === 'all' ? 3.6 : 1.2; }
+  const dist = id === 'hq' ? (floorView === 'all' ? 25 : 19) : type === 'proj' ? (byId[d.at].d.bau ? 16 : 26) : type === 'loc' ? 22 : type === 'link' ? 36 : type === 'person' ? 13 : type === 'sys' && d.home === 'cloud' ? 30 : 24;
+  const dir = camera.position.clone().sub(controls.target).normalize();
+  dir.y = Math.max(dir.y, type === 'person' ? 0.75 : 0.6); dir.normalize();
+  if (id === 'hq') dir.copy(floorView === 'all' ? new THREE.Vector3(0.3, 0.36, 0.88) : new THREE.Vector3(0.25, 0.75, 0.6)).normalize();
+  flyTo(tgt, tgt.clone().add(dir.multiplyScalar(dist * zoomK())), follow);
+}
+
+/* ════════════════ Ebenen & Modus ════════════════ */
+const layerState = { sys: true, link: true, van: true, cust: true, people: true, proj: true };
+function applyVisibility() {
+  const showPlan = mode === 'plan';
+  LOCATIONS.forEach(l => objects[l.id].group.visible = !l.plan || showPlan);
+  CUSTOMERS.forEach(c => objects[c.id].group.visible = layerState.cust);
+  SYSTEMS.forEach(s => objects[s.id].group.visible = layerState.sys && (!s.plan || showPlan));
+  LINKS.forEach(l => {
+    const sysOk = (!byId[l.from].d.plan || showPlan) && (!byId[l.to].d.plan || showPlan);
+    objects[l.id].group.visible = layerState.link && layerState.sys && sysOk && (!l.plan || showPlan);
+  });
+  VANS.forEach(v => { objects[v.id].group.visible = layerState.van; objects[v.id].road.visible = layerState.van; });
+  PEOPLE.forEach(p => { const o = objects[p.id]; if (!o.inVan && !o.hidden) o.group.visible = layerState.people; });
+  PROJECTS.forEach(pr => { if (objects[pr.id]) objects[pr.id].group.visible = layerState.proj && (!byId[pr.at].d.plan || showPlan); });
+  cloudGroup.visible = layerState.sys;
+  labels.forEach(l => {
+    const d = l.id ? byId[l.id].d : {};
+    let on = true;
+    if (l.layer === 'cust') on = layerState.cust;
+    if (l.layer === 'proj') on = layerState.proj && (!byId[d.at].d.plan || showPlan);
+    if (l.layer === 'person') on = layerState.people;
+    if (l.layer === 'sys' || l.layer === 'plansys') on = layerState.sys;
+    if (d.plan && !showPlan) on = false;
+    l.visible = on;
+  });
+  if (selected && objects[selected] && objects[selected].group && !objects[selected].group.visible && !objects[selected].hidden) select(null);
+  renderKpis(); renderLocList(); renderTeam(); renderProcList(); renderProjList();
+  if (selected) renderDetail(selected);
+}
+[['lyProj', 'proj'], ['lyPeople', 'people'], ['lySys', 'sys'], ['lyIf', 'link'], ['lyVan', 'van'], ['lyCust', 'cust']].forEach(([elId, key]) => {
+  document.getElementById(elId).addEventListener('change', e => { layerState[key] = e.target.checked; applyVisibility(); });
+});
+const bNow = document.getElementById('modeNow'), bPlan = document.getElementById('modePlan');
+function setMode(m) {
+  mode = m;
+  bNow.setAttribute('aria-pressed', m === 'now'); bPlan.setAttribute('aria-pressed', m === 'plan');
+  applyVisibility();
+  if (m === 'plan') pushEvent({ st: 'plan', text: 'Geplant eingeblendet: E-Mail-Agent, Anruf-Agent und Office-Pilot', go: 'd2' });
+}
+bNow.addEventListener('click', () => setMode('now'));
+bPlan.addEventListener('click', () => setMode('plan'));
+const floorbar = document.getElementById('floorbar');
+function setFloor(v) {
+  floorView = v === 'all' ? 'all' : Number(v);
+  floorbar.querySelectorAll('[data-fv]').forEach(b => b.setAttribute('aria-pressed', b.dataset.fv === String(v)));
+  select('hq', true);
+}
+floorbar.querySelectorAll('[data-fv]').forEach(b => b.addEventListener('click', () => setFloor(b.dataset.fv)));
+
+/* ════════════════ Zeiger ════════════════ */
+const ray = new THREE.Raycaster();
+const ptr = new THREE.Vector2();
+const tip = document.getElementById('tip');
+let hovered = null, downAt = null;
+function shown(m) { let o = m; while (o) { if (!o.visible) return false; o = o.parent; } return !(m.material && m.material.transparent && m.material.opacity < 0.05); }
+function pick(ev) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ptr.x = ((ev.clientX - r.left) / r.width) * 2 - 1;
+  ptr.y = -((ev.clientY - r.top) / r.height) * 2 + 1;
+  ray.setFromCamera(ptr, camera);
+  const hits = ray.intersectObjects(pickables.filter(shown), false);
+  return hits.length ? hits[0].object.userData.id : null;
+}
+renderer.domElement.addEventListener('pointermove', ev => {
+  if (ev.pointerType !== 'mouse') return;
+  const id = pick(ev);
+  hovered = id;
+  renderer.domElement.style.cursor = id ? 'pointer' : 'grab';
+  if (id) {
+    const { type, d } = byId[id];
+    tip.textContent = type === 'link' ? `${d.name} · ${d.plan ? 'geplant' : LINK_TXT[statusOf(d)]}` : type === 'sys' ? `${d.name} · ${d.kind}` : type === 'person' ? `${d.name} · ${currentActivity(d)}` : type === 'step' ? `${d.no}. ${d.n}` : d.name;
+    tip.style.left = ev.clientX + 'px'; tip.style.top = ev.clientY + 'px';
+    tip.hidden = false;
+  } else tip.hidden = true;
+});
+renderer.domElement.addEventListener('pointerleave', () => { tip.hidden = true; hovered = null; });
+renderer.domElement.addEventListener('pointerdown', ev => { downAt = [ev.clientX, ev.clientY]; if (fly) fly.follow = null; });
+renderer.domElement.addEventListener('pointerup', ev => {
+  if (!downAt || Math.hypot(ev.clientX - downAt[0], ev.clientY - downAt[1]) > 6) return;
+  const id = pick(ev);
+  select(id, !!id);
+});
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') select(null);
+  if (e.key === 'Home') { select(null); flyTo(HOME_TGT, HOME_CAM); }
+});
+
+/* ════════════════ Live-Ereignisse (simuliert) ════════════════ */
+const pulses = [], pulseMeshes = [];
+const eventsEl = document.getElementById('events');
+const EVENT_POOL = [
+  { st: 'ok', text: 'GF-Suite: Outlook-Kalender synchronisiert', go: 'l1' },
+  { st: 'ok', text: 'Anfrage für eine Druckluftanlage an die Projektleitung übergeben', go: 'anlage-2' },
+  { st: 'warn', text: 'Servicebericht unvollständig: Materialangabe fehlt', go: 'wartung-6' },
+  { st: 'ok', text: 'Wartungstermin mit einem Kunden abgestimmt', go: 'psvc1' },
+  { st: 'ok', text: 'Rechnung in Inform erstellt und in DocuWare archiviert', go: 'l2' },
+  { st: 'ok', text: 'Material für eine Montage in Würth ORSY reserviert', go: 'pein2' },
+  { st: 'warn', text: 'Angebot wartet auf die technische Kalkulation', go: 'anlage-3' },
+  { st: 'ok', text: 'Werkzeugservice: Druckluftschrauber repariert', go: 'pwz' },
+  { st: 'ok', text: 'KI-Beauftragter: neue Frage zu ChatGPT Business beantwortet', go: 'd1' },
+  { st: 'ok', text: 'Baustelle Kunde D: Kompressor 2 gesetzt (Beispiel)', go: 'pr9' },
+  { st: 'warn', text: 'Baustelle Klinikum: Rohrlieferung verschiebt sich (Beispiel)', go: 'pr10' },
+  { st: 'ok', text: 'Zwenkau: Einsätze im Raum Leipzig geplant', go: 'psw1' },
+  { st: 'warn', text: 'Bestellung wartet auf Lieferantenbestätigung', go: 'werkzeug-3' },
+  { st: 'ok', text: 'Kennzahlen im MIS ausgewertet', go: 'pctl' },
+];
+function hhmmss(d) { return d.toTimeString().slice(0, 8); }
+function pushEvent(ev) {
+  const li = document.createElement('li');
+  li.innerHTML = `<time>${hhmmss(new Date())}</time><span class="dot ${ev.st}"></span><button type="button">${ev.text}</button>`;
+  li.querySelector('button').addEventListener('click', () => select(ev.go, true));
+  eventsEl.prepend(li);
+  while (eventsEl.children.length > 4) eventsEl.lastChild.remove();
+  if (objects[ev.go] && !objects[ev.go].hidden) pulses.push({ id: ev.go, t: 0, color: C[ev.st] || C.petrol });
+}
+let evIdx = 0;
+for (let i = 0; i < 3; i++) pushEvent(EVENT_POOL[evIdx++]);
+setInterval(() => pushEvent(EVENT_POOL[evIdx++ % EVENT_POOL.length]), 4500);
+const clock = document.getElementById('clock');
+setInterval(() => { clock.textContent = hhmmss(new Date()); }, 1000);
+clock.textContent = hhmmss(new Date());
+function pulseMesh() {
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 0.95, 48), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; scene.add(m); return m;
+}
+
+/* ════════════════ Labels projizieren ════════════════ */
+const v3 = new THREE.Vector3();
+const LABEL_PRIO = { proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
+function placeLabels() {
+  const w = window.innerWidth, h = window.innerHeight;
+  const cands = [];
+  labels.forEach(l => {
+    let vis = l.visible;
+    let fade = 1;
+    if (vis) {
+      const dist = camera.position.distanceTo(l.pos);
+      if (l.layer === 'cust') fade = (110 - dist) / 30;
+      else if (l.layer === 'person') {
+        const o = objects[l.id];
+        const cut = o.loc ? objects[o.loc.id].cut : 0;
+        fade = l.id === selected ? 1 : (34 - dist) / 8;
+        if (o.inside && cut < 0.6) fade = 0;
+        if (!o.fig.visible) fade = 0;
+        if (o.bY && !floorLabelShown(o.loc, o.bY, o.lp.f)) fade = 0;
+      } else if (l.layer === 'zone') {
+        fade = objects[l.loc.id].cut > 0.6 ? (l.zone && l.zone.floorLabel ? 1 : (30 - dist) / 8) : 0;
+        if (l.zone && !floorLabelShown(l.loc, l.zone.b, l.zone.f || 0)) fade = 0;
+      } else if (l.layer === 'map') fade = Math.min((dist - 32) / 12, (camera.position.y - 20) / 8);
+      else if (l.layer === 'proj') fade = l.id === selected ? 1 : (68 - dist) / 10;
+      if (fade <= 0) vis = false;
+    }
+    if (vis) {
+      v3.copy(l.pos).project(camera);
+      if (v3.z > 1 || Math.abs(v3.x) > 1.15 || Math.abs(v3.y) > 1.15) vis = false;
+    }
+    if (!vis) { if (l.el.style.display !== 'none') l.el.style.display = 'none'; l.shown = false; return; }
+    const selProj = selected && byId[selected].type === 'proj' ? byId[selected].d : null;
+    const sel = !!selected && (l.id === selected || (selProj && l.layer === 'person' && (selProj.owner === l.id || selProj.team.includes(l.id))));
+    const prio = sel ? 1000 : (LABEL_PRIO[l.layer] || 10) + (l.el.classList.contains('floorlbl') ? 25 : 0);
+    cands.push({ l, x: (v3.x + 1) / 2 * w, y: (1 - v3.y) / 2 * h, z: v3.z, fade, prio, keep: sel || prio >= 80 });
+  });
+  // Überlappende Beschriftungen ausblenden: wichtigere und nähere zuerst, mit Hysterese gegen Flackern
+  cands.sort((a, b) => b.prio - a.prio || a.z - b.z);
+  const placed = [];
+  cands.forEach(c => {
+    const l = c.l;
+    if (l.el.style.display === 'none') { l.el.style.display = ''; l.w = 0; }
+    if (!l.w) { l.w = l.el.offsetWidth; l.h = l.el.offsetHeight; }
+    // wichtige Beschriftungen am Bildrand nach innen schieben statt abschneiden
+    if (c.keep) { c.x = Math.min(Math.max(c.x, l.w / 2 + 4), w - l.w / 2 - 4); c.y = Math.min(Math.max(c.y, l.h + 4), h - 4); }
+    const left = c.x - l.w / 2, top = l.anchorY === '-50%' ? c.y - l.h / 2 : c.y - l.h;
+    if (!c.keep && (left < 0 || top < 0 || left + l.w > w || top + l.h > h)) { l.el.style.display = 'none'; l.shown = false; return; }
+    const pad = l.shown ? 1 : 5;
+    const overlaps = tp => placed.some(r => left - pad < r.x1 && left + l.w + pad > r.x0 && tp - pad < r.y1 && tp + l.h + pad > r.y0);
+    // wichtige Beschriftungen und Projektfahnen weichen nach oben aus, statt zu überlappen
+    let dy = 0;
+    const maxDy = c.keep ? 90 : l.layer === 'proj' ? 30 : 0;
+    while (maxDy && overlaps(top - dy) && dy < maxDy) dy += 6;
+    if (overlaps(top - dy)) {
+      if (!c.keep) { l.el.style.display = 'none'; l.shown = false; return; }
+    }
+    placed.push({ x0: left, x1: left + l.w, y0: top - dy, y1: top - dy + l.h });
+    c.y -= dy;
+    l.shown = true;
+    l.el.style.opacity = Math.min(1, c.fade).toFixed(2);
+    l.el.style.transform = `translate(${c.x.toFixed(1)}px, ${c.y.toFixed(1)}px) translate(-50%, ${l.anchorY})`;
+  });
+}
+
+/* ════════════════ Animation ════════════════ */
+const clockT = new THREE.Clock();
+let liveTick = 0;
+function tick() {
+  const dt = Math.min(clockT.getDelta(), 0.05);
+  const t = clockT.elapsedTime;
+  const speedK = reduceMotion ? 0.3 : 1;
+
+  if (fly) {
+    if (fly.t < 1) {
+      fly.t = Math.min(1, fly.t + dt / 1.2);
+      const e = 1 - Math.pow(1 - fly.t, 3);
+      const toT = fly.follow ? objects[fly.follow].group.position : fly.toT;
+      controls.target.lerpVectors(fly.fromT, toT, e);
+      camera.position.lerpVectors(fly.fromC, fly.toC.clone().add(fly.follow ? toT.clone().sub(fly.toT) : new THREE.Vector3()), e);
+    } else if (fly.follow) {
+      const delta = objects[fly.follow].group.position.clone().sub(controls.target);
+      controls.target.add(delta); camera.position.add(delta);
+    } else fly = null;
+  }
+
+  // Schnittansicht: Dächer blenden aus, wenn die Kamera nah am Standort ist
+  LOCATIONS.forEach(l => {
+    if (l.anim && !reduceMotion) { if (l.anim.jib) l.anim.jib.rotation.y = Math.sin(t * 0.15) * 1.1; if (l.anim.arm) l.anim.arm.rotation.z = Math.sin(t * 0.8) * 0.25; }
+    if (l.plan || l.bau) return;
+    const o = objects[l.id];
+    // Dach nur öffnen, wenn dieser Standort im Blick ist (Blickziel auf dem Standort) und die Kamera nah genug ist
+    const dT = Math.hypot(controls.target.x - l.x, controls.target.z - l.z);
+    const want = dT < (l.r || SITE_R) + 3 && camera.position.distanceTo(controls.target) < 38 * zoomK() ? 1 : 0;
+    o.cut += (want - o.cut) * Math.min(1, dt * 4);
+    Object.values(l.bld).forEach(r => {
+      const op = 1 - o.cut;
+      r.fade.forEach(m => { m.opacity = op; });
+      r.ext.visible = op > 0.03;
+      if (r.floors && r.floors.length > 1) {
+        const wantX = floorView === 'all' ? o.cut : 0;
+        r.explode += (wantX - r.explode) * Math.min(1, dt * 3);
+        r.floors.forEach(F => { F.g.position.y = F.f * FLOOR_GAP * r.explode; F.g.visible = o.cut < 0.05 || floorShown(l, r.data.id, F.f); });
+      }
+      r.solid.material.depthWrite = op > 0.95;
+      r.solid.visible = op > 0.03;
+      r.solid.castShadow = op > 0.5;
+      r.edges.material.opacity = op;
+      r.edges.visible = op > 0.03;
+    });
+    l.rim.material.color.setHex(selected === l.id ? 0xc27c00 : 0x0e6a87);
+  });
+
+  const showBar = objects.hq.cut > 0.5;
+  if (floorbar.hidden === showBar) { floorbar.hidden = !showBar; document.body.classList.toggle('has-floorbar', showBar); updateViewOffset(); }
+  LOCATIONS.forEach(l => (l.zoneLabels || []).forEach(zl => {
+    if (zl.zone && zl.zone.b) zl.pos.y = floorY(l, zl.zone.b, zl.zone.f || 0) + (zl.zone.floorLabel ? 0.5 : 0.1);
+  }));
+
+  SYSTEMS.forEach(s => {
+    const o = objects[s.id];
+    if (!reduceMotion) o.group.position.y = o.baseY + Math.sin(t * 1.1 + o.phase) * 0.15;
+    o.core.rotation.y += dt * 0.25 * speedK;
+    if (!s.plan && s.status === 'bad') o.band.material.opacity = 1, o.band.visible = Math.sin(t * 6) > -0.3;
+    o.group.scale.setScalar(selected === s.id || hovered === s.id ? 1.15 : 1);
+  });
+
+  LINKS.forEach(l => {
+    const o = objects[l.id];
+    if (!o.group.visible) return;
+    const st = statusOf(l);
+    const emph = selected === l.id || hovered === l.id || selected === l.from || selected === l.to;
+    o.parts.forEach(p => {
+      if (st === 'bad') p.userData.t = Math.min(p.userData.t + dt * 0.12 * speedK, 0.55 + (p.id % 5) * 0.02);
+      else p.userData.t = (p.userData.t + dt * (st === 'check' ? 0.06 : st === 'warn' ? 0.05 : 0.16) * speedK) % 1;
+      p.position.copy(o.curve.getPoint(p.userData.rev ? 1 - p.userData.t : p.userData.t));
+      p.visible = !activeProc || emph;
+    });
+    if (!l.plan) o.line.material.opacity = emph ? 1 : activeProc ? 0.12 : (st === 'ok' ? 0.5 : 0.75);
+  });
+
+  procFlow.forEach(f => { f.m.userData.t = (f.m.userData.t + dt * 0.05 * speedK) % 1; f.m.position.copy(f.curve.getPointAt(f.m.userData.t)); });
+  if (activeProc) byId[activeProc].d.steps.forEach(st => st.marker.scale.setScalar(selected === st.id ? 1.5 : st.state === 'hot' && !reduceMotion ? 1 + 0.25 * Math.sin(t * 6) : 1));
+
+  PEOPLE.forEach(p => updatePerson(p, dt, t));
+
+  VANS.forEach(v => {
+    const o = objects[v.id];
+    o.t = (o.t + dt * v.speed * speedK) % 1;
+    o.group.position.copy(o.curve.getPointAt(o.t));
+    const tan = o.curve.getTangentAt(o.t);
+    o.group.rotation.y = Math.atan2(-tan.z, tan.x);
+    o.beacon.visible = v.id !== 'v2' || Math.sin(t * 10) > 0;
+  });
+
+  for (let i = pulses.length - 1; i >= 0; i--) {
+    const pz = pulses[i];
+    if (!pz.mesh) { pz.mesh = pulseMeshes.pop() || pulseMesh(); pz.mesh.material.color.setHex(pz.color); }
+    pz.t += dt / 1.6;
+    const o = objects[pz.id];
+    const at = byId[pz.id].type === 'van' || o.inVan ? o.group.position : o.anchor;
+    pz.mesh.position.copy(at); pz.mesh.position.y += 0.15;
+    pz.mesh.scale.setScalar(1 + pz.t * 4);
+    pz.mesh.material.opacity = (1 - pz.t) * 0.6 * Math.max(0, Math.min(1, (camera.position.distanceTo(at) - 28) / 15));
+    pz.mesh.visible = o.group.visible;
+    if (pz.t >= 1) { pz.mesh.visible = false; pulseMeshes.push(pz.mesh); pulses.splice(i, 1); }
+  }
+
+  // Live-Tätigkeit im Detailfeld
+  liveTick += dt;
+  if (liveTick > 0.4 && selected && byId[selected].type === 'person') {
+    liveTick = 0;
+    const p = byId[selected].d, o = objects[selected];
+    const la = document.getElementById('liveAct'); if (la) la.textContent = currentActivity(p);
+    const lz = document.getElementById('liveZone'); if (lz && o.loc) lz.textContent = o.mode === 'walk' ? (o.inside && o.loc.bld[o.bY] && o.loc.bld[o.bY].data.floorNames ? `unterwegs · ${o.loc.bld[o.bY].data.floorNames[Math.round(o.lp.f)]}` : 'unterwegs') : zoneName(o.loc, p.routine[o.step].z);
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+  placeLabels();
+  requestAnimationFrame(tick);
+}
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  updateViewOffset();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+if (location.protocol === 'file:') window.__dw = { LOCATIONS, PEOPLE, buildPath, zonePoint, spotsFor, objects, labels };
+applyVisibility();
+if (!reduceMotion) { camera.position.set(10, 110, 80); flyTo(HOME_TGT, HOME_CAM); }
+tick();
+})();
+</script>
