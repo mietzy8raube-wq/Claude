@@ -3,7 +3,7 @@
 ## digitale-welt.html
 
 3D-Unternehmensübersicht der druckluft-technik Chemnitz GmbH (dtC) und der dtL druckluft-technik Leipzig GmbH.
-Eigenständige HTML-Datei (three.js über CDN), im Browser direkt öffnen.
+Eigenständige HTML-Datei (three.js über CDN), im Browser direkt öffnen. Darstellung im Blockstil (Würfel-Landschaft, Pixel-Texturen werden im Browser erzeugt).
 
 Inhalt: Gesellschaften, Standorte (echte Lage), Tätigkeitsgruppen, Programme mit Informationsbezügen,
 Kernprozesse mit Übergaben, Digitalisierungs-, KI- und Bauvorhaben.
