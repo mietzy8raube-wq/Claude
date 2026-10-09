@@ -1,30 +1,31 @@
 <title>Digitale Welt Druckluft-Technik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
 <style>
 /* Layout: Blockwelt (Würfel-Landschaft) mit Bedienfeldern im Inventar-Stil; davor: Architekturmodell auf einem hellen Kartentisch, Bedienfelder schweben darüber
    (links Übersicht, rechts Details, unten Ereignisse). Bewusst eine helle Gestaltung. */
 :root {
   color-scheme: light;
-  --table: #9ec1ff;
-  --paper: #c6c6c6;
-  --paper-2: #b4b4b4;
-  --line: #8b8b8b;
-  --ink: #1e1e1e;
-  --ink-2: #3a3a3a;
-  --ink-3: #555555;
-  --petrol: #1f6f8b;      /* Akzent */
-  --petrol-soft: #dcdcdc;
-  --ok: #2f8a1f;
-  --warn: #b86e00;
-  --bad: #c22a1e;
-  --plan: #6a3fb5;
-  --shadow: 0 1px 2px rgba(21,38,45,.06), 0 8px 24px rgba(21,38,45,.08);
-  --font-head: "Fredoka", "Nunito", system-ui, sans-serif;
-  --font-body: "Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-data: "Nunito", system-ui, sans-serif;
-  --font-title: "Fredoka", "Nunito", system-ui, sans-serif;
+  /* Modern und schlicht: helles Grau, ein Blau als Akzent, klare Statusfarben */
+  --table: #eef2f6;
+  --paper: #ffffff;
+  --paper-2: #f4f6f9;
+  --line: #e3e8ee;
+  --ink: #111827;
+  --ink-2: #4b5563;
+  --ink-3: #8a94a3;
+  --petrol: #2563eb;      /* Akzent */
+  --petrol-soft: #e8efff;
+  --ok: #16a34a;
+  --warn: #d97706;
+  --bad: #dc2626;
+  --plan: #7c3aed;
+  --shadow: 0 1px 2px rgba(17,24,39,.05), 0 10px 30px rgba(17,24,39,.08);
+  --font-head: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-body: "Plus Jakarta Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-title: "Plus Jakarta Sans", system-ui, sans-serif;
 }
 [hidden] { display: none !important; }
 html, body { height: 100%; }
@@ -242,93 +243,55 @@ ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height:
 .gtoday span { position: absolute; top: -14px; left: 3px; font: 600 9.5px var(--font-head); color: var(--bad); letter-spacing: .06em; text-transform: uppercase; }
 
 
-/* ════════ Blockwelt-Oberfläche: Inventar-Felder, Pixelschrift, Namensschilder, Chat ════════ */
-
-body { font-size: 14px; }
-#vignette { display: none; }
-.hud { background: var(--paper); border: 2px solid #3a3a3a; border-radius: 14px; box-shadow: inset 0 2px 0 rgba(255,255,255,.75), inset 0 -3px 0 rgba(0,0,0,.18), 0 6px 16px rgba(0,0,0,.22); }
-.brand-txt b { font: 600 20px var(--font-title); letter-spacing: .01em; }
-#detail h2 { font: 600 24px/1.1 var(--font-title); }
-.lbl.loc, .lbl.loc.bau { font-family: var(--font-title); font-weight: 600; font-size: 15px; }
-.lbl.loc small { font-family: var(--font-body); font-size: 11px; }
-.kpi strong { font: 600 18px/1.1 var(--font-title) !important; }
-
-.mark { background: #5b8731; box-shadow: inset 2px 2px 0 #8fc35c, inset -2px -2px 0 #2f4d14; border: 2px solid #111; }
-.kpis { border: 2px solid #555; background: #8b8b8b; box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff; }
-.kpi { border-right-color: #6a6a6a; color: #ececec; }
-.kpi strong { color: #fff; text-shadow: 2px 2px 0 #3f3f3f; font-size: 16px; }
-.kpi.warn strong { color: #ffd84a; } .kpi.bad strong { color: #ff6b5e; }
-button.kpi:hover { background: #a5a5a5; }
-.seg, .tabs { border: 2px solid #111; background: #6f6f6f; gap: 0; }
-.seg button, .tabs button, .roadbtn, .menu, .close { background: #a5a5a5; color: #fff; text-shadow: 1px 1px 0 #4a4a4a; box-shadow: inset 2px 2px 0 #dadada, inset -2px -2px 0 #555; border: 0; font-weight: 600; }
-.seg button:hover, .tabs button:hover, .roadbtn:hover, .menu:hover, .close:hover { background: #8b9fd4; box-shadow: inset 2px 2px 0 #c0ccf0, inset -2px -2px 0 #3f4f80; }
-.seg button[aria-pressed="true"], .tabs button[aria-selected="true"] { background: #5b8731; color: #fff; box-shadow: inset 2px 2px 0 #8fc35c, inset -2px -2px 0 #2f4d14; }
-.seg button[aria-pressed="true"].plan { background: #6a3fb5; box-shadow: inset 2px 2px 0 #a07de0, inset -2px -2px 0 #3a1f6e; }
-.roadbtn { border: 2px solid #111; }
-.close { border: 2px solid #111; color: #fff; }
-.tabs { margin: 10px 10px 0; border-bottom: 2px solid #111; }
-.loclist button { border: 2px solid transparent; }
-.loclist button:hover { background: #d8d8d8; }
-.loclist button.sel { background: #8b8b8b; border-color: #111; color: #fff; text-shadow: 1px 1px 0 #3f3f3f; box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff; }
-.loclist button.sel em, .loclist button.sel small { color: #eee; }
-.links button, ol.steps > li > button, .links .trow { background: #8b8b8b; color: #fff; text-shadow: 1px 1px 0 #3f3f3f; border: 0; box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff; }
-.links small, ol.steps small, .links .trow small { color: #e6e6e6; }
-.links button:hover, ol.steps > li > button:hover { background: #a0a0a0; }
-ol.steps > li.on > button { background: #5b8731; box-shadow: inset 2px 2px 0 #2f4d14, inset -2px -2px 0 #8fc35c; }
-.wip { color: #f0f0f0; }
-.bar, .pb, .bigbar, .costbar { background: #555; border: 1px solid #111; }
-.grow:hover { background: #b4b4b4; }
-.gb { border: 1px solid #333; }
-.pill { background: #dcdcdc; border-width: 2px; }
-.msg { background: #e8c8c4; } .msg.warn { background: #ead9b4; } .msg.plan { background: #d8ccef; }
-dl.facts, dl.facts dt, dl.facts dd { border-color: #9a9a9a; }
-.note { background: #b4b4b4; border: 2px solid #8b8b8b; }
-.live { background: #8b8b8b; color: #fff; text-shadow: 1px 1px 0 #3f3f3f; box-shadow: inset 2px 2px 0 #373737, inset -2px -2px 0 #fff; }
-.live i { background: #7fff5a; }
-.num { background: #3f3f3f; color: #fff; }
-.layers input { accent-color: #5b8731; }
-.bautag { background: #f6d860; color: #5a4300; } .bautag.dig { background: #8fd7e8; color: #0f4a5a; }
-.loclist .grpbtn { border-top: 2px solid #8b8b8b; color: #3a3a3a; }
-/* Namensschilder in der Welt */
-.lbl.loc, .lbl.sys, .lbl.person, .lbl.cust, .lbl.proj, .lbl.step, .lbl.loc.bau { background: rgba(0,0,0,.52); color: #fff; border: 0; box-shadow: none; text-shadow: 2px 2px 0 #3f3f3f; }
-.lbl.loc { font-size: 14px; font-weight: 600; padding: 3px 9px 3px 7px; }
-.lbl.loc small, .lbl.proj b, .lbl.step b { color: #d8d8d8; }
-.lbl.proj { border-left: 4px solid var(--petrol); } .lbl.proj.bad { border-left-color: var(--bad); } .lbl.proj.warn { border-left-color: #ffb020; } .lbl.proj.plan { border-left-color: #a07de0; }
-.lbl.loc.bau { border-left: 4px solid #f6d860; }
-.lbl.step { border: 2px solid #8fd7e8; } .lbl.step.hot { border-color: #ff6b5e; } .lbl.step.slow { border-color: #ffb020; }
-.lbl.plan { color: #d9c8ff; }
-.lbl.sel { outline: 2px solid #ffff55; outline-offset: 1px; box-shadow: none; }
-.lbl.city { color: #fff; text-shadow: 2px 2px 0 #3f3f3f; }
-.lbl.km { background: rgba(0,0,0,.4); color: #fff; }
-.lbl.zone { color: #fff; text-shadow: 1px 1px 0 #222, -1px -1px 0 #222; }
-.lbl.zone.floorlbl { background: #5b8731; color: #fff; }
-.dot { width: 8px; height: 8px; }
-.dot.ok { background: #55ff55; } .lbl .dot.ok { box-shadow: 0 0 0 1px #111; }
-/* Tooltip wie im Spiel */
-#tip { background: rgba(16,0,16,.94); color: #fff; border: 2px solid #2d0a63; box-shadow: inset 0 0 0 1px #5000a0; font-size: 13px; text-shadow: 1px 1px 0 #3f3f3f; }
-/* Ereignisse als Chat */
-#feed { background: rgba(0,0,0,.45); border: 0; box-shadow: none; }
-#feed .h { color: #e0e0e0; text-shadow: 1px 1px 0 #000; }
-#events li button { color: #fff; text-shadow: 1px 1px 0 #3f3f3f; font-size: 12.5px; }
-#events { gap: 1px; } #events li { font-size: 12.5px; line-height: 1.25; }
-#events li button:hover { color: #ffff55; text-decoration: none; }
-#events time { color: #aaaaaa; }
-/* Abgerundete Formen */
-.seg, .tabs, .kpis { border-radius: 10px; overflow: hidden; }
-.seg button, .tabs button { border-radius: 0; }
-.roadbtn, .menu, .close { border-radius: 9px; }
-.loclist button, .links button, ol.steps > li > button, .links .trow, .live, .note, .msg, .grow { border-radius: 9px; }
-.lbl.loc, .lbl.sys, .lbl.person, .lbl.cust, .lbl.proj, .lbl.step, .lbl.km, .lbl.hw, .lbl.zone.floorlbl { border-radius: 8px; }
-.lbl.person { border-radius: 999px; }
-.lbl.sel { outline-offset: 2px; }
-.pill, .bautag { border-radius: 999px; }
+/* Fahrzeug-Schilder */
+.lbl.van { display: flex; align-items: center; gap: 6px; background: #fff; border-radius: 999px; padding: 3px 10px 3px 6px; box-shadow: 0 2px 8px rgba(17,24,39,.16); font-size: 11.5px; color: var(--ink); }
+.lbl.van b { font-weight: 700; }
+.lbl.van .vcrew { color: var(--ink-2); }
+.lbl.van .vst { color: var(--ink-3); font-size: 11px; }
+.lbl.van .vst::before { content: '· '; }
+.vdot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+/* ════════ Modern: weiße Karten, runde Ecken, ruhige Schatten ════════ */
+.hud { border: 1px solid rgba(17,24,39,.06); border-radius: 16px; box-shadow: var(--shadow); }
+.brand-txt b { font: 700 17px var(--font-title); letter-spacing: -.01em; }
+.mark { background: var(--petrol); border-radius: 10px; }
+#detail h2 { font: 700 22px/1.2 var(--font-title); letter-spacing: -.01em; }
+.kpis { border: 0; background: var(--paper-2); border-radius: 12px; padding: 2px; gap: 2px; }
+.kpi { border: 0; border-radius: 10px; }
+.kpi strong { font: 700 16px/1.2 var(--font-data); }
+.seg { border: 0; background: var(--paper-2); border-radius: 12px; padding: 3px; }
+.seg button { border-radius: 9px; color: var(--ink-2); }
+.seg button[aria-pressed="true"], .seg button[aria-pressed="true"].plan { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(17,24,39,.12); }
+.seg button[aria-pressed="true"].plan { color: var(--plan); }
+.tabs { background: var(--paper-2); border: 0; border-radius: 12px; padding: 3px; margin: 10px 10px 0; }
+.tabs button { border-radius: 9px; color: var(--ink-2); }
+.tabs button[aria-selected="true"] { background: var(--paper); color: var(--ink); box-shadow: 0 1px 3px rgba(17,24,39,.12); }
+.roadbtn { border: 0; border-radius: 10px; background: var(--petrol-soft); color: var(--petrol); }
+.menu, .close { border-radius: 10px; }
+.loclist button { border-radius: 10px; }
+.loclist button.sel { background: var(--petrol-soft); border-color: transparent; }
+.links button, ol.steps > li > button, .links .trow { border-radius: 10px; background: var(--paper-2); border-color: transparent; }
+.links button:hover, ol.steps > li > button:hover { background: var(--petrol-soft); border-color: transparent; }
+ol.steps > li.on > button { background: var(--petrol-soft); border-color: var(--petrol); }
+.live, .note, .msg, .grow { border-radius: 10px; }
+.note { border: 0; }
+.msg { border-left: 0; } .msg { background: #fef2f2; } .msg.warn { background: #fffbeb; } .msg.plan { background: #f5f3ff; }
+.pill, .bautag { border-radius: 999px; border-width: 1px; }
 .dot, .num { border-radius: 50%; }
-.bar, .pb, .bigbar, .costbar, .gb, .bar i, .pb i, .bigbar i, .costbar i { border-radius: 999px; }
-#tip { border-radius: 8px; }
-#feed { border-radius: 14px; }
-.mark { border-radius: 9px; }
-.layers input { border-radius: 4px; }
-#detail .eyebrow, .h { letter-spacing: .06em; }
+.bar, .pb, .bigbar, .costbar, .gb, .bar i, .pb i, .bigbar i, .costbar i, .gb b { border-radius: 999px; }
+dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
+.lbl.loc, .lbl.sys, .lbl.cust, .lbl.proj, .lbl.step, .lbl.km, .lbl.hw, .lbl.zone.floorlbl { border-radius: 10px; }
+.lbl.loc { border: 0; box-shadow: 0 2px 8px rgba(17,24,39,.14); font: 700 13px var(--font-title); }
+.lbl.sys { border: 0; box-shadow: 0 2px 6px rgba(17,24,39,.12); background: rgba(255,255,255,.95); }
+.lbl.person { border-radius: 999px; border: 0; box-shadow: 0 1px 4px rgba(17,24,39,.15); }
+.lbl.proj { border: 0; border-left: 3px solid var(--petrol); box-shadow: 0 2px 6px rgba(17,24,39,.12); }
+.lbl.loc.bau { background: #fff; border-left: 3px solid #f59e0b; }
+.lbl.sel { box-shadow: 0 0 0 2px var(--petrol), 0 2px 8px rgba(17,24,39,.14); }
+.lbl.km { border-radius: 999px; background: rgba(255,255,255,.85); }
+.lbl.city { color: #6b7280; }
+#tip { background: #111827; border-radius: 8px; }
+#feed { border: 1px solid rgba(17,24,39,.06); border-radius: 16px; }
+.layers input { accent-color: var(--petrol); }
+.loclist .grpbtn { border-top-color: var(--line); }
 
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 500 14px var(--font-head); color: var(--ink-3); }
 
@@ -614,11 +577,14 @@ const LINKS = [
   { id: 'z3', from: 'pilot', to: 'm365', name: 'KI in Office', desc: 'Geplant: KI direkt in Outlook, Word und Excel.', status: 'ok', plan: true, rate: 1, dir: 'both' },
 ];
 
+// Fahrzeuge (Beispiele, bis Fleetcars bzw. Telematik angebunden ist). stop = Haltezeit in Sekunden an jedem Ziel
 const VANS = [
-  { id: 'v1', name: 'Servicewagen 1', plate: 'C-DT 101', home: 'hq', crew: 'Service Chemnitz', job: 'Wartung bei Kunde C', route: ['hq', [11, 17], 'kC', [18, 12]], speed: 0.024 },
-  { id: 'v2', name: 'Servicewagen 2', plate: 'C-DT 102', home: 'hq', crew: 'Service Chemnitz', job: 'Störung Druckabfall bei Kunde B', route: ['hq', [-9, 15], 'kB', [-13, 6]], speed: 0.02 },
-  { id: 'v3', name: 'Lieferwagen', plate: 'C-DT 210', home: 'hq', crew: 'Ersatzteilausgabe Chemnitz', job: 'Holt Teile in Siebenlehn, liefert zu Kunde A', route: ['hq', [11, 6], 'ws', 'kA', [19, 12]], speed: 0.018 },
+  { id: 'v1', name: 'Servicewagen 1', kind: 'Servicefahrzeug', plate: 'C-DT 101', home: 'hq', color: 0x2563eb, job: 'Wartung bei Kunde C', route: ['hq', [11, 17], 'kC', [18, 12]], speed: 0.024 },
+  { id: 'v2', name: 'Servicewagen 2', kind: 'Servicefahrzeug', plate: 'C-DT 102', home: 'hq', color: 0x2563eb, job: 'Störung bei Kunde B', route: ['hq', [-9, 15], 'kB', [-13, 6]], speed: 0.02 },
+  { id: 'v3', name: 'Lieferwagen', kind: 'Transporter', plate: 'C-DT 210', home: 'hq', color: 0xf59e0b, job: 'Holt Material in Siebenlehn, liefert zu Kunde A', route: ['hq', [11, 6], 'ws', 'kA', [19, 12]], speed: 0.018 },
+  { id: 'v4', name: 'Servicewagen dtL', kind: 'Servicefahrzeug', plate: 'L-DT 301', home: 'sw', color: 0x0d9488, job: 'Wartungstour im Raum Leipzig', route: ['sw', [-29, -14], 'kB', [-24, -2], [-17, -9]], speed: 0.024 },
 ];
+const VAN_STOP = 5;
 
 /* Mitarbeitende: Tagesablauf als Folge von Arbeitsorten (z), Dauer in Sekunden (d), Tätigkeit (a), Beschreibung (t).
    Tätigkeiten: type = am Rechner · talk = Gespräch · carry = trägt Ware · repair = schraubt · phone = telefoniert · idle = Pause */
@@ -675,6 +641,7 @@ const PEOPLE = [
     { z: 'vertrieb', s: 1, d: 18, a: 'type', t: 'Bearbeitet Aufträge in Inform' }, { z: 'kueche', d: 5, a: 'idle', t: 'Kaffeepause' }] },
   { id: 'ptech1', name: 'Servicetechnik 1', short: 'Technik 1', role: 'Servicetechniker', group: 'technik', look: 'tech', at: 'v1', presence: 'online', routine: [], activity: 'Fährt zur Wartung bei Kunde C' },
   { id: 'ptech2', name: 'Servicetechnik 2', short: 'Technik 2', role: 'Servicetechniker', group: 'technik', look: 'tech', at: 'v2', presence: 'online', proc: ['wartung', 4], routine: [], activity: 'Repariert eine Anlage bei Kunde B' },
+  { id: 'ptech3', name: 'Servicetechnik dtL', short: 'Technik dtL', role: 'Servicetechniker', group: 'technik', look: 'tech', at: 'v4', presence: 'online', routine: [], activity: 'Wartungstour im Raum Leipzig' },
   { id: 'pfahr', name: 'Lieferfahrt', short: 'Fahrt', role: 'Fahrer Lager', group: 'lager', look: 'warehouse', at: 'v3', presence: 'online', proc: ['werkzeug', 5], routine: [], activity: 'Holt Material in Siebenlehn, liefert zu Kunde A' },
   { id: 'pbau', name: 'Bauleitung', short: 'Bauleitung', role: 'Bauleitung (Projektleitung)', group: 'projekt', look: 'construct', home: 'hq', at: 'bs1', presence: 'online', proc: ['anlage', 6], routine: [
     { z: 'container', d: 12, a: 'phone', t: 'Stimmt die Kranzeit ab' }, { z: 'montage', d: 9, a: 'talk', t: 'Bespricht den nächsten Montageschritt' }] },
@@ -727,7 +694,7 @@ const GROUP_N = Object.fromEntries(GROUPS.map(g => [g.id, g.n]));
 
 const STATUS_TXT = { ok: 'in Nutzung', warn: 'prüfen', bad: 'Störung', plan: 'geplant', check: 'zu prüfen' };
 const LINK_TXT = { ok: 'bestätigt', check: 'Datenfluss zu prüfen', plan: 'geplant' };
-const C = { ok: 0x1e9467, warn: 0xc27c00, bad: 0xcf3f36, plan: 0x6857c9, petrol: 0x0e6a87, check: 0x8a9ba1 };
+const C = { ok: 0x16a34a, warn: 0xd97706, bad: 0xdc2626, plan: 0x7c3aed, petrol: 0x2563eb, check: 0x94a3b8 };
 const CLOUD_Y = 17, SYS_Y = 9;
 
 /* Lage aus echten Koordinaten: Chemnitz im Ursprung, Norden = hinten, 1 Karten-Einheit = 2 km */
@@ -754,6 +721,7 @@ LINKS.forEach(l => byId[l.id] = { type: 'link', d: l });
 VANS.forEach(v => byId[v.id] = { type: 'van', d: v });
 PEOPLE.forEach(p => byId[p.id] = { type: 'person', d: p });
 GROUPS.forEach(g => byId['grp-' + g.id] = { type: 'group', d: g });
+byId.fleet = { type: 'fleet', d: { name: 'Fuhrpark' } };
 byId.company = { type: 'company', d: { name: 'Unternehmen' } };
 PROCESSES.forEach(pr => {
   byId[pr.id] = { type: 'proc', d: pr };
@@ -849,10 +817,10 @@ function canvasTex(w, h, draw) {
 }
 scene.background = canvasTex(4, 256, (g, w, h) => {
   const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, '#6f9cf2'); gr.addColorStop(0.55, '#9ec1ff'); gr.addColorStop(1, '#c4dcff');
+  gr.addColorStop(0, '#cfe3fb'); gr.addColorStop(0.55, '#e6f0fb'); gr.addColorStop(1, '#eef2f6');
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
 });
-scene.fog = new THREE.Fog(0xb9d3ff, 110, 210);
+scene.fog = new THREE.Fog(0xe9f0f6, 110, 210);
 // weicher Kontaktschatten (Umgebungsverdeckung) als Textur
 const AO_TEX = canvasTex(128, 128, (g, w, h) => {
   const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
@@ -878,7 +846,7 @@ controls.minDistance = 7;
 controls.maxDistance = 140;
 controls.update();
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0x8c7c5c, 0.62));
+scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c2cc, 0.72));
 const sun = new THREE.DirectionalLight(0xfff4e0, 0.82);
 sun.position.set(-35, 60, 28);
 sun.castShadow = true;
@@ -920,13 +888,16 @@ const TEX_SRC = {
   crate: pix((g, px, r) => { fill(px, r, [190, 150, 96], 18); g.fillStyle = '#7d5a35'; g.fillRect(0, 0, 16, 2); g.fillRect(0, 14, 16, 2); g.fillRect(0, 0, 2, 16); g.fillRect(14, 0, 2, 16); for (let i = 2; i < 14; i++) g.fillRect(i, i, 1, 1); }),
   wool: pix((g, px, r) => fill(px, r, [235, 235, 235], 12)),
 };
-function blockTex(name, rep = 1) {
+const FLAT = { grassTop: 0x8cc96f, grassSide: 0x7dbb62, dirt: 0x9e7b5a, path: 0xe4e0d6, sand: 0xeee2c2, stone: 0xc9ced6, bricks: 0xf7f8fa, stoneBricks: 0xdfe3e9,
+  planks: 0xe3cfb0, darkPlanks: 0x64748b, log: 0x8b6b4a, leaves: 0x4caf6a, glass: 0xa5d4ee, iron: 0xf1f3f6, ore: 0x3b82f6, gold: 0xfbbf24, crate: 0xe0b77e, wool: 0xffffff };
+function blockTex() { return null; }   // modern: keine Texturen, nur flache Farben
+function blockTexOld(name, rep = 1) {
   const t = new THREE.CanvasTexture(TEX_SRC[name]);
   t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter;
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rep, rep); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4;
   return t;
 }
-function blockMat(name, o = {}) { return new THREE.MeshLambertMaterial(Object.assign({ map: blockTex(name, o.rep || 1), color: 0xffffff }, o, { rep: undefined })); }
+function blockMat(name, o = {}) { return new THREE.MeshLambertMaterial(Object.assign({ color: FLAT[name] }, o, { rep: undefined }, name === 'glass' ? { transparent: true, opacity: 0.55 } : {})); }
 // Abgerundete Würfel: Kantenradius passend zur kleinsten Kante; Texturkoordinaten planar (1 Kachel = B)
 function planarUV(geo) {
   const pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv;
@@ -951,7 +922,7 @@ function blockUV(geo, w, h, d) {
   return geo;
 }
 // Erhöhte Insel aus Blöcken (Gras, darunter Erde); kind(x, z) wählt die Deckschicht
-const VOX_GEO = planarUV(rbox(B, B, B, 0.09));
+const VOX_GEO = planarUV(rbox(B, B, B, 0.035));
 const VOX = {
   grass: [blockMat('grassSide'), blockMat('grassSide'), blockMat('grassTop'), blockMat('dirt'), blockMat('grassSide'), blockMat('grassSide')],
   path: [blockMat('dirt'), blockMat('dirt'), blockMat('path'), blockMat('dirt'), blockMat('dirt'), blockMat('dirt')],
@@ -980,9 +951,9 @@ const MC = {
   crate: blockMat('crate'), stone: blockMat('stone'), wool: blockMat('wool'),
 };
 const groundTex = blockTex('grassTop', 300 / B);
-const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ map: groundTex, color: 0xc6d6bc }));
+const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ color: 0xdcebd2 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
-groundTex.offset.set(0.5, 0.5);
+
 scene.add(ground);
 // Blockwolken
 const clouds = new THREE.Group();
@@ -1010,7 +981,7 @@ const M = {
   white: MC.bricks, plate: MC.planks, floor: MC.planks, wall: MC.bricks, road: MC.stone,
   floorUp: MC.planks, slab: MC.stone, wallIn: MC.bricks, glassIn: MC.glass,
   deskTop: MC.planks, screen: mat(0x1e2a30, { emissive: 0x1d5f78, emissiveIntensity: 0.8 }), chair: MC.darkPlanks, pot: mat(0x9a5b3c),
-  desk: MC.planks, rack: MC.darkPlanks, box: MC.crate, petrol: mat(0x1f6f8b), steel: MC.iron,
+  desk: MC.planks, rack: MC.darkPlanks, box: MC.crate, petrol: mat(0x2563eb), steel: MC.iron,
   skin: [mat(0xf0d2b6), mat(0xd9ad88), mat(0xa8784f), mat(0xf3dcc4)], hair: [mat(0x3b2a20), mat(0x8a6a45), mat(0x1d1b1a), mat(0xb7aa98), mat(0x6b3f22)],
 };
 function ghostMat(op = 0.22) { return new THREE.MeshBasicMaterial({ color: C.plan, transparent: true, opacity: op, depthWrite: false }); }
@@ -1037,9 +1008,9 @@ function polyCentroid(poly) { let x = 0, z = 0; poly.forEach(p => { x += p[0]; z
 
 /* Fassaden: Fensterbänder, Tore, Dachaufbauten — gehören zur Außenansicht und blenden mit dem Dach aus */
 function addFacade(loc, b, rec) {
-  const glass = new THREE.MeshLambertMaterial({ map: blockTex('glass'), color: 0x9fc3d6, transparent: true, opacity: 1 });
-  const trim = new THREE.MeshLambertMaterial({ map: blockTex('iron'), transparent: true, opacity: 1 });
-  const roofM = new THREE.MeshLambertMaterial({ map: blockTex('stone', 1 / B), transparent: true, opacity: 1 });
+  const glass = new THREE.MeshLambertMaterial({ color: 0x93c5fd, transparent: true, opacity: 1 });
+  const trim = new THREE.MeshLambertMaterial({ color: 0x94a3b8, transparent: true, opacity: 1 });
+  const roofM = new THREE.MeshLambertMaterial({ color: 0xe5e9ef, transparent: true, opacity: 1 });
   rec.fade.push(glass, trim, roofM);
   const office = /Büro/.test(b.name);
   const c = rec.center;
@@ -1234,7 +1205,7 @@ function buildConstruction(loc, g) {
     if (prog > 0.6) { const roof = box(fw * 0.5, 0.04, fd, new THREE.MeshStandardMaterial({ color: 0xdfe3e3, transparent: true, opacity: 0.85 })); roof.position.set(fx - fw * 0.25, PLATE_Y + 0.14 + colH + 0.06, fz); g.add(roof); }
     const units = Math.max(1, Math.round(prog * 4));
     for (let i = 0; i < 3; i++) {
-      const k = box(0.5, 0.55, 0.7, i < units ? M.petrol : new THREE.MeshStandardMaterial({ color: 0x0e6a87, transparent: true, opacity: 0.18 }));
+      const k = box(0.5, 0.55, 0.7, i < units ? M.petrol : new THREE.MeshStandardMaterial({ color: 0x2563eb, transparent: true, opacity: 0.18 }));
       k.position.set(fx - fw / 2 + 0.45 + i * 0.7, PLATE_Y + 0.14 + 0.275, fz - 0.2); g.add(tag(k, pr.id));
     }
     // Turmdrehkran
@@ -1289,7 +1260,7 @@ LOCATIONS.forEach((loc, li) => {
     ring.computeLineDistances(); g.add(ring);
   }
   if (!plan && !loc.bau) {
-    const rim = new THREE.Mesh(new THREE.TorusGeometry(RR + 0.08, 0.05, 6, 96), new THREE.MeshBasicMaterial({ color: 0x0e6a87 }));
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(RR + 0.08, 0.05, 6, 96), new THREE.MeshBasicMaterial({ color: 0x2563eb }));
     rim.rotation.x = Math.PI / 2; rim.position.y = PLATE_Y; rim.visible = false;
     g.add(rim);
     loc.rim = rim;
@@ -1300,7 +1271,7 @@ LOCATIONS.forEach((loc, li) => {
   loc.buildings.forEach(b => {
     const shape = new THREE.Shape(b.poly.map(p => new THREE.Vector2(p[0], -p[1])));
     // Massivkörper (Ansicht von außen) — blendet beim Heranzoomen aus
-    const solidMat = plan ? ghostMat() : new THREE.MeshLambertMaterial({ map: blockTex(/Büro/.test(b.name) ? 'bricks' : 'stoneBricks', 1 / B), transparent: true, opacity: 1 });
+    const solidMat = plan ? ghostMat() : new THREE.MeshLambertMaterial({ color: /Büro/.test(b.name) ? 0xf8fafc : 0xdfe4ea, transparent: true, opacity: 1 });
     const solid = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: b.h, bevelEnabled: false }), solidMat);
     solid.rotation.x = -Math.PI / 2; solid.position.y = PLATE_Y;
     solid.castShadow = !plan; solid.receiveShadow = true;
@@ -1406,7 +1377,7 @@ LOCATIONS.forEach((loc, li) => {
     const dir = new THREE.Vector3(loc.x, 0, loc.z).normalize();
     const a = dir.clone().multiplyScalar(SITE_R + 0.8), b = new THREE.Vector3(loc.x, 0, loc.z).sub(dir.clone().multiplyScalar(RR + 0.8));
     a.y = b.y = 0.03;
-    const kmLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineDashedMaterial({ color: 0x0e6a87, dashSize: 0.7, gapSize: 0.5, transparent: true, opacity: 0.6 }));
+    const kmLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints([a, b]), new THREE.LineDashedMaterial({ color: 0x2563eb, dashSize: 0.7, gapSize: 0.5, transparent: true, opacity: 0.6 }));
     kmLine.computeLineDistances();
     scene.add(kmLine);
     addLabel(null, 'km', `${Math.round(loc.km)} km Luftlinie`, a.clone().add(b).multiplyScalar(0.5), 'map');
@@ -1540,21 +1511,40 @@ function routePoint(id, i, route) {
 VANS.forEach((v, idx) => {
   const pts = v.route.map((id, i) => routePoint(id, i, v.route));
   const curve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
-  const road = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(240)), new THREE.LineBasicMaterial({ color: 0xb4c0c4 }));
+  const road = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(240)), new THREE.LineDashedMaterial({ color: v.color, dashSize: 0.6, gapSize: 0.5, transparent: true, opacity: 0.45 }));
+  road.computeLineDistances();
   scene.add(road);
   const g = new THREE.Group();
-  const body = box(1.5, 0.75, 0.8, M.white); body.position.set(-0.15, 0.45, 0);
-  const cab = box(0.55, 0.55, 0.8, M.white); cab.position.set(0.85, 0.35, 0);
-  const stripe = box(1.52, 0.1, 0.82, M.petrol); stripe.position.set(-0.15, 0.4, 0);
-  const glass = box(0.05, 0.25, 0.7, mat(0x2c3c42)); glass.position.set(1.13, 0.48, 0);
-  const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.08, 0.25), new THREE.MeshBasicMaterial({ color: idx === 1 ? C.warn : 0x0e6a87 }));
-  beacon.position.set(0.5, 0.88, 0);
-  g.add(tag(body, v.id), tag(cab, v.id), stripe, glass, beacon);
+  const paint = mat(v.color), white = mat(0xffffff), dark = mat(0x1f2937);
+  const body = box(1.6, 0.8, 0.86, white); body.position.set(-0.15, 0.5, 0);
+  const cab = box(0.6, 0.6, 0.86, paint); cab.position.set(0.9, 0.4, 0);
+  const stripe = box(1.62, 0.14, 0.88, paint); stripe.position.set(-0.15, 0.48, 0);
+  const glass = box(0.06, 0.28, 0.74, mat(0x93c5fd)); glass.position.set(1.18, 0.52, 0);
+  const driver = new THREE.Mesh(rbox(0.22, 0.22, 0.22, 0.06), mat(0xf0c8a0)); driver.position.set(0.95, 0.62, 0.12);
+  const wheels = [[-0.6, 0.45], [-0.6, -0.45], [0.75, 0.45], [0.75, -0.45]].map(([x, z]) => { const w = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.1, 16), dark); w.rotation.x = Math.PI / 2; w.position.set(x, 0.16, z); return w; });
+  const beacon = new THREE.Mesh(rbox(0.25, 0.1, 0.25, 0.04), new THREE.MeshBasicMaterial({ color: v.color }));
+  beacon.position.set(0.5, 0.96, 0);
+  g.add(tag(body, v.id), tag(cab, v.id), stripe, glass, driver, beacon, ...wheels);
   g.position.y = 0.05;
-  g.scale.setScalar(0.8);
+  g.scale.setScalar(1.05);
   scene.add(g);
-  objects[v.id] = { group: g, curve, road, beacon, t: idx * 0.31, anchor: new THREE.Vector3() };
+  // Ziele entlang der Tour (nur echte Orte, keine Zwischenpunkte) mit ihrer Lage auf der Kurve
+  const stops = v.route.map((id, i) => ({ id, i })).filter(x => !Array.isArray(x.id)).map(x => {
+    const p = pts[x.i]; let best = 0, bd = 1e9;
+    for (let k = 0; k <= 600; k++) { const q = curve.getPointAt(k / 600); const dd = q.distanceTo(p); if (dd < bd) { bd = dd; best = k / 600; } }
+    return { id: x.id, t: best };
+  }).sort((a, b) => a.t - b.t);
+  const o = objects[v.id] = { group: g, curve, road, beacon, stops, t: (stops[idx % stops.length].t + 0.02 + idx * 0.13) % 1, wait: 0, atStop: null, anchor: new THREE.Vector3(), labelPos: new THREE.Vector3() };
+  const crew = PEOPLE.filter(p => p.at === v.id).map(p => p.short || p.name).join(', ');
+  o.label = addLabel(v.id, 'van', `<span class="vdot" style="background:#${v.color.toString(16).padStart(6, '0')}"></span><b>${v.name}</b><span class="vcrew">${crew}</span><span class="vst" id="vst-${v.id}"></span>`, o.labelPos, 'van');
 });
+// Status eines Fahrzeugs: steht an einem Ziel oder ist unterwegs zum nächsten
+function vanStatus(v) {
+  const o = objects[v.id];
+  if (o.atStop) { const h = byId[o.atStop].d; const name = h.name.split(' · ')[0]; return { kind: 'stop', at: o.atStop, text: o.atStop === v.home ? `am Standort ${name}` : h.type === 'cust' ? `bei ${name}` : `in ${name}` }; }
+  const next = o.stops.find(s => s.t > o.t) || o.stops[0];
+  return { kind: 'drive', at: next.id, text: `unterwegs nach ${byId[next.id].d.name.split(' · ')[0]}` };
+}
 
 /* ════════════════ Mitarbeitende als Figuren ════════════════ */
 const LOOKS = {
@@ -1563,7 +1553,7 @@ const LOOKS = {
   office: { top: 0x8fb6c9, legs: 0x3f4b54 },
   office2: { top: 0xe8e2d6, legs: 0x4a5560 },
   office3: { top: 0xb7c6a4, legs: 0x3f4b54 },
-  tech: { top: 0x0e6a87, legs: 0x0e6a87, accent: 0xe08a1e },
+  tech: { top: 0x2563eb, legs: 0x1e3a8a, accent: 0xf59e0b },
   warehouse: { top: 0x34495a, legs: 0x34495a, vest: 0xf0c419 },
   construct: { top: 0xe07a2c, legs: 0x2f3b45, helmet: 0xffffff },
 };
@@ -1697,7 +1687,8 @@ PEOPLE.forEach((p, i) => {
 });
 function currentActivity(p) {
   const o = objects[p.id];
-  if (!o || o.inVan || o.hidden) return p.activity || '';
+  if (o && o.inVan) return `${byId[o.inVan].d.name}: ${vanStatus(byId[o.inVan].d).text}`;
+  if (!o || o.hidden) return p.activity || '';
   if (o.mode === 'walk') return `Geht zu: ${zoneName(o.loc, p.routine[o.step].z)}`;
   return p.routine[o.step].t;
 }
@@ -1824,7 +1815,7 @@ function showProcess(id) {
   const curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
   procGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, pts.length * 40, 0.12, 8), new THREE.MeshBasicMaterial({ color: C.petrol, transparent: true, opacity: 0.75 })));
   for (let i = 0; i < 16; i++) {
-    const m = new THREE.Mesh(rbox(0.36, 0.36, 0.36, 0.12), new THREE.MeshBasicMaterial({ color: 0x1f6f8b }));
+    const m = new THREE.Mesh(rbox(0.36, 0.36, 0.36, 0.12), new THREE.MeshBasicMaterial({ color: 0x2563eb }));
     m.userData.t = i / 16; procGroup.add(m); procFlow.push({ m, curve });
   }
   const tokGeo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
@@ -1858,9 +1849,10 @@ function renderKpis() {
     `<span class="kpi opt"><strong>${LOCATIONS.filter(l => vis(l) && !l.bau).length}</strong>Standorte</span>` +
     `<span class="kpi opt"><strong>${SYSTEMS.filter(x => !x.plan).length}</strong>Programme</span>` +
     `<button type="button" class="kpi opt" data-go="roadmap"><strong>${PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status)).length}</strong>Vorhaben aktiv</button>` +
+    `<button type="button" class="kpi" data-go="fleet"><strong>${VANS.length}</strong>Fahrzeuge</button>` +
     `<button type="button" class="kpi opt" data-go="bauall"><strong>${LOCATIONS.filter(l => l.bau).length}</strong>Baustellen</button>` +
     `<button type="button" class="kpi warn" data-go="wartung"><strong>${openHand}</strong>Übergaben offen</button>`;
-  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { openTab('tabProj'); setProjFilter('bau'); if (narrow()) { leftEl.classList.add('open'); } return; } select(b.dataset.go, !['roadmap', 'company'].includes(b.dataset.go)); }));
+  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { openTab('tabProj'); setProjFilter('bau'); if (narrow()) { leftEl.classList.add('open'); } return; } select(b.dataset.go, !['roadmap', 'company', 'fleet'].includes(b.dataset.go)); }));
 }
 const loclist = document.getElementById('loclist');
 function renderLocList() {
@@ -2053,10 +2045,19 @@ function renderDetail(id) {
       <dl class="facts"><dt>Anlagen</dt><dd>${d.units}</dd><dt>Betreut über</dt><dd>Service · Wartungsvertrag</dd></dl>
       ${PROJECTS.some(pr => pr.client === d.id) ? `<p class="h">Bauvorhaben</p><ul class="links">${projRows(PROJECTS.filter(pr => pr.client === d.id))}</ul>` : ''}`;
   } else if (type === 'van') {
-    html += `<div class="eyebrow">Fahrzeug · Beispiel</div><h2>${d.name}</h2><p class="sub">${d.job}</p>
-      <div class="pills"><span class="pill ok">unterwegs</span><span class="pill demo">Beispiel</span></div>
-      <dl class="facts"><dt>Besatzung</dt><dd>${d.crew}</dd><dt>Tour</dt><dd>${d.route.filter(r => !Array.isArray(r)).map(r => byId[r].d.name.split(' · ')[0]).join(' → ')}</dd><dt>Fuhrpark</dt><dd>Fleetcars</dd></dl>
-      <p class="h">An Bord</p><ul class="links">${personRows(PEOPLE.filter(p => p.at === d.id))}</ul>`;
+    const st = vanStatus(d), o = objects[d.id];
+    html += `<div class="eyebrow">${d.kind} · ${d.plate}</div><h2>${d.name}</h2><p class="sub">${d.job}</p>
+      <div class="pills"><span class="pill ${st.kind === 'stop' ? 'warn' : 'ok'}" id="vanPill">${st.kind === 'stop' ? 'hält' : 'fährt'}</span><span class="pill demo">Beispiel</span></div>
+      <p class="live"><i></i><span id="vanLive">${st.text}</span></p>
+      <p class="h">Fahrer und Besatzung</p><ul class="links" style="margin-bottom:14px">${personRows(PEOPLE.filter(p => p.at === d.id))}</ul>
+      <p class="h">Tour</p><ol class="ms">${o.stops.map(s => `<li class="${s.id === st.at ? 'next' : ''}"><span>${byId[s.id].d.name}${s.id === d.home ? ' (Heimatstandort)' : ''}</span></li>`).join('')}</ol>
+      <dl class="facts"><dt>Heimatstandort</dt><dd>${byId[d.home].d.name}</dd><dt>Kennzeichen</dt><dd>${d.plate} (Beispiel)</dd><dt>Fuhrpark</dt><dd>Fleetcars</dd></dl>
+      <p class="hint">Fahrzeuge, Fahrer und Touren sind Beispiele. Echte Positionen könnten aus Fleetcars oder einer Telematik-Lösung kommen; ob dafür eine Schnittstelle existiert, ist zu prüfen.</p>`;
+  } else if (type === 'fleet') {
+    html += `<div class="eyebrow">Fuhrpark · Fleetcars</div><h2>Fahrzeuge</h2><p class="sub">Wer ist mit welchem Fahrzeug unterwegs und wo?</p>
+      <div class="pills"><span class="pill ok">${VANS.filter(v => !objects[v.id].atStop).length} fahren</span><span class="pill warn">${VANS.filter(v => objects[v.id].atStop).length} halten</span><span class="pill demo">Beispiel</span></div>
+      <ul class="links">${VANS.map(v => { const st = vanStatus(v); const crew = PEOPLE.filter(p => p.at === v.id); return `<li><button type="button" data-go="${v.id}"><span class="dot ${st.kind === 'stop' ? 'warn' : 'ok'}"></span><span>${v.name} · ${v.plate}<small>${crew.map(p => p.name).join(', ')} · ${st.text}</small></span></button></li>`; }).join('')}</ul>
+      <p class="hint" style="margin-top:12px">Die Liste aktualisiert sich beim Öffnen. Klick auf ein Fahrzeug: Die Kamera fährt mit.</p>`;
   } else if (type === 'person') {
     const host = byId[d.at];
     const step = d.proc ? byId[d.proc[0] + '-' + d.proc[1]].d : null;
@@ -2152,7 +2153,7 @@ function select(id, move) {
   const { type, d } = byId[id];
   if (type === 'proc' || type === 'roadmap') { flyTo(new THREE.Vector3(-3, 6, -4), new THREE.Vector3(-2, 60, 62)); return; }
   if (type === 'proj' && d.status === 'plan' && d.systems.some(sid => byId[sid].d.plan) && mode !== 'plan') setMode('plan');
-  if (type === 'company' || type === 'group') { flyTo(HOME_TGT, HOME_CAM); return; }
+  if (type === 'company' || type === 'group' || type === 'fleet') { flyTo(HOME_TGT, HOME_CAM); return; }
   const o = type === 'step' ? { anchor: d.pos } : type === 'proj' && (byId[d.at].d.bau || !objects[id]) ? { anchor: objects[d.at].anchor.clone().setY(byId[d.at].d.bau ? 1 : 3) } : objects[id];
   let follow = null;
   if (type === 'van') follow = id;
@@ -2186,6 +2187,7 @@ function applyVisibility() {
     const d = l.id ? byId[l.id].d : {};
     let on = true;
     if (l.layer === 'cust') on = layerState.cust;
+    if (l.layer === 'van') on = layerState.van;
     if (l.layer === 'proj') on = layerState.proj && (!byId[d.at].d.plan || showPlan);
     if (l.layer === 'person') on = layerState.people;
     if (l.layer === 'sys' || l.layer === 'plansys') on = layerState.sys;
@@ -2272,6 +2274,9 @@ const EVENT_POOL = [
   { st: 'ok', text: 'Zwenkau: Einsätze im Raum Leipzig geplant', go: 'psw1' },
   { st: 'warn', text: 'Bestellung wartet auf Lieferantenbestätigung', go: 'werkzeug-3' },
   { st: 'ok', text: 'Kennzahlen im MIS ausgewertet', go: 'pctl' },
+  { st: 'ok', text: 'Servicewagen 1 ist beim Kunden C angekommen', go: 'v1' },
+  { st: 'ok', text: 'Lieferwagen hat Material in Siebenlehn geladen', go: 'v3' },
+  { st: 'ok', text: 'Servicewagen dtL startet die Wartungstour', go: 'v4' },
 ];
 function hhmmss(d) { return d.toTimeString().slice(0, 8); }
 function pushEvent(ev) {
@@ -2295,7 +2300,7 @@ function pulseMesh() {
 
 /* ════════════════ Labels projizieren ════════════════ */
 const v3 = new THREE.Vector3();
-const LABEL_PRIO = { proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
+const LABEL_PRIO = { van: 75, proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
 function placeLabels() {
   const w = window.innerWidth, h = window.innerHeight;
   const cands = [];
@@ -2316,6 +2321,7 @@ function placeLabels() {
         fade = objects[l.loc.id].cut > 0.6 ? (l.zone && l.zone.floorLabel ? 1 : (30 - dist) / 8) : 0;
         if (l.zone && !floorLabelShown(l.loc, l.zone.b, l.zone.f || 0)) fade = 0;
       } else if (l.layer === 'map') fade = Math.min((dist - 32) / 12, (camera.position.y - 20) / 8);
+      else if (l.layer === 'van') fade = l.id === selected ? 1 : (120 - dist) / 20;
       else if (l.layer === 'proj') fade = l.id === selected ? 1 : (68 - dist) / 10;
       if (fade <= 0) vis = false;
     }
@@ -2402,7 +2408,7 @@ function tick() {
       r.edges.material.opacity = op;
       r.edges.visible = op > 0.03;
     });
-    l.rim.material.color.setHex(selected === l.id ? 0xc27c00 : 0x0e6a87);
+    l.rim.material.color.setHex(selected === l.id ? 0xc27c00 : 0x2563eb);
   });
 
   const showBar = objects.hq.cut > 0.5;
@@ -2441,11 +2447,20 @@ function tick() {
 
   VANS.forEach(v => {
     const o = objects[v.id];
-    o.t = (o.t + dt * v.speed * speedK) % 1;
+    if (o.wait > 0) { o.wait -= dt; if (o.wait <= 0) { o.atStop = null; o.t = (o.t + 0.004) % 1; } }
+    else {
+      const prev = o.t;
+      o.t = (o.t + dt * v.speed * speedK) % 1;
+      const hit = o.stops.find(s => (prev < s.t && o.t >= s.t) || (prev > o.t && (s.t > prev || s.t <= o.t)));
+      if (hit) { o.t = hit.t; o.wait = VAN_STOP; o.atStop = hit.id; }
+    }
     o.group.position.copy(o.curve.getPointAt(o.t));
     const tan = o.curve.getTangentAt(o.t);
     o.group.rotation.y = Math.atan2(-tan.z, tan.x);
-    o.beacon.visible = v.id !== 'v2' || Math.sin(t * 10) > 0;
+    o.beacon.visible = !o.atStop || Math.sin(t * 6) > 0;
+    o.labelPos.set(o.group.position.x, o.group.position.y + 1.6, o.group.position.z);
+    const st = vanStatus(v), el = document.getElementById('vst-' + v.id);
+    if (el && el.textContent !== st.text) el.textContent = st.text;
   });
 
   for (let i = pulses.length - 1; i >= 0; i--) {
@@ -2463,6 +2478,11 @@ function tick() {
 
   // Live-Tätigkeit im Detailfeld
   liveTick += dt;
+  if (liveTick > 0.4 && selected && byId[selected].type === 'van') {
+    liveTick = 0;
+    const st = vanStatus(byId[selected].d), el = document.getElementById('vanLive'), pl = document.getElementById('vanPill');
+    if (el) el.textContent = st.text; if (pl) { pl.textContent = st.kind === 'stop' ? 'hält' : 'fährt'; pl.className = 'pill ' + (st.kind === 'stop' ? 'warn' : 'ok'); }
+  }
   if (liveTick > 0.4 && selected && byId[selected].type === 'person') {
     liveTick = 0;
     const p = byId[selected].d, o = objects[selected];
