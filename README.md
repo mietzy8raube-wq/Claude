@@ -4,6 +4,11 @@ Eine zentrale Plattform für zwei Geschäftsführer: Aufgabenmanagement, Projekt
 Entscheidungen, Meetings, Kennzahlen, Unternehmensinformationen, sowie
 integrierter Outlook- und Excel-Anbindung.
 
+> **Produktivbetrieb auf einem eigenen Server:** siehe
+> [DEPLOYMENT.md](./DEPLOYMENT.md) für die Docker-Compose-Bereitstellung
+> (App + PostgreSQL, ein Befehl zum Starten). Die folgende Schnellstart-
+> Anleitung richtet sich an die lokale Entwicklung.
+
 ## Inhaltsverzeichnis
 
 1. [Tech-Stack](#tech-stack)

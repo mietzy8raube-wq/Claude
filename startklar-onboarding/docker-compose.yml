@@ -1,0 +1,6 @@
+services:
+  startklar:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "${STARTKLAR_PORT:-8080}:80"
