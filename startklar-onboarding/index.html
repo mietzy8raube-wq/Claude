@@ -197,13 +197,9 @@ html,body{height:100%}
 .mode-pin-err{color:var(--accent-text); font-size:11.5px; margin:8px 0 0; display:none}
 .mode-pin-err.show{display:block}
 
-body.edit-locked input[type="checkbox"]:disabled{cursor:not-allowed; opacity:.55}
-body.edit-locked input[type="text"][readonly],
-body.edit-locked textarea[readonly]{cursor:default}
-body.edit-locked .strack button:disabled{cursor:not-allowed; opacity:.4}
+body.edit-locked input[type="text"][readonly]{cursor:default}
 body.edit-locked #resetBtn, body.edit-locked #loadBtn, body.edit-locked #profileAddBtn{opacity:.4; cursor:not-allowed; pointer-events:none}
 body.edit-locked .prdel{opacity:0 !important; pointer-events:none}
-body.edit-locked .flip-hint{display:none}
 .read-only-flag{display:none; align-items:center; gap:6px; font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-top:6px}
 .read-only-flag .icon{width:11px;height:11px}
 body.edit-locked .read-only-flag{display:inline-flex}
@@ -742,7 +738,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <span id="modeLabel">Lesemodus</span>
       </button>
       <div class="mode-pin-pop" id="modePinPop" aria-hidden="true">
-        <p>PIN für den Bearbeiten-Modus (Pate):</p>
+        <p>PIN für Paten-Rechte (Kontaktfelder in Etappe 4, Verwaltung):</p>
         <div class="mode-pin-row">
           <input type="password" id="modePinInput" inputmode="numeric" placeholder="PIN" autocomplete="off">
           <button type="button" id="modePinSubmit">Entsperren</button>
@@ -822,7 +818,6 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 
             <div class="profile-card hero-anim" style="animation-delay:.5s">
               <div class="label">Dein Profil</div>
-              <div class="read-only-flag"><svg class="icon"><use href="#i-lock"/></svg>Lesemodus — dein Pate trägt hier Angaben ein</div>
               <div class="pf-grid">
                 <div class="pf-field"><label for="pfName">Name</label><input id="pfName" data-key="prof-name" type="text" placeholder="Vorname Nachname"></div>
                 <div class="pf-field"><label for="pfPos">Position</label><input id="pfPos" data-key="prof-position" type="text" placeholder="z. B. Servicetechniker"></div>
@@ -1016,6 +1011,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <section class="stage" id="s4">
           <div class="stage-head"><span class="stage-num">04 / 13</span><h2>Wer hilft dir wobei?</h2></div>
           <p class="stage-lead">Sechs Anlaufstellen decken fast alles ab. Trag hier gern die Namen ein, die dir dein Pate am ersten Tag nennt.</p>
+          <div class="read-only-flag"><svg class="icon"><use href="#i-lock"/></svg>Diese Kontaktfelder trägt dein Pate ein (PIN erforderlich)</div>
           <div class="grid-3" id="roleGrid">
             <div class="card">
               <div class="eyebrow"><svg class="icon"><use href="#i-compass"/></svg> Pate / Mentor</div>
@@ -2161,13 +2157,19 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   var modePinErr = document.getElementById("modePinErr");
   var editUnlocked = false;
 
+  var PATE_ONLY_TEXT_KEYS = ["kontakt-pate","kontakt-vorgesetzter","kontakt-vertrieb","kontakt-lager","kontakt-it","kontakt-personal"];
   function applyEditLock(){
     var locked = !editUnlocked;
     document.body.classList.toggle("edit-locked", locked);
-    document.querySelectorAll('input[type="checkbox"][data-key]').forEach(function(el){ el.disabled = locked; });
-    document.querySelectorAll('input[type="text"][data-key]').forEach(function(el){ el.readOnly = locked; });
-    document.querySelectorAll('textarea[data-key]').forEach(function(el){ el.readOnly = locked; });
-    document.querySelectorAll('.strack button').forEach(function(el){ el.disabled = locked; });
+    // Checklisten, Lernplan-Regler und Check-in-Notizen trägt die neue Kollegin/der neue Kollege selbst ein — immer frei.
+    document.querySelectorAll('input[type="checkbox"][data-key]').forEach(function(el){ el.disabled = false; });
+    document.querySelectorAll('textarea[data-key]').forEach(function(el){ el.readOnly = false; });
+    document.querySelectorAll('.strack button').forEach(function(el){ el.disabled = false; });
+    // Textfelder: nur die sechs Kontaktfelder in Etappe 4 bleiben Paten-geschützt, der Rest (Profil, System-Notizen) ist frei.
+    document.querySelectorAll('input[type="text"][data-key]').forEach(function(el){
+      var isPateOnly = PATE_ONLY_TEXT_KEYS.indexOf(el.dataset.key) !== -1;
+      el.readOnly = isPateOnly && locked;
+    });
     document.querySelectorAll('.dino-config-row input').forEach(function(el){ el.readOnly = locked; });
     var resetBtnEl = document.getElementById("resetBtn");
     var loadBtnEl = document.getElementById("loadBtn");
@@ -2178,7 +2180,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     modeSwitch.classList.toggle("unlocked", !locked);
     modeToggleBtn.setAttribute("aria-pressed", String(!locked));
     modeIcon.querySelector("use").setAttribute("href", locked ? "#i-lock" : "#i-unlock");
-    modeLabel.textContent = locked ? "Lesemodus" : "Bearbeiten (Pate)";
+    modeLabel.textContent = locked ? "Pate-Felder gesperrt" : "Bearbeiten (Pate)";
   }
   applyEditLock();
 
