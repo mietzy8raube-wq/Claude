@@ -35,6 +35,7 @@ Kein Backend, keine Datenbank, kein Build-Schritt. `index.html` öffnet direkt i
 - **Automatische Firmen-E-Mail** — bei "Pate / Mentor" wird aus dem eingetragenen Namen live `vorname.nachname@druckluft-chemnitz.de` abgeleitet, inklusive Button, der direkt das lokal installierte Outlook öffnet.
 - **Profilbild** — sobald ein Geburtsdatum eingetragen ist, zeigt der Profil-Avatar automatisch ein passendes Maskottchen-Bild (spielerisches Easter Egg, ohne Einfluss auf den eigentlichen Fortschritt).
 - **100 %-Meldung** — ein Toast erscheint einmalig, sobald alle Etappen abgeschlossen sind.
+- **Lese-/Bearbeiten-Modus** — die Seite startet immer schreibgeschützt ("Lesemodus"): neue Kolleg:innen können alles lesen, aber keine Checkboxen setzen, Felder ausfüllen oder Notizen ändern. Der Pate/Mentor schaltet über den Button in der Seitenleiste mit einem PIN in den Bearbeiten-Modus, trägt dort die Angaben ein, und kann danach ohne PIN wieder zurück in den Lesemodus wechseln. Der PIN ist direkt im Code hinterlegt (Standard: `PATE2026`, Suche nach `EDIT_PIN` in `index.html`, um ihn zu ändern) und bietet eine bewusste, aber keine kryptografisch sichere Hürde — der Modus wird bei jedem Neuladen der Seite zurückgesetzt.
 
 ## Technisch
 

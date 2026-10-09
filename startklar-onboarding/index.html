@@ -170,6 +170,44 @@ html,body{height:100%}
 .profile-menu-add:hover{background:var(--brand-soft)}
 .profile-menu-add .icon{width:15px;height:15px}
 
+.mode-switch{position:relative; margin-top:12px}
+.mode-switch-btn{
+  width:100%; display:flex; align-items:center; justify-content:center; gap:8px;
+  font-family:'IBM Plex Mono'; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+  color:var(--rail-soft); background:transparent; border:1.5px solid var(--rail-line-strong); border-radius:0;
+  padding:9px 12px; transition:border-color .16s var(--ease), color .16s var(--ease), background .16s var(--ease);
+}
+.mode-switch-btn .icon{width:13px;height:13px; flex:none}
+.mode-switch-btn:hover{border-color:var(--rail-faint); color:#fff}
+.mode-switch.unlocked .mode-switch-btn{background:var(--accent); border-color:var(--accent); color:#fff}
+.mode-switch.unlocked .mode-switch-btn:hover{filter:brightness(1.08)}
+.mode-pin-pop{
+  position:absolute; left:0; right:0; top:calc(100% + 8px); z-index:30;
+  background:var(--surface); color:var(--ink); border:2px solid var(--ink); box-shadow:var(--shadow-lg);
+  padding:0 14px; max-height:0; overflow:hidden; opacity:0;
+  transition:max-height .28s var(--ease-snap), opacity .22s var(--ease), padding .28s var(--ease-snap);
+}
+.mode-pin-pop.open{max-height:220px; opacity:1; padding:14px}
+.mode-pin-pop p{font-size:12px; color:var(--ink-soft); margin:0 0 8px; line-height:1.4}
+.mode-pin-row{display:flex; gap:8px}
+.mode-pin-row input{flex:1; min-width:0; border:1.5px solid var(--ink); border-radius:0; padding:7px 9px; font-family:'IBM Plex Mono'; font-size:13px; background:var(--surface); color:var(--ink)}
+.mode-pin-row input:focus{outline:2px solid var(--focus); outline-offset:1px}
+.mode-pin-row button{font-family:'IBM Plex Mono'; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; background:var(--ink); color:#fff; border:1.5px solid var(--ink); border-radius:0; padding:7px 12px; white-space:nowrap}
+.mode-pin-row button:hover{background:var(--brand); border-color:var(--brand)}
+.mode-pin-err{color:var(--accent-text); font-size:11.5px; margin:8px 0 0; display:none}
+.mode-pin-err.show{display:block}
+
+body.edit-locked input[type="checkbox"]:disabled{cursor:not-allowed; opacity:.55}
+body.edit-locked input[type="text"][readonly],
+body.edit-locked textarea[readonly]{cursor:default}
+body.edit-locked .strack button:disabled{cursor:not-allowed; opacity:.4}
+body.edit-locked #resetBtn, body.edit-locked #loadBtn, body.edit-locked #profileAddBtn{opacity:.4; cursor:not-allowed; pointer-events:none}
+body.edit-locked .prdel{opacity:0 !important; pointer-events:none}
+body.edit-locked .flip-hint{display:none}
+.read-only-flag{display:none; align-items:center; gap:6px; font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-top:6px}
+.read-only-flag .icon{width:11px;height:11px}
+body.edit-locked .read-only-flag{display:inline-flex}
+
 .maincol{min-width:0; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); border-radius:0; box-shadow:var(--shadow-lg); overflow-y:auto; overflow-x:hidden; height:100%; scroll-behavior:smooth}
 .maincol.locked{overflow:hidden}
 .maincol::-webkit-scrollbar{width:10px}
@@ -657,6 +695,8 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.3"/><line x1="12" y1="2.5" x2="12" y2="5.3"/><line x1="12" y1="18.7" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5.3" y2="12"/><line x1="18.7" y1="12" x2="21.5" y2="12"/><line x1="5.3" y1="5.3" x2="7.3" y2="7.3"/><line x1="16.7" y1="16.7" x2="18.7" y2="18.7"/><line x1="5.3" y1="18.7" x2="7.3" y2="16.7"/><line x1="16.7" y1="7.3" x2="18.7" y2="5.3"/></symbol>
 <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 14.5a8.5 8.5 0 1 1-9-13 7 7 0 0 0 9 13z"/></symbol>
 <symbol id="i-trash" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9 7V5.2c0-.7.6-1.2 1.2-1.2h3.6c.6 0 1.2.5 1.2 1.2V7"/><path d="M7 7l1 12.8c0 .7.6 1.2 1.2 1.2h5.6c.6 0 1.2-.5 1.2-1.2L17 7"/></symbol>
+<symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9.5" rx="1.3"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15.3" r="1.1" class="fill"/></symbol>
+<symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9.5" rx="1.3"/><path d="M8 11V8a4 4 0 0 1 7.4-2.1"/><circle cx="12" cy="15.3" r="1.1" class="fill"/></symbol>
 <symbol id="logo-mark" viewBox="0 0 100 100"><rect width="100" height="100" fill="#1A56C4"/><rect x="0" y="33" width="85" height="10" fill="#fff"/><rect x="0" y="46" width="66" height="10" fill="#fff"/><rect x="0" y="59" width="48" height="10" fill="#fff"/></symbol>
 </defs>
 </svg>
@@ -684,6 +724,21 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <div class="profile-menu-label">Profile auf diesem Gerät</div>
         <div class="profile-menu-list" id="profileMenuList"></div>
         <button class="profile-menu-add" id="profileAddBtn" type="button"><svg class="icon"><use href="#i-plus"/></svg>Neues Profil</button>
+      </div>
+    </div>
+
+    <div class="mode-switch" id="modeSwitch">
+      <button class="mode-switch-btn" id="modeToggleBtn" type="button" aria-pressed="false">
+        <svg class="icon" id="modeIcon"><use href="#i-lock"/></svg>
+        <span id="modeLabel">Lesemodus</span>
+      </button>
+      <div class="mode-pin-pop" id="modePinPop" aria-hidden="true">
+        <p>PIN für den Bearbeiten-Modus (Pate):</p>
+        <div class="mode-pin-row">
+          <input type="password" id="modePinInput" inputmode="numeric" placeholder="PIN" autocomplete="off">
+          <button type="button" id="modePinSubmit">Entsperren</button>
+        </div>
+        <p class="mode-pin-err" id="modePinErr">Falscher PIN.</p>
       </div>
     </div>
 
@@ -758,6 +813,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 
             <div class="profile-card hero-anim" style="animation-delay:.5s">
               <div class="label">Dein Profil</div>
+              <div class="read-only-flag"><svg class="icon"><use href="#i-lock"/></svg>Lesemodus — dein Pate trägt hier Angaben ein</div>
               <div class="pf-grid">
                 <div class="pf-field"><label for="pfName">Name</label><input id="pfName" data-key="prof-name" type="text" placeholder="Vorname Nachname"></div>
                 <div class="pf-field"><label for="pfPos">Position</label><input id="pfPos" data-key="prof-position" type="text" placeholder="z. B. Servicetechniker"></div>
@@ -2054,6 +2110,80 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     };
     reader.onerror = function(){ alert("Datei konnte nicht gelesen werden."); };
     reader.readAsText(file);
+  });
+
+  /* ---------- Lese-/Bearbeiten-Modus (PIN für den Paten) ---------- */
+  var EDIT_PIN = "PATE2026";
+  var modeSwitch = document.getElementById("modeSwitch");
+  var modeToggleBtn = document.getElementById("modeToggleBtn");
+  var modeIcon = document.getElementById("modeIcon");
+  var modeLabel = document.getElementById("modeLabel");
+  var modePinPop = document.getElementById("modePinPop");
+  var modePinInput = document.getElementById("modePinInput");
+  var modePinSubmit = document.getElementById("modePinSubmit");
+  var modePinErr = document.getElementById("modePinErr");
+  var editUnlocked = false;
+
+  function applyEditLock(){
+    var locked = !editUnlocked;
+    document.body.classList.toggle("edit-locked", locked);
+    document.querySelectorAll('input[type="checkbox"][data-key]').forEach(function(el){ el.disabled = locked; });
+    document.querySelectorAll('input[type="text"][data-key]').forEach(function(el){ el.readOnly = locked; });
+    document.querySelectorAll('textarea[data-key]').forEach(function(el){ el.readOnly = locked; });
+    document.querySelectorAll('.strack button').forEach(function(el){ el.disabled = locked; });
+    var resetBtnEl = document.getElementById("resetBtn");
+    var loadBtnEl = document.getElementById("loadBtn");
+    var addBtnEl = document.getElementById("profileAddBtn");
+    if(resetBtnEl) resetBtnEl.disabled = locked;
+    if(loadBtnEl) loadBtnEl.disabled = locked;
+    if(addBtnEl) addBtnEl.disabled = locked;
+    modeSwitch.classList.toggle("unlocked", !locked);
+    modeToggleBtn.setAttribute("aria-pressed", String(!locked));
+    modeIcon.querySelector("use").setAttribute("href", locked ? "#i-lock" : "#i-unlock");
+    modeLabel.textContent = locked ? "Lesemodus" : "Bearbeiten (Pate)";
+  }
+  applyEditLock();
+
+  function closePinPop(){
+    modePinPop.classList.remove("open");
+    modePinPop.setAttribute("aria-hidden", "true");
+    modePinErr.classList.remove("show");
+    modePinInput.value = "";
+  }
+  function openPinPop(){
+    modePinPop.classList.add("open");
+    modePinPop.setAttribute("aria-hidden", "false");
+    setTimeout(function(){ modePinInput.focus(); }, 50);
+  }
+  function tryUnlock(){
+    if(modePinInput.value === EDIT_PIN){
+      editUnlocked = true;
+      applyEditLock();
+      closePinPop();
+    } else {
+      modePinErr.classList.add("show");
+      modePinInput.value = "";
+      modePinInput.focus();
+    }
+  }
+  modeToggleBtn.addEventListener("click", function(){
+    if(editUnlocked){
+      editUnlocked = false;
+      applyEditLock();
+      closePinPop();
+    } else if(modePinPop.classList.contains("open")){
+      closePinPop();
+    } else {
+      openPinPop();
+    }
+  });
+  modePinSubmit.addEventListener("click", tryUnlock);
+  modePinInput.addEventListener("keydown", function(e){
+    if(e.key === "Enter"){ e.preventDefault(); tryUnlock(); }
+    if(e.key === "Escape"){ closePinPop(); }
+  });
+  document.addEventListener("click", function(e){
+    if(!e.target.closest(".mode-switch")) closePinPop();
   });
 
   updateProgress();
