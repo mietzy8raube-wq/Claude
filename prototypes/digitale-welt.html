@@ -243,6 +243,20 @@ ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height:
 .gtoday span { position: absolute; top: -14px; left: 3px; font: 600 9.5px var(--font-head); color: var(--bad); letter-spacing: .06em; text-transform: uppercase; }
 
 
+/* Spiel-Elemente */
+#minimap { right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: 224px; height: 206px; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
+#mm { width: 100%; flex: 1; min-height: 0; border-radius: 10px; background: #e7efe1; cursor: crosshair; display: block; }
+.mmhint { font-size: 10px; color: var(--ink-3); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#feed { right: 242px !important; }
+#detail { max-height: calc(100% - 84px - 230px) !important; }
+.mmhead { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 2px 0 6px; }
+.mmhead > span { font: 700 12px var(--font-head); color: var(--ink-2); }
+.mmhead .seg { padding: 2px; }
+.speed button { min-width: 30px; padding: 4px 6px !important; font-size: 11.5px !important; font-variant-numeric: tabular-nums; }
+#pops { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+.pop { position: absolute; left: 0; top: 0; white-space: nowrap; font: 700 12px var(--font-body); color: #fff; padding: 4px 10px; border-radius: 999px; box-shadow: 0 4px 12px rgba(17,24,39,.25); }
+.pop.ok { background: #16a34a; } .pop.warn { background: #d97706; } .pop.bad { background: #dc2626; } .pop.plan { background: #7c3aed; }
+@media (max-width: 860px) { #minimap { display: none; } #feed { right: 16px !important; } #detail { max-height: 38% !important; } .speed { display: none; } }
 /* Fahrzeug-Schilder */
 .lbl.van { display: flex; align-items: center; gap: 6px; background: #fff; border-radius: 999px; padding: 3px 10px 3px 6px; box-shadow: 0 2px 8px rgba(17,24,39,.16); font-size: 11.5px; color: var(--ink); }
 .lbl.van b { font-weight: 700; }
@@ -396,6 +410,20 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
     <button type="button" data-fv="0" aria-pressed="false">EG</button>
   </div>
 </div>
+
+<div id="minimap" class="hud" aria-label="Übersichtskarte">
+  <div class="mmhead"><span>Karte</span>
+    <div class="seg speed" role="group" aria-label="Simulationstempo">
+      <button type="button" data-sp="0" aria-pressed="false" title="Pause (Leertaste)">❚❚</button>
+      <button type="button" data-sp="1" aria-pressed="true" title="Normal">1×</button>
+      <button type="button" data-sp="2" aria-pressed="false" title="Schneller">2×</button>
+      <button type="button" data-sp="3" aria-pressed="false" title="Sehr schnell">3×</button>
+    </div>
+  </div>
+  <canvas id="mm" width="420" height="300"></canvas>
+  <span class="mmhint">Klick: hinfliegen · WASD · Q/E drehen</span>
+</div>
+<div id="pops" aria-hidden="true"></div>
 
 <section id="feed" class="hud" aria-label="Live-Ereignisse">
   <p class="h"><span>Live-Ereignisse</span><span>simuliert</span></p>
@@ -950,6 +978,24 @@ const MC = {
   log: blockMat('log'), leaves: blockMat('leaves'), glass: blockMat('glass', { transparent: true }), iron: blockMat('iron'), ore: blockMat('ore'), gold: blockMat('gold'),
   crate: blockMat('crate'), stone: blockMat('stone'), wool: blockMat('wool'),
 };
+/* Firmenschilder als Textur: Logo-Feld, Firmenkürzel, Zusatzzeile */
+function signTex(title, sub, accent = '#2563eb', dark = '#0f1f3a') {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = dark; g.fillRect(0, 0, 512, 128);
+  g.fillStyle = accent; g.fillRect(0, 0, 128, 128);
+  g.strokeStyle = '#ffffff'; g.lineWidth = 7; g.lineCap = 'round';
+  [44, 72].forEach(y => { g.beginPath(); g.moveTo(26, y); g.bezierCurveTo(46, y - 14, 62, y + 14, 82, y); g.bezierCurveTo(92, y - 7, 98, y - 7, 104, y - 4); g.stroke(); });
+  g.fillStyle = '#ffffff'; g.font = '700 54px "Plus Jakarta Sans", system-ui, sans-serif'; g.textBaseline = 'middle';
+  g.fillText(title, 150, sub ? 50 : 64);
+  if (sub) { g.fillStyle = '#c7d2e3'; g.font = '500 28px "Plus Jakarta Sans", system-ui, sans-serif'; g.fillText(sub, 152, 96); }
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t;
+}
+const COMPANY_COLOR = { dtc: '#2563eb', dtl: '#0d9488' };
+function signMesh(w, h, title, sub, accent, fadeList) {
+  const m = new THREE.MeshBasicMaterial({ map: signTex(title, sub, accent), transparent: !!fadeList, side: THREE.DoubleSide });
+  if (fadeList) fadeList.push(m);
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
+}
 const groundTex = blockTex('grassTop', 300 / B);
 const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ color: 0xdcebd2 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
@@ -1040,7 +1086,13 @@ function addFacade(loc, b, rec) {
         add(new THREE.BoxGeometry(1.15, th, 0.05), trim, b.door[0] + nx * 0.04, PLATE_Y + th / 2, b.door[1] + nz * 0.04, ry);
         for (let k = 1; k < 5; k++) add(new THREE.BoxGeometry(1.15, 0.015, 0.06), glass, b.door[0] + nx * 0.05, PLATE_Y + th * k / 5, b.door[1] + nz * 0.05, ry);
       }
-      if (loc.id === 'hq' && office) add(new THREE.BoxGeometry(1.7, 0.32, 0.06), M.petrol, b.door[0] + nx * 0.05, PLATE_Y + b.h - 0.3, b.door[1] + nz * 0.05, ry);
+      if (b === loc.buildings[0] && loc.company) {
+        const comp = COMPANIES.find(c => c.id === loc.company);
+        const sg = signMesh(1.8, 0.45, comp.short, loc.name, COMPANY_COLOR[loc.company], rec.fade);
+        sg.position.set(b.door[0] + nx * 0.07, PLATE_Y + Math.min(b.h - 0.32, 1.25), b.door[1] + nz * 0.07);
+        sg.rotation.y = Math.atan2(nx, nz);
+        rec.ext.add(sg);
+      }
     }
   }
   // Dach: Oberlichter (Hallen) und Lüftungsgeräte
@@ -1059,6 +1111,13 @@ function addFacade(loc, b, rec) {
   }
   add(new THREE.BoxGeometry(0.6, 0.32, 0.45), trim, x0 + 0.9, top + 0.16, z0 + 0.8);
   if (x1 - x0 > 4) add(new THREE.BoxGeometry(0.45, 0.25, 0.45), trim, x0 + 1.7, top + 0.125, z0 + 0.8);
+  // Dachschild der Zentrale, zur Startansicht (Süden) ausgerichtet
+  if (loc.id === 'hq' && b.id === 'b1') {
+    const top0 = PLATE_Y + b.h;
+    const sg = signMesh(2.8, 0.7, 'druckluft-technik', 'Chemnitz GmbH', COMPANY_COLOR.dtc, rec.fade);
+    sg.position.set(-4.4, top0 + 0.75, -3.0); rec.ext.add(sg);
+    [-1.1, 1.1].forEach(dx => add(new THREE.BoxGeometry(0.06, 0.45, 0.06), trim, -4.4 + dx, top0 + 0.22, -3.02));
+  }
   // Dachrand (Attika)
   const shape = new THREE.Shape(b.poly.map(q => new THREE.Vector2(q[0], -q[1])));
   const inner = new THREE.Path(b.poly.map(q => new THREE.Vector2(q[0] + (c[0] - q[0]) * 0.04, -(q[1] + (c[1] - q[1]) * 0.04))));
@@ -1412,21 +1471,33 @@ CITIES.forEach(c => {
 });
 
 /* ════════════════ Kunden-Anlagen ════════════════ */
+// Kundenbetriebe: Produktionshalle mit Sheddach, Bürotrakt, Firmenschild und Druckluftstation
 CUSTOMERS.forEach(c => {
   const g = new THREE.Group();
   g.position.set(c.x, 0, c.z);
-  const pad = voxelIsland(2.6, () => 'grass');
+  const pad = voxelIsland(2.7, (x, z) => z > 0.55 ? 'path' : 'grass');
   pad.children.forEach(m => tag(m, c.id));
   g.add(pad);
-  const hall = box(3, 1.2, 1.8, M.white); hall.position.set(-0.3, 0.85, -0.5); g.add(tag(hall, c.id));
-  g.add(aoPlane(7, 7, 0.4, 0.013, 0.4, 0.6), aoPlane(4, 3, -0.3, 0.26, -0.5, 0.5));
-  for (let i = 0; i < c.units; i++) {
-    const k = box(0.45, 0.5, 0.6, M.petrol);
-    k.position.set(-1.3 + i * 0.6, 0.5, 1); g.add(tag(k, c.id));
+  const Y = PLATE_Y;
+  const hallM = mat(0xe5e7eb), roofM = mat(0x9ca3af), glassM = mat(0x93c5fd), whiteM = mat(0xf8fafc);
+  const hall = box(2.5, 1.0, 1.5, hallM); hall.position.set(-0.4, Y + 0.5, -0.65); g.add(tag(hall, c.id));
+  for (let i = 0; i < 3; i++) {   // Sheddach: Glasband + schräge Dachfläche
+    const gx = -1.55 + i * 0.83;
+    const gl = box(0.06, 0.3, 1.5, glassM); gl.position.set(gx, Y + 1.15, -0.65); g.add(gl);
+    const rf = box(0.86, 0.05, 1.52, roofM); rf.position.set(gx + 0.41, Y + 1.15, -0.65); rf.rotation.z = Math.atan2(0.3, 0.83); g.add(rf);
   }
+  const office = box(0.95, 0.85, 1.0, whiteM); office.position.set(1.35, Y + 0.425, -0.55); g.add(tag(office, c.id));
+  const band = box(0.97, 0.16, 1.02, glassM); band.position.set(1.35, Y + 0.55, -0.55); g.add(band);
+  const chimney = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 1.3, 14), mat(0xcbd5e1)); chimney.position.set(-1.5, Y + 1.5, -1.25); chimney.castShadow = true; g.add(chimney);
+  const [nm, sub] = c.name.split(' · ');
+  const sg = signMesh(1.6, 0.4, nm, sub, '#475569'); sg.position.set(-0.4, Y + 0.72, 0.11); g.add(sg);
+  for (let i = 0; i < c.units; i++) {   // Druckluftstation vor der Halle
+    const k = box(0.42, 0.48, 0.5, mat(0x2563eb)); k.position.set(-1.45 + i * 0.52, Y + 0.24, 0.75); g.add(tag(k, c.id));
+  }
+  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.75, 16), mat(0xe2e8f0)); tank.position.set(-1.45 + c.units * 0.52, Y + 0.38, 0.75); tank.castShadow = true; g.add(tank);
   scene.add(g);
   objects[c.id] = { group: g, anchor: new THREE.Vector3(c.x, 1.5, c.z) };
-  addLabel(c.id, 'cust', c.name, new THREE.Vector3(c.x, 2.6, c.z), 'cust');
+  addLabel(c.id, 'cust', c.name, new THREE.Vector3(c.x, 2.9, c.z), 'cust');
 });
 
 /* ════════════════ Software ════════════════ */
@@ -1525,6 +1596,8 @@ VANS.forEach((v, idx) => {
   const beacon = new THREE.Mesh(rbox(0.25, 0.1, 0.25, 0.04), new THREE.MeshBasicMaterial({ color: v.color }));
   beacon.position.set(0.5, 0.96, 0);
   g.add(tag(body, v.id), tag(cab, v.id), stripe, glass, driver, beacon, ...wheels);
+  const vComp = byId[v.home].d.company || 'dtc';
+  [1, -1].forEach(sd => { const dec = signMesh(1.15, 0.29, COMPANIES.find(c => c.id === vComp).short, v.kind === 'Transporter' ? 'Logistik' : 'Service', COMPANY_COLOR[vComp]); dec.position.set(-0.15, 0.72, sd * 0.436); dec.rotation.y = sd > 0 ? 0 : Math.PI; g.add(dec); });
   g.position.y = 0.05;
   g.scale.setScalar(1.05);
   scene.add(g);
@@ -2256,6 +2329,111 @@ window.addEventListener('keydown', e => {
   if (e.key === 'Home') { select(null); flyTo(HOME_TGT, HOME_CAM); }
 });
 
+/* ════════════════ Spiel-Steuerung ════════════════ */
+let simSpeed = 1, simT = 0;
+const speedBtns = document.querySelectorAll('[data-sp]');
+function setSpeed(v) { simSpeed = v; speedBtns.forEach(b => b.setAttribute('aria-pressed', String(Number(b.dataset.sp) === v))); }
+speedBtns.forEach(b => b.addEventListener('click', () => setSpeed(Number(b.dataset.sp))));
+// Tastatur: WASD / Pfeile verschieben, Q / E drehen, Leertaste pausiert
+const keys = {};
+const typing = () => /INPUT|TEXTAREA|SELECT/.test((document.activeElement || {}).tagName || '');
+window.addEventListener('keydown', e => {
+  if (typing()) return;
+  const k = e.key.toLowerCase();
+  if (['w', 'a', 's', 'd', 'q', 'e', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) { keys[k] = true; if (fly) fly.follow = null; fly = null; if (k.startsWith('arrow')) e.preventDefault(); }
+  if (e.key === ' ' && !(document.activeElement && document.activeElement.tagName === 'BUTTON')) { e.preventDefault(); setSpeed(simSpeed ? 0 : 1); }
+});
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+window.addEventListener('blur', () => Object.keys(keys).forEach(k => keys[k] = false));
+function keyCamera(dt) {
+  const f = (keys.w || keys.arrowup ? 1 : 0) - (keys.s || keys.arrowdown ? 1 : 0), r = (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0), rot = (keys.e ? 1 : 0) - (keys.q ? 1 : 0);
+  if (!f && !r && !rot) return;
+  const fwd = controls.target.clone().sub(camera.position); fwd.y = 0; fwd.normalize();
+  const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+  const sp = camera.position.distanceTo(controls.target) * 0.9 * dt;
+  const mv = fwd.multiplyScalar(f * sp).add(right.multiplyScalar(r * sp));
+  controls.target.add(mv); camera.position.add(mv);
+  if (rot) { const off = camera.position.clone().sub(controls.target); off.applyAxisAngle(new THREE.Vector3(0, 1, 0), -rot * dt * 1.2); camera.position.copy(controls.target).add(off); }
+}
+// Auswahl-Markierung: schwebender Pfeil und Ring über dem gewählten Objekt
+const selMark = new THREE.Group();
+const selArrow = new THREE.Mesh(new THREE.ConeGeometry(0.32, 0.6, 4), new THREE.MeshBasicMaterial({ color: 0x2563eb }));
+selArrow.rotation.x = Math.PI; selMark.add(selArrow);
+const selRing = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 48), new THREE.MeshBasicMaterial({ color: 0x2563eb, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
+selRing.rotation.x = -Math.PI / 2; scene.add(selRing);
+scene.add(selMark);
+function markerTarget() {
+  if (!selected) return null;
+  const { type } = byId[selected]; const o = objects[selected];
+  if (!o || o.hidden || type === 'link') return null;
+  if (o.inVan) return { p: objects[o.inVan].group.position, h: 2.6, r: 1.3 };
+  if (type === 'van' || type === 'person') return { p: o.group.position, h: type === 'van' ? 2.5 : 2.0, r: type === 'van' ? 1.3 : 0.55 };
+  if (type === 'loc') return { p: o.anchor, h: byId[selected].d.id === 'hq' ? 7.5 : 5, r: (byId[selected].d.r || SITE_R) + 0.4 };
+  if (type === 'cust') return { p: new THREE.Vector3(o.group.position.x, 0, o.group.position.z), h: 3.8, r: 3.0 };
+  if (type === 'sys') return { p: o.group.position, h: 2.2, r: 1.3 };
+  return null;
+}
+function updateMarker(t) {
+  const m = markerTarget();
+  selMark.visible = selRing.visible = !!m;
+  if (!m) return;
+  selMark.position.set(m.p.x, m.p.y + m.h + (reduceMotion ? 0 : Math.sin(t * 3) * 0.15), m.p.z);
+  selArrow.rotation.y += 0.03;
+  const gy = byId[selected].type === 'sys' ? m.p.y - 0.85 : (byId[selected].type === 'cust' ? 0.02 : m.p.y + 0.06);
+  selRing.position.set(m.p.x, gy, m.p.z);
+  selRing.scale.setScalar(m.r * (1 + (reduceMotion ? 0 : Math.sin(t * 3) * 0.04)));
+}
+// Aufsteigende Meldungen direkt in der Welt
+const popsEl = document.getElementById('pops'), pops = [];
+function popAt(id, text, st) {
+  const o = objects[id]; if (!o || o.hidden) return;
+  const el = document.createElement('div'); el.className = 'pop ' + st; el.textContent = text.length > 46 ? text.slice(0, 44) + '…' : text;
+  popsEl.appendChild(el);
+  pops.push({ el, id, t: 0 });
+}
+function updatePops(dt) {
+  const w = window.innerWidth, h = window.innerHeight, v = new THREE.Vector3();
+  for (let i = pops.length - 1; i >= 0; i--) {
+    const pp = pops[i]; pp.t += dt;
+    const o = objects[pp.id];
+    v.copy(o.inVan ? objects[o.inVan].group.position : (o.group && byId[pp.id].type !== 'loc' && byId[pp.id].type !== 'link' ? o.group.position : o.anchor)).add(new THREE.Vector3(0, 3 + pp.t * 1.2, 0)).project(camera);
+    const vis = v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+    pp.el.style.display = vis ? '' : 'none';
+    pp.el.style.opacity = String(Math.max(0, Math.min(1, pp.t * 4, (3.2 - pp.t) / 0.8)));
+    pp.el.style.transform = `translate(${((v.x + 1) / 2 * w).toFixed(1)}px, ${((1 - v.y) / 2 * h).toFixed(1)}px) translate(-50%, -100%)`;
+    if (pp.t > 3.2) { pp.el.remove(); pops.splice(i, 1); }
+  }
+}
+// Übersichtskarte
+const mmCanvas = document.getElementById('mm'), mmCtx = mmCanvas.getContext('2d');
+const MM = (() => { const xs = [], zs = []; [...LOCATIONS, ...CUSTOMERS].forEach(o => { xs.push(o.x); zs.push(o.z); }); const pad = 9; return { x0: Math.min(...xs) - pad, x1: Math.max(...xs) + pad, z0: Math.min(...zs) - pad - 6, z1: Math.max(...zs) + pad }; })();
+function mmXY(x, z) { const W = mmCanvas.width, H = mmCanvas.height, s = Math.min(W / (MM.x1 - MM.x0), H / (MM.z1 - MM.z0)); const ox = (W - s * (MM.x1 - MM.x0)) / 2, oz = (H - s * (MM.z1 - MM.z0)) / 2; return [ox + (x - MM.x0) * s, oz + (z - MM.z0) * s, s]; }
+function drawMinimap() {
+  const g = mmCtx, W = mmCanvas.width, H = mmCanvas.height;
+  g.clearRect(0, 0, W, H); g.fillStyle = '#e7efe1'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#c9d2c2'; g.lineWidth = 3;
+  HIGHWAYS.forEach(hw => { g.beginPath(); hw.xz.forEach((p, i) => { const [x, y] = mmXY(p.x, p.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); });
+  VANS.forEach(v => { if (!objects[v.id].road.visible) return; g.strokeStyle = '#' + v.color.toString(16).padStart(6, '0') + '55'; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); objects[v.id].curve.getPoints(80).forEach((p, i) => { const [x, y] = mmXY(p.x, p.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.stroke(); g.setLineDash([]); });
+  CUSTOMERS.forEach(c => { const [x, y, s] = mmXY(c.x, c.z); g.fillStyle = '#94a3b8'; g.beginPath(); g.arc(x, y, 2.6 * s, 0, 7); g.fill(); });
+  LOCATIONS.forEach(l => { const [x, y, s] = mmXY(l.x, l.z); g.fillStyle = l.bau ? '#f59e0b' : (l.company === 'dtl' ? '#0d9488' : '#2563eb'); g.beginPath(); g.arc(x, y, Math.max(5, (l.r || SITE_R) * s), 0, 7); g.fill();
+    if (!l.bau) { g.fillStyle = '#111827'; g.font = '600 20px "Plus Jakarta Sans", sans-serif'; g.textAlign = 'center'; g.fillText(l.name, x, y - (l.r || SITE_R) * s - 6); } });
+  VANS.forEach(v => { const p = objects[v.id].group.position; const [x, y] = mmXY(p.x, p.z); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.fillStyle = '#' + v.color.toString(16).padStart(6, '0'); g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); });
+  // Blickfeld der Kamera
+  const [tx, ty] = mmXY(controls.target.x, controls.target.z), [cx, cy] = mmXY(camera.position.x, camera.position.z);
+  const dist = camera.position.distanceTo(controls.target), [, , s] = mmXY(0, 0), r = Math.max(10, dist * 0.42 * s);
+  g.strokeStyle = '#111827'; g.lineWidth = 2.5; g.beginPath(); g.arc(tx, ty, r, 0, 7); g.stroke();
+  g.fillStyle = '#111827'; g.beginPath(); g.arc(tx, ty, 3.5, 0, 7); g.fill();
+  const ang = Math.atan2(ty - cy, tx - cx); g.beginPath(); g.moveTo(tx - Math.cos(ang) * r, ty - Math.sin(ang) * r); g.lineTo(tx - Math.cos(ang) * (r + 12), ty - Math.sin(ang) * (r + 12)); g.stroke();
+}
+mmCanvas.addEventListener('click', e => {
+  const rc = mmCanvas.getBoundingClientRect(), W = mmCanvas.width, H = mmCanvas.height;
+  const px = (e.clientX - rc.left) / rc.width * W, py = (e.clientY - rc.top) / rc.height * H;
+  const [ox, oy, s] = mmXY(MM.x0, MM.z0);
+  const wx = MM.x0 + (px - ox) / s, wz = MM.z0 + (py - oy) / s;
+  const tgt = new THREE.Vector3(wx, 1, wz), off = camera.position.clone().sub(controls.target);
+  flyTo(tgt, tgt.clone().add(off));
+});
+
 /* ════════════════ Live-Ereignisse (simuliert) ════════════════ */
 const pulses = [], pulseMeshes = [];
 const eventsEl = document.getElementById('events');
@@ -2285,11 +2463,11 @@ function pushEvent(ev) {
   li.querySelector('button').addEventListener('click', () => select(ev.go, true));
   eventsEl.prepend(li);
   while (eventsEl.children.length > 4) eventsEl.lastChild.remove();
-  if (objects[ev.go] && !objects[ev.go].hidden) pulses.push({ id: ev.go, t: 0, color: C[ev.st] || C.petrol });
+  if (objects[ev.go] && !objects[ev.go].hidden) { pulses.push({ id: ev.go, t: 0, color: C[ev.st] || C.petrol }); popAt(ev.go, ev.text, ev.st); }
 }
 let evIdx = 0;
 for (let i = 0; i < 3; i++) pushEvent(EVENT_POOL[evIdx++]);
-setInterval(() => pushEvent(EVENT_POOL[evIdx++ % EVENT_POOL.length]), 4500);
+let evClock = 0;   // Ereignisse folgen dem Simulationstempo
 const clock = document.getElementById('clock');
 setInterval(() => { clock.textContent = hhmmss(new Date()); }, 1000);
 clock.textContent = hhmmss(new Date());
@@ -2366,10 +2544,15 @@ function placeLabels() {
 /* ════════════════ Animation ════════════════ */
 const clockT = new THREE.Clock();
 let liveTick = 0;
+let mmFrame = 0;
 function tick() {
   const dt = Math.min(clockT.getDelta(), 0.05);
   const t = clockT.elapsedTime;
+  const sdt = dt * simSpeed;
+  simT += sdt;
   const speedK = reduceMotion ? 0.3 : 1;
+  evClock += sdt; if (evClock > 4.5) { evClock = 0; pushEvent(EVENT_POOL[evIdx++ % EVENT_POOL.length]); }
+  keyCamera(dt);
 
   if (fly) {
     if (fly.t < 1) {
@@ -2431,26 +2614,26 @@ function tick() {
     const st = statusOf(l);
     const emph = selected === l.id || hovered === l.id || selected === l.from || selected === l.to;
     o.parts.forEach(p => {
-      if (st === 'bad') p.userData.t = Math.min(p.userData.t + dt * 0.12 * speedK, 0.55 + (p.id % 5) * 0.02);
-      else p.userData.t = (p.userData.t + dt * (st === 'check' ? 0.06 : st === 'warn' ? 0.05 : 0.16) * speedK) % 1;
+      if (st === 'bad') p.userData.t = Math.min(p.userData.t + sdt * 0.12 * speedK, 0.55 + (p.id % 5) * 0.02);
+      else p.userData.t = (p.userData.t + sdt * (st === 'check' ? 0.06 : st === 'warn' ? 0.05 : 0.16) * speedK) % 1;
       p.position.copy(o.curve.getPoint(p.userData.rev ? 1 - p.userData.t : p.userData.t));
       p.visible = !activeProc || emph;
     });
     if (!l.plan) o.line.material.opacity = emph ? 1 : activeProc ? 0.12 : (st === 'ok' ? 0.5 : 0.75);
   });
 
-  if (!reduceMotion) clouds.children.forEach(c => { c.position.x += dt * 0.6; if (c.position.x > 130) c.position.x -= 260; });
-  procFlow.forEach(f => { f.m.userData.t = (f.m.userData.t + dt * 0.05 * speedK) % 1; f.m.position.copy(f.curve.getPointAt(f.m.userData.t)); });
+  if (!reduceMotion) clouds.children.forEach(c => { c.position.x += sdt * 0.6; if (c.position.x > 130) c.position.x -= 260; });
+  procFlow.forEach(f => { f.m.userData.t = (f.m.userData.t + sdt * 0.05 * speedK) % 1; f.m.position.copy(f.curve.getPointAt(f.m.userData.t)); });
   if (activeProc) byId[activeProc].d.steps.forEach(st => st.marker.scale.setScalar(selected === st.id ? 1.5 : st.state === 'hot' && !reduceMotion ? 1 + 0.25 * Math.sin(t * 6) : 1));
 
-  PEOPLE.forEach(p => updatePerson(p, dt, t));
+  PEOPLE.forEach(p => updatePerson(p, sdt, simT));
 
   VANS.forEach(v => {
     const o = objects[v.id];
-    if (o.wait > 0) { o.wait -= dt; if (o.wait <= 0) { o.atStop = null; o.t = (o.t + 0.004) % 1; } }
+    if (o.wait > 0) { o.wait -= sdt; if (o.wait <= 0) { o.atStop = null; o.t = (o.t + 0.004) % 1; } }
     else {
       const prev = o.t;
-      o.t = (o.t + dt * v.speed * speedK) % 1;
+      o.t = (o.t + sdt * v.speed * speedK) % 1;
       const hit = o.stops.find(s => (prev < s.t && o.t >= s.t) || (prev > o.t && (s.t > prev || s.t <= o.t)));
       if (hit) { o.t = hit.t; o.wait = VAN_STOP; o.atStop = hit.id; }
     }
@@ -2490,6 +2673,9 @@ function tick() {
     const lz = document.getElementById('liveZone'); if (lz && o.loc) lz.textContent = o.mode === 'walk' ? (o.inside && o.loc.bld[o.bY] && o.loc.bld[o.bY].data.floorNames ? `unterwegs · ${o.loc.bld[o.bY].data.floorNames[Math.round(o.lp.f)]}` : 'unterwegs') : zoneName(o.loc, p.routine[o.step].z);
   }
 
+  updateMarker(t);
+  updatePops(dt);
+  if ((++mmFrame) % 4 === 0 && !document.getElementById('minimap').hidden) drawMinimap();
   controls.update();
   renderer.render(scene, camera);
   placeLabels();
