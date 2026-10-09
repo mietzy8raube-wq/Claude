@@ -208,6 +208,15 @@ body.edit-locked .flip-hint{display:none}
 .read-only-flag .icon{width:11px;height:11px}
 body.edit-locked .read-only-flag{display:inline-flex}
 
+.dino-config{display:none; margin-top:14px; padding-top:14px; border-top:1.5px dashed var(--line)}
+body:not(.edit-locked) .dino-config{display:block}
+.dino-config-head{font-family:'IBM Plex Mono'; font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-faint); margin-bottom:8px}
+.dino-config-hint{font-weight:400; text-transform:none; letter-spacing:0}
+.dino-config-row{display:flex; align-items:center; gap:10px; margin-top:6px}
+.dino-config-label{flex:none; width:52px; font-size:12.5px; font-weight:600; color:var(--ink-soft)}
+.dino-config-row input{flex:1; min-width:0; border:0; border-bottom:1.5px solid var(--line); background:transparent; padding:4px 2px; font-family:'IBM Plex Mono'; font-size:13px; color:var(--ink)}
+.dino-config-row input:focus{outline:none; border-bottom-color:var(--brand)}
+
 .maincol{min-width:0; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); border-radius:0; box-shadow:var(--shadow-lg); overflow-y:auto; overflow-x:hidden; height:100%; scroll-behavior:smooth}
 .maincol.locked{overflow:hidden}
 .maincol::-webkit-scrollbar{width:10px}
@@ -860,6 +869,12 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
                   <span class="dino-frame-tag">Stefan&nbsp;erkannt</span>
                 </div>
                 <p><b>Stefan Spitzbarth, Projektingenieur!</b> Projekte. Lösungen. Zukunft.</p>
+              </div>
+              <div class="dino-config" id="dinoConfig">
+                <div class="dino-config-head">Sonderbilder-Zuordnung <span class="dino-config-hint">— nur im Bearbeiten-Modus sichtbar</span></div>
+                <div class="dino-config-row"><span class="dino-config-label">Chef</span><input type="text" id="dinoDateChef" inputmode="numeric" maxlength="10" placeholder="TT.MM.JJJJ"></div>
+                <div class="dino-config-row"><span class="dino-config-label">Brille</span><input type="text" id="dinoDateBrille" inputmode="numeric" maxlength="10" placeholder="TT.MM.JJJJ"></div>
+                <div class="dino-config-row"><span class="dino-config-label">Stefan</span><input type="text" id="dinoDateStefan" inputmode="numeric" maxlength="10" placeholder="TT.MM.JJJJ"></div>
               </div>
             </div>
           </div>
@@ -1725,6 +1740,13 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   }
 
   /* ---------- Easter egg: dinosaur for birth years before 2000 ---------- */
+  var DINO_SPECIAL_DEFAULTS = { chef: "02.10.1978", brille: "16.08.1977", stefan: "03.07.1989" };
+  function getDinoSpecialDate(key){
+    return localStorage.getItem("sk__dino_special_" + key) || DINO_SPECIAL_DEFAULTS[key];
+  }
+  function setDinoSpecialDate(key, value){
+    localStorage.setItem("sk__dino_special_" + key, value);
+  }
   function updateDinoPop(value){
     var dinoOld = document.getElementById("dinoPop");
     var dinoYoung = document.getElementById("dinoPopYoung");
@@ -1732,9 +1754,9 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     var dinoBrille = document.getElementById("dinoPopBrille");
     var dinoStefan = document.getElementById("dinoPopStefan");
     if(!dinoOld || !dinoYoung) return;
-    var isChef = value === "02.10.1978";
-    var isBrille = value === "16.08.1977";
-    var isStefan = value === "03.07.1989";
+    var isChef = value === getDinoSpecialDate("chef");
+    var isBrille = value === getDinoSpecialDate("brille");
+    var isStefan = value === getDinoSpecialDate("stefan");
     var isSpecial = isChef || isBrille || isStefan;
     var m = value.match(/^\d{2}\.\d{2}\.(\d{4})$/);
     var year = m ? parseInt(m[1], 10) : null;
@@ -1758,6 +1780,21 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     }
   }
   updateDinoPop(document.getElementById("pfBirth") ? document.getElementById("pfBirth").value : "");
+
+  function initDinoConfigInput(elId, key){
+    var el = document.getElementById(elId);
+    if(!el) return;
+    el.value = getDinoSpecialDate(key);
+    el.addEventListener("input", function(){
+      el.value = formatDateInput(el.value);
+      setDinoSpecialDate(key, el.value);
+      var birthEl = document.getElementById("pfBirth");
+      updateDinoPop(birthEl ? birthEl.value : "");
+    });
+  }
+  initDinoConfigInput("dinoDateChef", "chef");
+  initDinoConfigInput("dinoDateBrille", "brille");
+  initDinoConfigInput("dinoDateStefan", "stefan");
 
   /* ---------- Umdrehbare Notizkarten (Etappe 11: Check-ins) ---------- */
   document.querySelectorAll(".flip-card").forEach(function(card){
@@ -1806,9 +1843,9 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   var DINO_STEFAN_SRC = (function(){ var el = document.querySelector("#dinoPopStefan .dino-img"); return el ? el.getAttribute("src") : null; })();
   function dinoCategoryForProfile(pid){
     var v = localStorage.getItem("sk_" + pid + "_prof-birth") || "";
-    if(v === "02.10.1978") return "chef";
-    if(v === "16.08.1977") return "brille";
-    if(v === "03.07.1989") return "stefan";
+    if(v === getDinoSpecialDate("chef")) return "chef";
+    if(v === getDinoSpecialDate("brille")) return "brille";
+    if(v === getDinoSpecialDate("stefan")) return "stefan";
     var m = v.match(/^\d{2}\.\d{2}\.(\d{4})$/);
     if(!m) return null;
     var year = parseInt(m[1], 10);
@@ -2131,6 +2168,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     document.querySelectorAll('input[type="text"][data-key]').forEach(function(el){ el.readOnly = locked; });
     document.querySelectorAll('textarea[data-key]').forEach(function(el){ el.readOnly = locked; });
     document.querySelectorAll('.strack button').forEach(function(el){ el.disabled = locked; });
+    document.querySelectorAll('.dino-config-row input').forEach(function(el){ el.readOnly = locked; });
     var resetBtnEl = document.getElementById("resetBtn");
     var loadBtnEl = document.getElementById("loadBtn");
     var addBtnEl = document.getElementById("profileAddBtn");
