@@ -243,6 +243,10 @@ ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height:
 .gtoday span { position: absolute; top: -14px; left: 3px; font: 600 9.5px var(--font-head); color: var(--bad); letter-spacing: .06em; text-transform: uppercase; }
 
 
+/* Datenstand */
+.databadge { margin-left: 8px; vertical-align: 2px; font: 600 10.5px var(--font-body); color: #92400e; background: #fef3c7; border: 0; border-radius: 999px; padding: 2px 8px; cursor: pointer; }
+.databadge:hover { background: #fde68a; }
+.databadge:focus-visible { outline: 2px solid var(--petrol); }
 /* Spiel-Elemente */
 #minimap { right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: 224px; height: 206px; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
 #mm { width: 100%; flex: 1; min-height: 0; border-radius: 10px; background: #e7efe1; cursor: crosshair; display: block; }
@@ -310,6 +314,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 500 14px var(--font-head); color: var(--ink-3); }
 
 @media (max-width: 1100px) { .kpis .kpi.opt { display: none; } }
+@media (max-width: 1480px) { .clock { display: none; } }
 @media (max-width: 860px) {
   #floorbar > span { display: none; }
   body.has-floorbar #detail { bottom: calc(166px + env(safe-area-inset-bottom, 0px)); max-height: 32%; }
@@ -334,7 +339,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
   <button type="button" id="menuBtn" class="menu" aria-expanded="false" aria-controls="left">Übersicht</button>
   <div class="brand">
     <div class="mark" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 18 18"><path d="M3 12.5c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 3.2-2M3 8c2.2 0 2.2-2 4.4-2s2.2 2 4.4 2 2.2-2 3.2-2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg></div>
-    <div class="brand-txt"><b>Digitale Welt dtC</b><span>druckluft-technik Chemnitz GmbH · dtL druckluft-technik Leipzig GmbH</span></div>
+    <div class="brand-txt"><b>Digitale Welt dtC <button type="button" class="databadge" id="dataBadge" title="Datenquellen anzeigen">Beispieldaten</button></b><span>druckluft-technik Chemnitz GmbH · dtL druckluft-technik Leipzig GmbH</span></div>
   </div>
   <div class="kpis" id="kpis"></div>
   <div class="seg" role="group" aria-label="Ansicht">
@@ -589,6 +594,27 @@ const SYSTEMS = [
   SYSTEMS.forEach(x => x.home = 'cloud');
 })();
 
+// Anbindung der Programme an die Übersicht (siehe docs/digitale-welt-integration.md)
+// conn: live = angebunden · gf = in der GF-Suite angebunden, hier noch nicht · manual = manuell/Excel · open = zu klären · plan = geplant
+const SOURCES = {
+  gf: { conn: 'gf', phase: 1, feeds: 'Projekte, Bauvorhaben, Aufgaben, Entscheidungen, Kennzahlen', way: 'eigene Datenbank' },
+  m365: { conn: 'gf', phase: 1, feeds: 'Termine; später Teams-Anwesenheit und E-Mail-Eingang', way: 'Microsoft Graph (Kalender schon angebunden)' },
+  inform: { conn: 'open', phase: 3, feeds: 'Anfragen, Angebote, Aufträge, Rechnungen → Prozessstände und Übergaben', way: 'Schnittstelle oder Export des Herstellers' },
+  docuware: { conn: 'open', phase: 3, feeds: 'Archivstatus von Berichten, Rechnungen, Abnahmen', way: 'REST-Schnittstelle (Lizenz prüfen)' },
+  factorial: { conn: 'open', phase: 2, feeds: 'Urlaub und Abwesenheit → Verfügbarkeit', way: 'Schnittstelle von Factorial' },
+  fleet: { conn: 'open', phase: 4, feeds: 'Fahrzeuge, Wartung, Einsatzbereitschaft; ggf. Status unterwegs', way: 'Schnittstelle/Export erfragen oder Telematik' },
+  orsy: { conn: 'open', phase: 3, feeds: 'Bestände, Verbrauch, Bestellungen', way: 'Export oder Schnittstelle bei Würth erfragen' },
+  mis: { conn: 'open', phase: 3, feeds: 'Kennzahlen und Nachweise (Arbeitsschutz, Qualität, Umwelt, Energie)', way: 'je nach Technik: Export, Datenbank, Links' },
+  app: { conn: 'open', phase: 3, feeds: 'Einsatzstand, Bericht vollständig, Material, Unterschrift', way: 'abhängig vom Entwicklungsstand' },
+  cad: { conn: 'manual', phase: 1, feeds: 'Verweise auf Zeichnungen', way: 'Links, keine Synchronisation nötig' },
+  airwiki: { conn: 'manual', phase: 1, feeds: 'Verweise auf Anleitungen', way: 'Links' },
+  ki: { conn: 'manual', phase: 1, feeds: 'Nutzung und Fragen (KI-Beauftragter)', way: 'manuelle Pflege' },
+  mailag: { conn: 'plan', phase: 5, feeds: 'Vorsortierte E-Mails', way: 'Microsoft Graph' },
+  callag: { conn: 'plan', phase: 5, feeds: 'Anrufnotizen', way: 'Telefonanlage, zu prüfen' },
+  pilot: { conn: 'plan', phase: 5, feeds: 'KI in Office', way: 'Microsoft 365' },
+};
+const CONN_TXT = { live: 'live angebunden', gf: 'in GF-Suite angebunden', manual: 'manuell / Links', open: 'Anbindung zu klären', plan: 'geplant' };
+const CONN_DOT = { live: 'ok', gf: 'ok', manual: 'away', open: 'check', plan: 'plan' };
 // Informationsbezüge zwischen Programmen. status ok = bestätigt, check = automatische Übertragung zu prüfen, plan = geplant
 const LINKS = [
   { id: 'l1', from: 'gf', to: 'm365', name: 'Kalender & Excel', desc: 'Die GF-Suite liest und schreibt Outlook-Termine (Microsoft Graph) und importiert/exportiert Excel-Dateien.', status: 'ok', rate: 3, dir: 'both' },
@@ -750,6 +776,7 @@ VANS.forEach(v => byId[v.id] = { type: 'van', d: v });
 PEOPLE.forEach(p => byId[p.id] = { type: 'person', d: p });
 GROUPS.forEach(g => byId['grp-' + g.id] = { type: 'group', d: g });
 byId.fleet = { type: 'fleet', d: { name: 'Fuhrpark' } };
+byId.sources = { type: 'sources', d: { name: 'Datenquellen' } };
 byId.company = { type: 'company', d: { name: 'Unternehmen' } };
 PROCESSES.forEach(pr => {
   byId[pr.id] = { type: 'proc', d: pr };
@@ -1920,12 +1947,12 @@ function renderKpis() {
   kpis.innerHTML =
     `<button type="button" class="kpi" data-go="company"><strong>2</strong>Gesellschaften</button>` +
     `<span class="kpi opt"><strong>${LOCATIONS.filter(l => vis(l) && !l.bau).length}</strong>Standorte</span>` +
-    `<span class="kpi opt"><strong>${SYSTEMS.filter(x => !x.plan).length}</strong>Programme</span>` +
-    `<button type="button" class="kpi opt" data-go="roadmap"><strong>${PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status)).length}</strong>Vorhaben aktiv</button>` +
+    `<button type="button" class="kpi opt" data-go="sources"><strong>${SYSTEMS.filter(x => !x.plan && SOURCES[x.id] && ['live', 'gf'].includes(SOURCES[x.id].conn)).length}/${SYSTEMS.filter(x => !x.plan).length}</strong>angebunden</button>` +
+    `<button type="button" class="kpi opt" data-go="roadmap"><strong>${PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status)).length}</strong>Vorhaben</button>` +
     `<button type="button" class="kpi" data-go="fleet"><strong>${VANS.length}</strong>Fahrzeuge</button>` +
     `<button type="button" class="kpi opt" data-go="bauall"><strong>${LOCATIONS.filter(l => l.bau).length}</strong>Baustellen</button>` +
-    `<button type="button" class="kpi warn" data-go="wartung"><strong>${openHand}</strong>Übergaben offen</button>`;
-  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { openTab('tabProj'); setProjFilter('bau'); if (narrow()) { leftEl.classList.add('open'); } return; } select(b.dataset.go, !['roadmap', 'company', 'fleet'].includes(b.dataset.go)); }));
+    `<button type="button" class="kpi warn" data-go="wartung"><strong>${openHand}</strong>Übergaben</button>`;
+  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { openTab('tabProj'); setProjFilter('bau'); if (narrow()) { leftEl.classList.add('open'); } return; } select(b.dataset.go, !['roadmap', 'company', 'fleet', 'sources'].includes(b.dataset.go)); }));
 }
 const loclist = document.getElementById('loclist');
 function renderLocList() {
@@ -1992,6 +2019,7 @@ function renderProjList() {
 }
 document.getElementById('roadBtn').addEventListener('click', () => select('roadmap', false));
 document.getElementById('companyBtn').addEventListener('click', () => select('company', false));
+document.getElementById('dataBadge').addEventListener('click', () => select('sources', false));
 const TABS = [['tabLoc', 'paneLoc'], ['tabTeam', 'paneTeam'], ['tabProc', 'paneProc'], ['tabProj', 'paneProj']];
 function openTab(tabId) { TABS.forEach(([t, p]) => { document.getElementById(t).setAttribute('aria-selected', t === tabId); document.getElementById(p).hidden = t !== tabId; }); }
 TABS.forEach(([t]) => document.getElementById(t).addEventListener('click', () => openTab(t)));
@@ -2098,7 +2126,7 @@ function renderDetail(id) {
     html += `<div class="eyebrow">Programm · ${d.kind}</div><h2>${d.name}</h2><p class="sub">${d.role}</p>
       <div class="pills"><span class="pill ${d.plan ? 'plan' : st}">${d.plan ? 'geplant' : d.statusText || STATUS_TXT[st]}</span><span class="pill demo">${d.plan ? 'laut Bachelorarbeit geplant' : 'laut Bachelorarbeit im Einsatz'}</span></div>
       ${d.status === 'check' ? '<p class="msg warn">Entwicklungs- und Nutzungsstand ist noch zu prüfen.</p>' : ''}
-      <dl class="facts"><dt>Ansprechpartner</dt><dd>${owner}</dd><dt>Zugang</dt><dd>Link noch eintragen</dd><dt>Informationsbezüge</dt><dd>${ls.filter(l => l.status === 'ok' && !l.plan).length} bestätigt · ${ls.filter(l => l.status === 'check').length} zu prüfen</dd></dl>
+      <dl class="facts">${SOURCES[d.id] ? `<dt>Anbindung</dt><dd>${CONN_TXT[SOURCES[d.id].conn]} · Phase ${SOURCES[d.id].phase}</dd><dt>Liefert</dt><dd>${SOURCES[d.id].feeds}</dd><dt>Weg</dt><dd>${SOURCES[d.id].way}</dd>` : ''}<dt>Ansprechpartner</dt><dd>${owner}</dd><dt>Zugang</dt><dd>Link noch eintragen</dd><dt>Informationsbezüge</dt><dd>${ls.filter(l => l.status === 'ok' && !l.plan).length} bestätigt · ${ls.filter(l => l.status === 'check').length} zu prüfen</dd></dl>
       ${users.length ? `<p class="h">Genutzt von</p><ul class="links" style="margin-bottom:14px">${users.map(g => `<li><button type="button" data-go="grp-${g.id}"><span class="dot ${g.field ? 'away' : 'ok'}"></span><span>${g.n}<small>${g.field ? 'gewerblich' : 'Büro'}</small></span></button></li>`).join('')}</ul>` : ''}
       ${steps.length ? `<p class="h">In Prozessschritten</p><ul class="links" style="margin-bottom:14px">${steps.map(s => `<li><button type="button" data-go="${s.id}"><span class="dot ok"></span><span>${s.proc.name} · ${s.no}. ${s.n}<small>${GROUP_N[s.who]}</small></span></button></li>`).join('')}</ul>` : ''}
       ${PROJECTS.some(pr => pr.systems.includes(d.id)) ? `<p class="h">Vorhaben</p><ul class="links" style="margin-bottom:14px">${projRows(PROJECTS.filter(pr => pr.systems.includes(d.id)))}</ul>` : ''}
@@ -2126,6 +2154,14 @@ function renderDetail(id) {
       <p class="h">Tour</p><ol class="ms">${o.stops.map(s => `<li class="${s.id === st.at ? 'next' : ''}"><span>${byId[s.id].d.name}${s.id === d.home ? ' (Heimatstandort)' : ''}</span></li>`).join('')}</ol>
       <dl class="facts"><dt>Heimatstandort</dt><dd>${byId[d.home].d.name}</dd><dt>Kennzeichen</dt><dd>${d.plate} (Beispiel)</dd><dt>Fuhrpark</dt><dd>Fleetcars</dd></dl>
       <p class="hint">Fahrzeuge, Fahrer und Touren sind Beispiele. Echte Positionen könnten aus Fleetcars oder einer Telematik-Lösung kommen; ob dafür eine Schnittstelle existiert, ist zu prüfen.</p>`;
+  } else if (type === 'sources') {
+    const list = SYSTEMS.map(x => ({ x, src: SOURCES[x.id] || { conn: 'open', phase: '–', feeds: '', way: '' } }));
+    const cnt = k => list.filter(e => e.src.conn === k).length;
+    html += `<div class="eyebrow">Überwachung</div><h2>Datenquellen</h2><p class="sub">Welche Programme die Übersicht mit echten Daten versorgen und welche noch fehlen.</p>
+      <div class="pills"><span class="pill ok">${cnt('live') + cnt('gf')} angebunden</span><span class="pill demo">${cnt('manual')} manuell</span><span class="pill warn">${cnt('open')} zu klären</span><span class="pill plan">${cnt('plan')} geplant</span></div>
+      <p class="msg warn">Diese Ansicht läuft noch mit Beispieldaten. Echte Daten kommen, sobald die Übersicht in die GF-Suite eingebaut ist (Phase 1) und die Programme schrittweise angebunden sind.</p>
+      ${[1, 2, 3, 4, 5].map(ph => { const rows = list.filter(e => e.src.phase === ph); return rows.length ? `<p class="h">Phase ${ph}</p><ul class="links" style="margin-bottom:12px">${rows.map(e => `<li><button type="button" data-go="${e.x.id}"><span class="dot ${CONN_DOT[e.src.conn]}"></span><span>${e.x.name} · ${CONN_TXT[e.src.conn]}<small>${e.src.feeds}<br>Weg: ${e.src.way}</small></span></button></li>`).join('')}</ul>` : ''; }).join('')}
+      <p class="hint">Phase 1: Einbau in die GF-Suite · 2: Verfügbarkeit · 3: Abläufe · 4: Fuhrpark · 5: Warnungen und KI-Agenten. Plan im Repository: docs/digitale-welt-integration.md</p>`;
   } else if (type === 'fleet') {
     html += `<div class="eyebrow">Fuhrpark · Fleetcars</div><h2>Fahrzeuge</h2><p class="sub">Wer ist mit welchem Fahrzeug unterwegs und wo?</p>
       <div class="pills"><span class="pill ok">${VANS.filter(v => !objects[v.id].atStop).length} fahren</span><span class="pill warn">${VANS.filter(v => objects[v.id].atStop).length} halten</span><span class="pill demo">Beispiel</span></div>
@@ -2226,7 +2262,7 @@ function select(id, move) {
   const { type, d } = byId[id];
   if (type === 'proc' || type === 'roadmap') { flyTo(new THREE.Vector3(-3, 6, -4), new THREE.Vector3(-2, 60, 62)); return; }
   if (type === 'proj' && d.status === 'plan' && d.systems.some(sid => byId[sid].d.plan) && mode !== 'plan') setMode('plan');
-  if (type === 'company' || type === 'group' || type === 'fleet') { flyTo(HOME_TGT, HOME_CAM); return; }
+  if (type === 'company' || type === 'group' || type === 'fleet' || type === 'sources') { flyTo(HOME_TGT, HOME_CAM); return; }
   const o = type === 'step' ? { anchor: d.pos } : type === 'proj' && (byId[d.at].d.bau || !objects[id]) ? { anchor: objects[d.at].anchor.clone().setY(byId[d.at].d.bau ? 1 : 3) } : objects[id];
   let follow = null;
   if (type === 'van') follow = id;
