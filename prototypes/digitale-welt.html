@@ -247,6 +247,19 @@ ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height:
 .databadge { margin-left: 8px; vertical-align: 2px; font: 600 10.5px var(--font-body); color: #92400e; background: #fef3c7; border: 0; border-radius: 999px; padding: 2px 8px; cursor: pointer; }
 .databadge:hover { background: #fde68a; }
 .databadge:focus-visible { outline: 2px solid var(--petrol); }
+/* KI-Workspace */
+.aibtn { background: #f3efff !important; color: #6d28d9 !important; margin-top: 6px; }
+.lbl.agent { display: flex; align-items: center; gap: 6px; background: #fff; border-radius: 999px; padding: 3px 10px 3px 6px; box-shadow: 0 2px 8px rgba(124,58,237,.22); font-size: 11.5px; color: var(--ink); }
+.lbl.agent b { font-weight: 700; }
+.lbl.agent .vst { color: var(--ink-3); font-size: 11px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+.lbl.agent .vst::before { content: '· '; }
+.aprow { grid-template-columns: 10px 1fr !important; }
+.aprow .apbtns { grid-column: 2; margin-top: 4px; }
+.apbtns { display: flex; gap: 4px; }
+.apbtns button { font: 600 11px var(--font-body); border: 0; border-radius: 8px; padding: 4px 8px; cursor: pointer; background: #dcfce7; color: #166534; }
+.apbtns button + button { background: #fee2e2; color: #991b1b; }
+.apbtns button:focus-visible { outline: 2px solid var(--petrol); }
+.lbl.aiwslbl { border-left: 3px solid #7c3aed !important; }
 /* Spiel-Elemente */
 #minimap { right: 16px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); width: 224px; height: 206px; padding: 6px; display: flex; flex-direction: column; gap: 3px; }
 #mm { width: 100%; flex: 1; min-height: 0; border-radius: 10px; background: #e7efe1; cursor: crosshair; display: block; }
@@ -359,6 +372,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
   <div class="lscroll">
   <section id="paneLoc" role="tabpanel" aria-labelledby="tabLoc">
     <button type="button" class="roadbtn" id="companyBtn">Unternehmen: Gesellschaften, Bereiche, Qualität</button>
+    <button type="button" class="roadbtn aibtn" id="aiBtn">KI-Workspace: Agenten und Freigaben</button>
     <p class="sub2">Heranzoomen öffnet die Dächer. In Chemnitz fächern sich die drei Etagen auf.</p>
     <ul class="loclist" id="loclist"></ul>
   </section>
@@ -388,6 +402,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
       <label><input type="checkbox" id="lyVan" checked> Fahrzeuge</label>
       <label><input type="checkbox" id="lyCust" checked> Anlagen beim Kunden</label>
       <label><input type="checkbox" id="lyProj" checked> Projekte</label>
+      <label><input type="checkbox" id="lyAgent" checked> KI-Agenten</label>
     </div>
   </section>
   <section>
@@ -1867,6 +1882,116 @@ function updatePerson(p, dt, t) {
   o.labelPos.set(o.fig.position.x, o.fig.position.y + (seated ? 1.6 : 1.45), o.fig.position.z);
 }
 
+/* ════════════════ KI-Workspace: Agenten ════════════════
+   Stand laut Bachelorarbeit: E-Mail-Agent, Anruf-Agent und Office-Pilot geplant; Rechnungsdaten, Controlling und
+   technische Dokumentation als Ideen. Die Arbeit der Agenten ist hier simuliert und so gekennzeichnet.
+   Wegpunkte: 'sys:<Programm>' oder 'zone:<Raum in Chemnitz>'; d = Arbeitszeit in Sekunden; ap = legt Ergebnis zur Freigabe ab */
+const AGENTS = [
+  { id: 'ag1', name: 'E-Mail-Agent', short: 'E-Mail', status: 'plan', color: 0x2563eb, proj: 'd2', owner: 'pmax', for: 'service',
+    purpose: 'Sortiert eingehende E-Mails vor, ordnet sie Vorgängen zu und bereitet Antwortentwürfe vor.',
+    rules: ['Sendet nichts ohne Freigabe eines Menschen', 'Arbeitet nur in freigegebenen Postfächern'],
+    steps: [{ at: 'sys:m365', d: 4, t: 'Liest neue E-Mails im Postfach Service' }, { at: 'sys:inform', d: 3, t: 'Ordnet eine Anfrage dem passenden Auftrag zu' }, { at: 'zone:service', d: 4, t: 'Legt Antwortentwurf zur Freigabe ab', ap: 'Antwortentwurf an einen Kunden' }] },
+  { id: 'ag2', name: 'Anruf-Agent', short: 'Anruf', status: 'plan', color: 0x0d9488, proj: 'd3', owner: 'pmax', for: 'gf',
+    purpose: 'Nimmt Anrufe bei Spitzen und außerhalb der Bürozeiten an, erfasst das Anliegen und leitet es weiter.',
+    rules: ['Sagt dem Anrufer, dass er mit einer KI spricht', 'Gibt keine verbindlichen Zusagen'],
+    steps: [{ at: 'zone:empfang', d: 4, t: 'Nimmt einen Anruf in der Zentrale an' }, { at: 'sys:m365', d: 3, t: 'Legt eine Rückrufbitte in Outlook ab', ap: 'Rückrufbitte prüfen und zuweisen' }] },
+  { id: 'ag3', name: 'Office-Pilot', short: 'Office', status: 'plan', color: 0x7c3aed, proj: 'd4', owner: 'pmax', for: 'gf',
+    purpose: 'Hilft direkt in Outlook, Word und Excel: Zusammenfassungen, Entwürfe, Tabellen.',
+    rules: ['Arbeitet nur auf Anfrage einer Person'],
+    steps: [{ at: 'zone:assistenz', d: 4, t: 'Fasst das Protokoll der Wochenbesprechung zusammen' }, { at: 'sys:m365', d: 3, t: 'Legt den Entwurf in Outlook ab', ap: 'Protokoll freigeben' }] },
+  { id: 'ag4', name: 'Rechnungs-Agent', short: 'Rechnungen', status: 'idea', color: 0xd97706, proj: 'd6', owner: 'pmax', for: 'kfm',
+    purpose: 'Liest Rechnungsdaten aus und erfasst sie vor.',
+    rules: ['Buchungen bestätigt immer das Rechnungswesen'],
+    steps: [{ at: 'sys:docuware', d: 4, t: 'Liest eine Eingangsrechnung aus DocuWare' }, { at: 'sys:inform', d: 3, t: 'Gleicht Positionen mit der Bestellung ab' }, { at: 'zone:kfm', d: 4, t: 'Legt die Vorerfassung zur Prüfung ab', ap: 'Eingangsrechnung prüfen' }] },
+  { id: 'ag5', name: 'Controlling-Agent', short: 'Controlling', status: 'idea', color: 0xdb2777, proj: 'd7', owner: 'pmax', for: 'controlling',
+    purpose: 'Erstellt wiederkehrende Auswertungen und erklärt Abweichungen.',
+    rules: ['Nur lesender Zugriff auf Daten'],
+    steps: [{ at: 'sys:inform', d: 3, t: 'Holt Umsatz und offene Aufträge' }, { at: 'sys:mis', d: 3, t: 'Ergänzt Kennzahlen aus dem MIS' }, { at: 'zone:controlling', d: 4, t: 'Legt den Wochenbericht ab', ap: 'Wochenbericht ansehen' }] },
+  { id: 'ag6', name: 'Doku-Agent', short: 'Doku', status: 'idea', color: 0x16a34a, proj: 'd8', owner: 'pmax', for: 'projekt',
+    purpose: 'Erstellt Prüfberichte und Anlagendokumentation aus Vorlagen.',
+    rules: ['Fachliche Freigabe durch die Projektleitung'],
+    steps: [{ at: 'sys:cad', d: 3, t: 'Holt Zeichnungen und Anlagendaten' }, { at: 'zone:projekt', d: 4, t: 'Füllt den Prüfbericht vor', ap: 'Prüfbericht fachlich freigeben' }, { at: 'sys:docuware', d: 3, t: 'Legt die Dokumentation im Archiv ab' }] },
+];
+const AG_TXT = { active: 'aktiv', pilot: 'Pilot', plan: 'geplant', idea: 'Idee' };
+AGENTS.forEach(a => { byId[a.id] = { type: 'agent', d: a }; a.done = 3 + (a.id.charCodeAt(2) % 5); a.approvals = []; });
+AGENTS[0].approvals.push({ t: 'Antwortentwurf an einen Kunden', at: '08:42:10' }); AGENTS[3].approvals.push({ t: 'Eingangsrechnung prüfen', at: '09:15:37' });
+byId.aiws = { type: 'aiws', d: { name: 'KI-Workspace' } };
+const AI_TOOLS = [['ChatGPT Business', 'Texte, Recherche, Auswertung'], ['Claude und Claude Code', 'Texte, Analyse, Programmierung (u. a. diese Übersicht)'], ['Perplexity', 'Recherche mit Quellen'], ['PLAUD AI', 'Gesprächsnotizen und Protokolle']];
+
+// Hub: schwebende Plattform beim Block „KI-Werkzeuge“, Startpunkt der Agenten
+const hubPos = objects.ki.anchor.clone().add(new THREE.Vector3(0, -3.2, 0));
+const hub = new THREE.Group(); hub.position.copy(hubPos);
+const hubDisc = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 0.12, 48), new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 }));
+const hubRing = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.06, 8, 64), new THREE.MeshBasicMaterial({ color: 0x7c3aed })); hubRing.rotation.x = Math.PI / 2;
+hub.add(tag(hubDisc, 'aiws'), hubRing); scene.add(hub);
+objects.aiws = { group: hub, anchor: hubPos };
+addLabel('aiws', 'loc aiwslbl', '<span class="dot plan"></span>KI-Workspace<small>6 Agenten · Simulation</small>', hubPos.clone().add(new THREE.Vector3(0, 0.9, 0)), 'agent');
+
+function agentSpot(a, at, k) {
+  const [kind, key] = at.split(':');
+  if (kind === 'sys') { const p = objects[key].anchor.clone(); const ang = (a.id.charCodeAt(2) * 1.7) % 6.28; return p.add(new THREE.Vector3(Math.cos(ang) * 1.6, 0.6, Math.sin(ang) * 1.6)); }
+  const hq = LOCATIONS[0], z = hq.zones[key];
+  return new THREE.Vector3(hq.x + z.x + (k % 2 ? 0.5 : -0.5), 7.6, hq.z + z.z);
+}
+const agBody = rbox(0.62, 0.5, 0.5, 0.16), agVisor = rbox(0.5, 0.2, 0.06, 0.05), agEye = new THREE.BoxGeometry(0.08, 0.08, 0.02);
+AGENTS.forEach((a, i) => {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(agBody, mat(0xffffff)); body.castShadow = true;
+  const visor = new THREE.Mesh(agVisor, mat(0x111827)); visor.position.set(0, 0.04, 0.24);
+  const eyeM = new THREE.MeshBasicMaterial({ color: a.color });
+  const eyes = [-0.1, 0.1].map(x => { const e = new THREE.Mesh(agEye, eyeM); e.position.set(x, 0.05, 0.275); return e; });
+  const band = new THREE.Mesh(rbox(0.64, 0.08, 0.52, 0.03), new THREE.MeshBasicMaterial({ color: a.color })); band.position.y = -0.17;
+  const ant = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.22, 6), mat(0x94a3b8)); ant.position.y = 0.36;
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), eyeM); tip.position.y = 0.48;
+  const halo = new THREE.Mesh(new THREE.RingGeometry(0.34, 0.42, 32), new THREE.MeshBasicMaterial({ color: a.color, transparent: true, opacity: 0.7, side: THREE.DoubleSide })); halo.rotation.x = -Math.PI / 2; halo.position.y = -0.38;
+  const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.22, 1, 12, 1, true), new THREE.MeshBasicMaterial({ color: a.color, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false }));
+  beam.visible = false;
+  [body, visor].forEach(m => tag(m, a.id));
+  g.add(body, visor, ...eyes, band, ant, tip, halo);
+  g.scale.setScalar(1.25);
+  scene.add(g, beam);
+  const route = [{ at: 'hub', d: 2, t: 'Wartet im KI-Workspace auf die nächste Aufgabe' }, ...a.steps];
+  const pts = route.map((st, k) => st.at === 'hub' ? hubPos.clone().add(new THREE.Vector3(Math.cos(i) * 1.6, 0.7, Math.sin(i) * 1.6)) : agentSpot(a, st.at, k));
+  const o = objects[a.id] = { group: g, anchor: g.position, route, pts, k: (i % route.length), mode: 'work', timer: i * 0.7, beam, halo, from: null, to: null, ctrl: null, u: 0, labelPos: new THREE.Vector3(), cur: route[i % route.length].t };
+  g.position.copy(pts[o.k]);
+  o.label = addLabel(a.id, 'agent', `<span class="vdot" style="background:#${a.color.toString(16).padStart(6, '0')}"></span><b>${a.name}</b><span class="vst" id="ast-${a.id}">${o.cur}</span>`, o.labelPos, 'agent');
+});
+function agentDest(at) { if (at === 'hub') return 'KI-Workspace'; const [k, key] = at.split(':'); return k === 'sys' ? byId[key].d.name : LOCATIONS[0].zones[key].n; }
+function agentStatusText(a) { const o = objects[a.id]; return o.mode === 'fly' ? `fliegt zu ${agentDest(o.route[o.k].at)}` : o.route[o.k].t; }
+function apListHtml(a) {
+  return a.approvals.length ? a.approvals.map((x, i) => `<li class="trow aprow"><span class="dot warn"></span><span>${x.t}<small>abgelegt ${x.at}</small></span><span class="apbtns"><button type="button" data-apok="${a.id}:${i}">Freigeben</button><button type="button" data-apno="${a.id}:${i}">Ablehnen</button></span></li>`).join('')
+    : '<li class="trow"><span class="dot ok"></span><span>Nichts offen</span></li>';
+}
+function updateAgent(a, sdt, t) {
+  const o = objects[a.id];
+  if (o.mode === 'work') {
+    o.timer += sdt;
+    const st = o.route[o.k];
+    if (o.timer >= st.d) {
+      if (st.ap) { a.approvals.unshift({ t: st.ap, at: hhmmss(new Date()) }); a.approvals = a.approvals.slice(0, 4); a.done++; }
+      const nk = (o.k + 1) % o.route.length;
+      o.from = o.pts[o.k].clone(); o.to = o.pts[nk].clone(); o.k = nk; o.u = 0; o.mode = 'fly';
+      o.ctrl = o.from.clone().add(o.to).multiplyScalar(0.5); o.ctrl.y = Math.max(o.from.y, o.to.y) + 2 + o.from.distanceTo(o.to) * 0.12;
+      o.len = o.from.distanceTo(o.to) + 2;
+    }
+  } else {
+    o.u = Math.min(1, o.u + sdt * 7 / o.len);
+    const u = o.u, p = o.from.clone().multiplyScalar((1 - u) * (1 - u)).add(o.ctrl.clone().multiplyScalar(2 * u * (1 - u))).add(o.to.clone().multiplyScalar(u * u));
+    const d = p.clone().sub(o.group.position); if (d.lengthSq() > 1e-6) o.group.rotation.y = Math.atan2(d.x, d.z);
+    o.group.position.copy(p);
+    if (o.u >= 1) { o.mode = 'work'; o.timer = 0; }
+  }
+  if (o.mode === 'work') o.group.position.y = o.pts[o.k].y + (reduceMotion ? 0 : Math.sin(t * 2.4 + a.id.charCodeAt(2)) * 0.12);
+  // Lichtstrahl beim Arbeiten über einem Büro
+  const zoneWork = o.mode === 'work' && o.route[o.k].at.startsWith('zone:');
+  o.beam.visible = zoneWork && o.group.visible;
+  if (zoneWork) { const h = o.group.position.y - PLATE_Y; o.beam.scale.set(1, h, 1); o.beam.position.set(o.group.position.x, PLATE_Y + h / 2, o.group.position.z); }
+  o.halo.rotation.z += sdt * 2;
+  o.labelPos.set(o.group.position.x, o.group.position.y + 0.9, o.group.position.z);
+  const el = document.getElementById('ast-' + a.id), txt = agentStatusText(a);
+  if (el && el.textContent !== txt) el.textContent = txt;
+}
+
 /* ════════════════ Projekt-Fahnen ════════════════ */
 const poleGeo = new THREE.CylinderGeometry(0.035, 0.035, 1, 8);
 PROJECTS.filter(pr => pr.flagged).forEach(pr => {
@@ -1949,6 +2074,7 @@ function renderKpis() {
     `<span class="kpi opt"><strong>${LOCATIONS.filter(l => vis(l) && !l.bau).length}</strong>Standorte</span>` +
     `<button type="button" class="kpi opt" data-go="sources"><strong>${SYSTEMS.filter(x => !x.plan && SOURCES[x.id] && ['live', 'gf'].includes(SOURCES[x.id].conn)).length}/${SYSTEMS.filter(x => !x.plan).length}</strong>angebunden</button>` +
     `<button type="button" class="kpi opt" data-go="roadmap"><strong>${PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status)).length}</strong>Vorhaben</button>` +
+    `<button type="button" class="kpi" data-go="aiws"><strong>${AGENTS.length}</strong>KI-Agenten</button>` +
     `<button type="button" class="kpi" data-go="fleet"><strong>${VANS.length}</strong>Fahrzeuge</button>` +
     `<button type="button" class="kpi opt" data-go="bauall"><strong>${LOCATIONS.filter(l => l.bau).length}</strong>Baustellen</button>` +
     `<button type="button" class="kpi warn" data-go="wartung"><strong>${openHand}</strong>Übergaben</button>`;
@@ -2020,6 +2146,8 @@ function renderProjList() {
 document.getElementById('roadBtn').addEventListener('click', () => select('roadmap', false));
 document.getElementById('companyBtn').addEventListener('click', () => select('company', false));
 document.getElementById('dataBadge').addEventListener('click', () => select('sources', false));
+document.getElementById('aiBtn').addEventListener('click', () => select('aiws', true));
+
 const TABS = [['tabLoc', 'paneLoc'], ['tabTeam', 'paneTeam'], ['tabProc', 'paneProc'], ['tabProj', 'paneProj']];
 function openTab(tabId) { TABS.forEach(([t, p]) => { document.getElementById(t).setAttribute('aria-selected', t === tabId); document.getElementById(p).hidden = t !== tabId; }); }
 TABS.forEach(([t]) => document.getElementById(t).addEventListener('click', () => openTab(t)));
@@ -2154,6 +2282,24 @@ function renderDetail(id) {
       <p class="h">Tour</p><ol class="ms">${o.stops.map(s => `<li class="${s.id === st.at ? 'next' : ''}"><span>${byId[s.id].d.name}${s.id === d.home ? ' (Heimatstandort)' : ''}</span></li>`).join('')}</ol>
       <dl class="facts"><dt>Heimatstandort</dt><dd>${byId[d.home].d.name}</dd><dt>Kennzeichen</dt><dd>${d.plate} (Beispiel)</dd><dt>Fuhrpark</dt><dd>Fleetcars</dd></dl>
       <p class="hint">Fahrzeuge, Fahrer und Touren sind Beispiele. Echte Positionen könnten aus Fleetcars oder einer Telematik-Lösung kommen; ob dafür eine Schnittstelle existiert, ist zu prüfen.</p>`;
+  } else if (type === 'aiws') {
+    const pend = AGENTS.reduce((n, a) => n + a.approvals.length, 0);
+    html += `<div class="eyebrow">KI-Workspace</div><h2>Agenten und Werkzeuge</h2><p class="sub">Welche KI-Agenten welche Aufgaben für euch erledigen, und was auf eine Freigabe wartet.</p>
+      <div class="pills"><span class="pill plan">${AGENTS.filter(a => a.status === 'plan').length} geplant</span><span class="pill demo">${AGENTS.filter(a => a.status === 'idea').length} Ideen</span><span class="pill warn">${pend} Freigaben offen</span><span class="pill demo">Simulation</span></div>
+      <p class="msg plan">Die Agenten sind laut Bachelorarbeit geplant bzw. Ideen. Ihre Arbeit wird hier simuliert, damit sichtbar ist, wie der Workspace später aussieht. Grundsatz: Ergebnisse gehen erst nach Freigabe durch einen Menschen raus.</p>
+      <p class="h">Agenten</p><ul class="links" style="margin-bottom:14px">${AGENTS.map(a => `<li><button type="button" data-go="${a.id}"><span class="vdot" style="background:#${a.color.toString(16).padStart(6, '0')}"></span><span>${a.name} · ${AG_TXT[a.status]}<small>${agentStatusText(a)}${a.approvals.length ? ` · ${a.approvals.length} zur Freigabe` : ''}</small></span></button></li>`).join('')}</ul>
+      <p class="h">KI-Werkzeuge in Nutzung</p><ul class="links" style="margin-bottom:14px">${AI_TOOLS.map(t => `<li class="trow"><span class="dot ok"></span><span>${t[0]}<small>${t[1]}</small></span></li>`).join('')}</ul>
+      <p class="h">Verantwortlich</p><ul class="links">${personRows([byId.pmax.d])}</ul>`;
+  } else if (type === 'agent') {
+    html += `<div class="eyebrow">KI-Agent · ${AG_TXT[d.status]}</div><h2>${d.name}</h2><p class="sub">${d.purpose}</p>
+      <div class="pills"><span class="pill ${d.status === 'plan' ? 'plan' : 'demo'}">${AG_TXT[d.status]}</span><span class="pill demo">Simulation</span></div>
+      <p class="live"><i></i><span id="agentLive">${agentStatusText(d)}</span></p>
+      <dl class="facts"><dt>Erledigt (Simulation)</dt><dd id="agentDone">${d.done} Aufgaben</dd><dt>Arbeitet für</dt><dd>${GROUP_N[d.for]}</dd></dl>
+      <p class="h">Wartet auf Freigabe</p><ul class="links" id="agentAp" style="margin-bottom:14px">${apListHtml(d)}</ul>
+      <p class="h">Ablauf</p><ol class="ms">${d.steps.map(st => `<li><span>${st.t}${st.ap ? ' (Freigabe)' : ''}</span></li>`).join('')}</ol>
+      <p class="h">Regeln</p><ul class="risks">${d.rules.map(r => `<li>${r}</li>`).join('')}</ul>
+      <p class="h">Programme</p><ul class="links" style="margin-bottom:14px">${[...new Set(d.steps.filter(st => st.at.startsWith('sys:')).map(st => st.at.slice(4)))].map(sid => sysRow(sid)).join('')}</ul>
+      <p class="h">Verantwortlich und Vorhaben</p><ul class="links">${personRows([byId[d.owner].d])}${projRows([byId[d.proj].d])}</ul>`;
   } else if (type === 'sources') {
     const list = SYSTEMS.map(x => ({ x, src: SOURCES[x.id] || { conn: 'open', phase: '–', feeds: '', way: '' } }));
     const cnt = k => list.filter(e => e.src.conn === k).length;
@@ -2243,6 +2389,16 @@ function renderDetail(id) {
   detail.querySelectorAll('[data-floor]').forEach(b => b.addEventListener('click', () => setFloor(b.dataset.floor)));
 }
 
+// Freigaben: Mensch entscheidet, Agent erhält das Ergebnis zurück
+detail.addEventListener('click', e => {
+  const b = e.target.closest('[data-apok],[data-apno]'); if (!b) return;
+  const ok = b.hasAttribute('data-apok'), [aid, idx] = (b.dataset.apok || b.dataset.apno).split(':'), a = byId[aid].d, item = a.approvals[Number(idx)];
+  if (!item) return;
+  a.approvals.splice(Number(idx), 1);
+  pushEvent({ st: ok ? 'ok' : 'warn', text: `${a.name}: „${item.t}“ ${ok ? 'freigegeben' : 'abgelehnt'}`, go: aid });
+  renderDetail(selected);
+});
+
 /* ════════════════ Auswahl & Kamera ════════════════ */
 let fly = null;
 function flyTo(target, camPos, follow) {
@@ -2268,9 +2424,10 @@ function select(id, move) {
   if (type === 'van') follow = id;
   else if (type === 'person' && o.inVan) follow = o.inVan;
   else if (type === 'person' && !o.hidden) follow = id;
+  else if (type === 'agent') follow = id;
   const tgt = (follow ? objects[follow].group.position : o.anchor).clone();
   if (id === 'hq') { tgt.x -= 1.8; tgt.z -= 1; tgt.y = floorView === 'all' ? 3.6 : 1.2; }
-  const dist = id === 'hq' ? (floorView === 'all' ? 25 : 19) : type === 'proj' ? (byId[d.at].d.bau ? 16 : 26) : type === 'loc' ? 22 : type === 'link' ? 36 : type === 'person' ? 13 : type === 'sys' && d.home === 'cloud' ? 30 : 24;
+  const dist = id === 'aiws' ? 26 : type === 'agent' ? 12 : id === 'hq' ? (floorView === 'all' ? 25 : 19) : type === 'proj' ? (byId[d.at].d.bau ? 16 : 26) : type === 'loc' ? 22 : type === 'link' ? 36 : type === 'person' ? 13 : type === 'sys' && d.home === 'cloud' ? 30 : 24;
   const dir = camera.position.clone().sub(controls.target).normalize();
   dir.y = Math.max(dir.y, type === 'person' ? 0.75 : 0.6); dir.normalize();
   if (id === 'hq') dir.copy(floorView === 'all' ? new THREE.Vector3(0.3, 0.36, 0.88) : new THREE.Vector3(0.25, 0.75, 0.6)).normalize();
@@ -2278,7 +2435,7 @@ function select(id, move) {
 }
 
 /* ════════════════ Ebenen & Modus ════════════════ */
-const layerState = { sys: true, link: true, van: true, cust: true, people: true, proj: true };
+const layerState = { sys: true, link: true, van: true, cust: true, people: true, proj: true, agent: true };
 function applyVisibility() {
   const showPlan = mode === 'plan';
   LOCATIONS.forEach(l => objects[l.id].group.visible = !l.plan || showPlan);
@@ -2291,12 +2448,14 @@ function applyVisibility() {
   VANS.forEach(v => { objects[v.id].group.visible = layerState.van; objects[v.id].road.visible = layerState.van; });
   PEOPLE.forEach(p => { const o = objects[p.id]; if (!o.inVan && !o.hidden) o.group.visible = layerState.people; });
   PROJECTS.forEach(pr => { if (objects[pr.id]) objects[pr.id].group.visible = layerState.proj && (!byId[pr.at].d.plan || showPlan); });
+  AGENTS.forEach(a => { objects[a.id].group.visible = layerState.agent; }); objects.aiws.group.visible = layerState.agent;
   cloudGroup.visible = layerState.sys;
   labels.forEach(l => {
     const d = l.id ? byId[l.id].d : {};
     let on = true;
     if (l.layer === 'cust') on = layerState.cust;
     if (l.layer === 'van') on = layerState.van;
+    if (l.layer === 'agent') on = layerState.agent;
     if (l.layer === 'proj') on = layerState.proj && (!byId[d.at].d.plan || showPlan);
     if (l.layer === 'person') on = layerState.people;
     if (l.layer === 'sys' || l.layer === 'plansys') on = layerState.sys;
@@ -2307,7 +2466,7 @@ function applyVisibility() {
   renderKpis(); renderLocList(); renderTeam(); renderProcList(); renderProjList();
   if (selected) renderDetail(selected);
 }
-[['lyProj', 'proj'], ['lyPeople', 'people'], ['lySys', 'sys'], ['lyIf', 'link'], ['lyVan', 'van'], ['lyCust', 'cust']].forEach(([elId, key]) => {
+[['lyAgent', 'agent'], ['lyProj', 'proj'], ['lyPeople', 'people'], ['lySys', 'sys'], ['lyIf', 'link'], ['lyVan', 'van'], ['lyCust', 'cust']].forEach(([elId, key]) => {
   document.getElementById(elId).addEventListener('change', e => { layerState[key] = e.target.checked; applyVisibility(); });
 });
 const bNow = document.getElementById('modeNow'), bPlan = document.getElementById('modePlan');
@@ -2348,7 +2507,7 @@ renderer.domElement.addEventListener('pointermove', ev => {
   renderer.domElement.style.cursor = id ? 'pointer' : 'grab';
   if (id) {
     const { type, d } = byId[id];
-    tip.textContent = type === 'link' ? `${d.name} · ${d.plan ? 'geplant' : LINK_TXT[statusOf(d)]}` : type === 'sys' ? `${d.name} · ${d.kind}` : type === 'person' ? `${d.name} · ${currentActivity(d)}` : type === 'step' ? `${d.no}. ${d.n}` : d.name;
+    tip.textContent = type === 'agent' ? `${d.name} · ${agentStatusText(d)}` : type === 'link' ? `${d.name} · ${d.plan ? 'geplant' : LINK_TXT[statusOf(d)]}` : type === 'sys' ? `${d.name} · ${d.kind}` : type === 'person' ? `${d.name} · ${currentActivity(d)}` : type === 'step' ? `${d.no}. ${d.n}` : d.name;
     tip.style.left = ev.clientX + 'px'; tip.style.top = ev.clientY + 'px';
     tip.hidden = false;
   } else tip.hidden = true;
@@ -2406,6 +2565,8 @@ function markerTarget() {
   if (type === 'van' || type === 'person') return { p: o.group.position, h: type === 'van' ? 2.5 : 2.0, r: type === 'van' ? 1.3 : 0.55 };
   if (type === 'loc') return { p: o.anchor, h: byId[selected].d.id === 'hq' ? 7.5 : 5, r: (byId[selected].d.r || SITE_R) + 0.4 };
   if (type === 'cust') return { p: new THREE.Vector3(o.group.position.x, 0, o.group.position.z), h: 3.8, r: 3.0 };
+  if (type === 'agent') return { p: o.group.position, h: 1.5, r: 0.7 };
+  if (type === 'aiws') return { p: o.anchor, h: 2.2, r: 2.9 };
   if (type === 'sys') return { p: o.group.position, h: 2.2, r: 1.3 };
   return null;
 }
@@ -2415,7 +2576,7 @@ function updateMarker(t) {
   if (!m) return;
   selMark.position.set(m.p.x, m.p.y + m.h + (reduceMotion ? 0 : Math.sin(t * 3) * 0.15), m.p.z);
   selArrow.rotation.y += 0.03;
-  const gy = byId[selected].type === 'sys' ? m.p.y - 0.85 : (byId[selected].type === 'cust' ? 0.02 : m.p.y + 0.06);
+  const gy = byId[selected].type === 'agent' ? m.p.y - 0.55 : byId[selected].type === 'aiws' ? m.p.y + 0.08 : byId[selected].type === 'sys' ? m.p.y - 0.85 : (byId[selected].type === 'cust' ? 0.02 : m.p.y + 0.06);
   selRing.position.set(m.p.x, gy, m.p.z);
   selRing.scale.setScalar(m.r * (1 + (reduceMotion ? 0 : Math.sin(t * 3) * 0.04)));
 }
@@ -2453,6 +2614,7 @@ function drawMinimap() {
   CUSTOMERS.forEach(c => { const [x, y, s] = mmXY(c.x, c.z); g.fillStyle = '#94a3b8'; g.beginPath(); g.arc(x, y, 2.6 * s, 0, 7); g.fill(); });
   LOCATIONS.forEach(l => { const [x, y, s] = mmXY(l.x, l.z); g.fillStyle = l.bau ? '#f59e0b' : (l.company === 'dtl' ? '#0d9488' : '#2563eb'); g.beginPath(); g.arc(x, y, Math.max(5, (l.r || SITE_R) * s), 0, 7); g.fill();
     if (!l.bau) { g.fillStyle = '#111827'; g.font = '600 20px "Plus Jakarta Sans", sans-serif'; g.textAlign = 'center'; g.fillText(l.name, x, y - (l.r || SITE_R) * s - 6); } });
+  AGENTS.forEach(a => { const p = objects[a.id].group.position; const [x, y] = mmXY(p.x, p.z); g.fillStyle = '#' + a.color.toString(16).padStart(6, '0'); g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-4, -4, 8, 8); g.restore(); });
   VANS.forEach(v => { const p = objects[v.id].group.position; const [x, y] = mmXY(p.x, p.z); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.fillStyle = '#' + v.color.toString(16).padStart(6, '0'); g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); });
   // Blickfeld der Kamera
   const [tx, ty] = mmXY(controls.target.x, controls.target.z), [cx, cy] = mmXY(camera.position.x, camera.position.z);
@@ -2491,6 +2653,9 @@ const EVENT_POOL = [
   { st: 'ok', text: 'Servicewagen 1 ist beim Kunden C angekommen', go: 'v1' },
   { st: 'ok', text: 'Lieferwagen hat Material in Siebenlehn geladen', go: 'v3' },
   { st: 'ok', text: 'Servicewagen dtL startet die Wartungstour', go: 'v4' },
+  { st: 'plan', text: 'E-Mail-Agent: Antwortentwurf wartet auf Freigabe (Simulation)', go: 'ag1' },
+  { st: 'plan', text: 'Rechnungs-Agent: Eingangsrechnung vorerfasst (Simulation)', go: 'ag4' },
+  { st: 'plan', text: 'Controlling-Agent: Wochenbericht abgelegt (Simulation)', go: 'ag5' },
 ];
 function hhmmss(d) { return d.toTimeString().slice(0, 8); }
 function pushEvent(ev) {
@@ -2514,7 +2679,7 @@ function pulseMesh() {
 
 /* ════════════════ Labels projizieren ════════════════ */
 const v3 = new THREE.Vector3();
-const LABEL_PRIO = { van: 75, proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
+const LABEL_PRIO = { agent: 74, van: 75, proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
 function placeLabels() {
   const w = window.innerWidth, h = window.innerHeight;
   const cands = [];
@@ -2535,6 +2700,7 @@ function placeLabels() {
         fade = objects[l.loc.id].cut > 0.6 ? (l.zone && l.zone.floorLabel ? 1 : (30 - dist) / 8) : 0;
         if (l.zone && !floorLabelShown(l.loc, l.zone.b, l.zone.f || 0)) fade = 0;
       } else if (l.layer === 'map') fade = Math.min((dist - 32) / 12, (camera.position.y - 20) / 8);
+      else if (l.layer === 'agent') fade = l.id === selected ? 1 : (110 - dist) / 20;
       else if (l.layer === 'van') fade = l.id === selected ? 1 : (120 - dist) / 20;
       else if (l.layer === 'proj') fade = l.id === selected ? 1 : (68 - dist) / 10;
       if (fade <= 0) vis = false;
@@ -2664,6 +2830,7 @@ function tick() {
 
   PEOPLE.forEach(p => updatePerson(p, sdt, simT));
 
+  AGENTS.forEach(a => updateAgent(a, sdt, t));
   VANS.forEach(v => {
     const o = objects[v.id];
     if (o.wait > 0) { o.wait -= sdt; if (o.wait <= 0) { o.atStop = null; o.t = (o.t + 0.004) % 1; } }
@@ -2697,6 +2864,12 @@ function tick() {
 
   // Live-Tätigkeit im Detailfeld
   liveTick += dt;
+  if (liveTick > 0.4 && selected && byId[selected].type === 'agent') {
+    liveTick = 0;
+    const a = byId[selected].d, el = document.getElementById('agentLive'), dn = document.getElementById('agentDone'), ap = document.getElementById('agentAp');
+    if (el) el.textContent = agentStatusText(a); if (dn) dn.textContent = a.done + ' Aufgaben';
+    if (ap) { const h = apListHtml(a); if (ap.dataset.h !== h) { ap.innerHTML = h; ap.dataset.h = h; } }
+  }
   if (liveTick > 0.4 && selected && byId[selected].type === 'van') {
     liveTick = 0;
     const st = vanStatus(byId[selected].d), el = document.getElementById('vanLive'), pl = document.getElementById('vanPill');

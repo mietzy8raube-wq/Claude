@@ -85,3 +85,22 @@ Mitbestimmung zu beachten (üblich: Betriebsvereinbarung). Empfehlungen für den
 5. **Warnungen und Benachrichtigungen**.
 
 Für Phase 1 sind keine fremden Schnittstellen nötig; sie kann sofort beginnen.
+
+## KI-Workspace: Agenten in der Übersicht
+
+Die Übersicht zeigt KI-Agenten als eigene Figuren, die zwischen Programmen und zuständigen Büros arbeiten, und
+einen Workspace mit Status, erledigten Aufgaben und offenen Freigaben. Heute ist das eine Simulation; laut
+Bachelorarbeit sind E-Mail-Agent, Anruf-Agent und Office-Pilot geplant, Rechnungsdaten, Controlling und technische
+Dokumentation Ideen.
+
+Für echte Agenten braucht die GF-Suite:
+
+- **Agenten-Register:** Name, Zweck, Verantwortliche/r, erlaubte Programme und Postfächer, Regeln, Status.
+- **Aufgaben-Protokoll:** jede Aktion eines Agenten mit Zeit, Quelle, Ergebnis (wie `SyncLog`).
+- **Freigabe-Warteschlange:** Ergebnisse, die ein Mensch freigeben oder ablehnen muss, bevor etwas nach außen geht
+  (E-Mail-Antwort, Buchung, Bericht). Die Übersicht zeigt sie mit Knöpfen „Freigeben“ und „Ablehnen“.
+- **Meldeweg der Agenten:** Agenten schreiben ihren Status über eine Schnittstelle der GF-Suite (z. B. `POST /api/agents/{id}/events`);
+  die Übersicht liest sie live mit.
+
+Grundsätze: Mensch gibt frei, bevor etwas den Betrieb verlässt; Agenten bekommen nur die Rechte, die ihre Aufgabe
+braucht; Kunden- und Personaldaten nur nach Freigabe durch Datenschutz. Der KI-Beauftragte ist für das Register verantwortlich.
