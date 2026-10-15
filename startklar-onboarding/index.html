@@ -18,7 +18,7 @@
 /* ===== Tokens — light (default) — druckluft-technik Chemnitz brand ===== */
 :root{
   --bg:#F5F1E7; --surface:#FFFFFF; --surface-2:#EEE8D9; --surface-sunk:#E3DBC7;
-  --box-wash: radial-gradient(160px 120px at 94% -16%, rgba(33,56,224,.10), transparent 62%), radial-gradient(140px 110px at -10% 114%, rgba(255,90,31,.09), transparent 62%), var(--surface);
+  --box-wash: radial-gradient(240px 190px at 98% -18%, rgba(33,56,224,.30), transparent 68%), radial-gradient(220px 180px at -12% 118%, rgba(255,90,31,.26), transparent 68%), var(--surface);
   --ink:#12110D; --ink-soft:#4E4B42; --ink-faint:#655D4F;
   --line:#DCD3BE; --line-strong:#12110D;
   --brand:#2138E0; --brand-deep:#0A1142; --brand-soft:#E1E5FF; --brand-bright:#4C64FF;
@@ -369,9 +369,6 @@ main{padding:0 28px 90px}
 .pf-email-btn:hover{background:var(--brand-bright); transform:translateY(-1px); box-shadow:0 10px 22px -12px rgba(23,55,224,.5)}
 .pf-email-btn:active{transform:translateY(0) scale(.96)}
 .pf-email-addr{font-family:'IBM Plex Mono'; font-size:11px; color:var(--ink-faint); padding-left:2px}
-.finish .pf-email-btn{background:#fff; color:var(--accent-ink)}
-.finish .pf-email-btn:hover{background:var(--teal); color:#0B1F12}
-.finish .pf-email-addr{color:rgba(255,255,255,.65)}
 
 .field-linkwrap{display:flex; align-items:center; gap:6px}
 .field-linkwrap input{flex:1; min-width:0; width:auto}
@@ -384,8 +381,6 @@ main{padding:0 28px 90px}
 .link-affordance:hover{background:var(--brand); color:#fff}
 .link-affordance:active{transform:scale(.9)}
 .link-affordance .icon{width:13px;height:13px}
-.finish .link-affordance{background:rgba(255,255,255,.16); color:#fff}
-.finish .link-affordance:hover{background:var(--teal); color:#0B1F12}
 .hero .profile-card .pf-field input:focus{border-bottom-color:var(--brand)}
 
 .dino-pop{
@@ -469,12 +464,12 @@ main{padding:0 28px 90px}
 .card h3{font-family:'Source Sans 3'; font-weight:800; font-size:16.5px; margin-bottom:8px; text-transform:uppercase; letter-spacing:.01em}
 .card p{color:var(--ink-soft); font-size:14.5px; line-height:1.55}
 .card .eyebrow{font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); margin-bottom:9px}
-.card.tone-brand{background:linear-gradient(155deg, var(--brand-bright) 0%, var(--brand) 55%, var(--brand-deep) 130%); border-color:var(--ink); color:#fff}
+.card.tone-brand{background:radial-gradient(220px 180px at 102% 116%, rgba(255,255,255,.55), transparent 58%), linear-gradient(155deg, var(--brand-bright) 0%, var(--brand) 55%, var(--brand-deep) 130%); border-color:var(--ink); color:#fff}
 .card.tone-brand h3, .card.tone-brand dt{color:#fff}
 .card.tone-brand p, .card.tone-brand dd, .card.tone-brand .eyebrow, .card.tone-brand span, .card.tone-brand label{color:rgba(255,255,255,.88)}
 .card.tone-brand .citem input:checked ~ span{color:rgba(255,255,255,.55); text-decoration-color:rgba(255,255,255,.4)}
 .card.tone-brand .icon{color:#fff}
-.card.tone-accent{background:linear-gradient(155deg, #FF8A54 0%, var(--accent) 55%, #C9450F 130%); border-color:var(--ink); color:#12110D}
+.card.tone-accent{background:radial-gradient(220px 180px at 102% 116%, rgba(255,255,255,.6), transparent 58%), linear-gradient(155deg, #FF8A54 0%, var(--accent) 55%, #C9450F 130%); border-color:var(--ink); color:#12110D}
 .card.tone-accent h3, .card.tone-accent dt{color:#12110D}
 .card.tone-accent p, .card.tone-accent dd, .card.tone-accent .eyebrow, .card.tone-accent span, .card.tone-accent label{color:rgba(18,17,13,.82)}
 .card.tone-accent .citem input:checked ~ span{color:rgba(18,17,13,.45); text-decoration-color:rgba(18,17,13,.4)}
@@ -621,28 +616,7 @@ dl.glossary > div{display:grid; grid-template-columns:150px 1fr; gap:14px; paddi
 dl.glossary dt{font-family:'IBM Plex Mono'; font-weight:500; font-size:13.5px; color:var(--brand)}
 dl.glossary dd{margin:0; font-size:14px; color:var(--ink-soft)}
 
-.finish{background:linear-gradient(155deg,#12110D,var(--accent) 115%); color:#fff; border-radius:16px; padding:44px; margin-top:8px; position:relative; overflow:hidden; border:1.5px solid var(--ink); box-shadow:var(--shadow)}
-.finish::after{
-  content:""; position:absolute; inset:0; pointer-events:none; opacity:.5;
-  background-image:radial-gradient(rgba(255,255,255,.08) 1px, transparent 1px); background-size:20px 20px;
-  -webkit-mask-image:radial-gradient(480px 320px at 88% 8%, black, transparent 72%);
-  mask-image:radial-gradient(480px 320px at 88% 8%, black, transparent 72%);
-}
-.finish > *{position:relative; z-index:1}
-.finish h2{color:#fff}
-.finish .stage-lead{color:rgba(255,255,255,.82)}
-.finish .card{background:rgba(255,255,255,.09); border:1.5px solid rgba(255,255,255,.35); color:#fff}
-.finish .card:hover{border-color:#fff; box-shadow:none; transform:none}
-.finish .card h3, .finish .card dt{color:#fff}
-.finish .card p, .finish .card dd, .finish .card .eyebrow{color:rgba(255,255,255,.85)}
-.finish .citem span{color:rgba(255,255,255,.92)}
-.finish .citem input:checked ~ span{color:rgba(255,255,255,.5)}
-.finish .pf-field input{color:#fff; border-bottom-color:rgba(255,255,255,.5); text-shadow:0 1px 3px rgba(0,0,0,.35)}
-.finish .pf-field input:focus{border-bottom-color:var(--teal)}
-.finish .pf-field input::placeholder{color:rgba(255,255,255,.68)}
-.finish .pf-field label{color:#fff; font-weight:700; text-shadow:0 1px 3px rgba(0,0,0,.35)}
-.finish .kicker{color:var(--teal)}
-.finish .kicker::before{background:var(--teal)}
+.finish{padding:52px 36px 40px; margin-top:8px; position:relative; border:1.5px solid var(--ink); border-radius:14px; box-shadow:var(--shadow)}
 
 footer.sitefoot{border-top:1px solid var(--line); padding:26px 0 34px; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-faint)}
 footer.sitefoot.page-hidden{display:none !important}
@@ -1319,7 +1293,7 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
         <!-- 13 -->
         <section class="stage" id="s13">
           <div class="finish">
-            <div class="stage-head"><span class="stage-num mono" style="color:rgba(255,255,255,.6)">13 / 13</span><h2>STARTKLAR ✓</h2></div>
+            <div class="stage-head"><span class="stage-num mono">13 / 13</span><h2>STARTKLAR ✓</h2></div>
             <p class="stage-lead">Die ersten 90 Tage sind geschafft. Jetzt beginnt deine nächste Entwicklungsphase.</p>
             <div class="grid-2" style="margin-top:22px">
               <div class="card">
@@ -1342,9 +1316,9 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
                 </div>
               </div>
             </div>
-            <div class="tip" style="background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.18); margin-top:22px">
-              <div class="mk" style="background:rgba(255,255,255,.15); color:#fff"><svg class="icon"><use href="#i-compass"/></svg></div>
-              <p style="color:rgba(255,255,255,.85)"><b style="color:#fff">Geschafft!</b> Der Kompass hat seine Aufgabe erfüllt — dein Weg bei der druckluft-technik geht jetzt erst richtig los.</p>
+            <div class="tip" style="margin-top:22px">
+              <div class="mk"><svg class="icon"><use href="#i-compass"/></svg></div>
+              <p><b>Geschafft!</b> Der Kompass hat seine Aufgabe erfüllt — dein Weg bei der druckluft-technik geht jetzt erst richtig los.</p>
             </div>
           </div>
         </section>
