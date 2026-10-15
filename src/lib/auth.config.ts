@@ -6,6 +6,10 @@ import type { NextAuthConfig } from "next-auth";
  * Credentials-Provider liegt in `auth.ts` und läuft nur in der Node.js-Runtime.
  */
 export default {
+  // Außerhalb von Vercel (z. B. eigener Server/Docker) muss Auth.js dem
+  // Host-Header explizit vertrauen, sonst schlägt die Anmeldung mit
+  // "UntrustedHost" fehl.
+  trustHost: true,
   pages: {
     signIn: "/login",
   },

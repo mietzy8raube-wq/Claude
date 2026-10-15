@@ -28,6 +28,10 @@ declare module "@auth/core/jwt" {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  // Außerhalb von Vercel (z. B. eigener Server/Docker) muss Auth.js dem
+  // Host-Header explizit vertrauen, sonst schlägt die Anmeldung mit
+  // "UntrustedHost" fehl.
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: {
     signIn: "/login",
