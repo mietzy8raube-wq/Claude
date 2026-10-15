@@ -26,9 +26,10 @@ Kein Backend, keine Datenbank, kein Build-Schritt. `index.html` öffnet direkt i
 
 ## Funktionen
 
+- **Seitenweise Navigation** — es ist immer nur eine Etappe (bzw. der Titelbereich) sichtbar; gescrollt wird nur innerhalb dieser Etappe. Am unteren Rand erscheint beim Herunterscrollen ein "Nächste Seite"-Button, am oberen Rand beim Hochscrollen ein "Vorherige Seite"-Button. Seitenleiste, "Deine Route"-Kacheln (Etappe 1) und die Suche springen direkt zur gewünschten Etappe.
 - **Live-Fortschritt** — ein animierter Tacho ("Onboarding-Druck") im Titelbereich, ein Fortschrittsring in der Kopfzeile und eine Balkenanzeige in der Seitenleiste aktualisieren sich in Echtzeit, sobald irgendwo eine Checkbox gesetzt oder ein Reifegrad-Regler bewegt wird.
 - **Mehrere Profile** — jede:r Mitarbeiter:in kann ein eigenes Profil auf demselben Gerät anlegen; alle Eingaben werden getrennt im Browser gespeichert (`localStorage`), nichts läuft über einen Server.
-- **Suche (Strg/Cmd + K)** — durchsucht Etappentitel, Checklisten-Einträge und alles, was Mitarbeiter:innen selbst in Textfelder eingetragen haben. Ein Treffer springt direkt zum passenden Element (Karte, Tabellenzeile, Eingabefeld, FAQ-Eintrag …) und markiert es kurz farbig.
+- **Suche (Strg/Cmd + K)** — durchsucht Etappentitel, Checklisten-Einträge und alles, was Mitarbeiter:innen selbst in Textfelder eingetragen haben. Ein Treffer wechselt zur passenden Etappe, springt dort zum Element (Karte, Tabellenzeile, Eingabefeld, FAQ-Eintrag …) und markiert es kurz farbig.
 - **Speichern/Laden** — der komplette Fortschritt lässt sich als JSON-Datei exportieren und auf einem anderen Gerät wieder importieren.
 - **Automatische Datumsformatierung** für Start- und Geburtsdatum (`TT.MM.JJJJ`).
 - **Link-Erkennung** — sobald in einem Notiz- oder Kontaktfeld ein Link auftaucht (auch mitten im Text neben Name und Notiz), erscheint automatisch ein anklickbares Link-Symbol.
