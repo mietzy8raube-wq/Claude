@@ -18,7 +18,7 @@
 /* ===== Tokens — light (default) — druckluft-technik Chemnitz brand ===== */
 :root{
   --bg:#F5F1E7; --surface:#FFFFFF; --surface-2:#EEE8D9; --surface-sunk:#E3DBC7;
-  --box-wash: radial-gradient(240px 190px at 98% -18%, rgba(33,56,224,.30), transparent 68%), radial-gradient(220px 180px at -12% 118%, rgba(255,90,31,.26), transparent 68%), var(--surface);
+  --box-wash: radial-gradient(240px 190px at 98% -18%, #CBD5FA, transparent 68%), radial-gradient(220px 180px at -12% 118%, #FFD3B0, transparent 68%), var(--surface);
   --ink:#12110D; --ink-soft:#4E4B42; --ink-faint:#655D4F;
   --line:#DCD3BE; --line-strong:#12110D;
   --brand:#2138E0; --brand-deep:#0A1142; --brand-soft:#E1E5FF; --brand-bright:#4C64FF;
@@ -464,16 +464,6 @@ main{padding:0 28px 90px}
 .card h3{font-family:'Source Sans 3'; font-weight:800; font-size:16.5px; margin-bottom:8px; text-transform:uppercase; letter-spacing:.01em}
 .card p{color:var(--ink-soft); font-size:14.5px; line-height:1.55}
 .card .eyebrow{font-family:'IBM Plex Mono'; font-size:10.5px; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-faint); margin-bottom:9px}
-.card.tone-brand{background:radial-gradient(220px 180px at 102% 116%, rgba(255,255,255,.55), transparent 58%), linear-gradient(155deg, var(--brand-bright) 0%, var(--brand) 55%, var(--brand-deep) 130%); border-color:var(--ink); color:#fff}
-.card.tone-brand h3, .card.tone-brand dt{color:#fff}
-.card.tone-brand p, .card.tone-brand dd, .card.tone-brand .eyebrow, .card.tone-brand span, .card.tone-brand label{color:rgba(255,255,255,.88)}
-.card.tone-brand .citem input:checked ~ span{color:rgba(255,255,255,.55); text-decoration-color:rgba(255,255,255,.4)}
-.card.tone-brand .icon{color:#fff}
-.card.tone-accent{background:radial-gradient(220px 180px at 102% 116%, rgba(255,255,255,.6), transparent 58%), linear-gradient(155deg, #FF8A54 0%, var(--accent) 55%, #C9450F 130%); border-color:var(--ink); color:#12110D}
-.card.tone-accent h3, .card.tone-accent dt{color:#12110D}
-.card.tone-accent p, .card.tone-accent dd, .card.tone-accent .eyebrow, .card.tone-accent span, .card.tone-accent label{color:rgba(18,17,13,.82)}
-.card.tone-accent .citem input:checked ~ span{color:rgba(18,17,13,.45); text-decoration-color:rgba(18,17,13,.4)}
-.card.tone-accent .icon{color:#12110D}
 .card.tone-good{background:var(--good-soft)}
 .card.tone-petrol{background:var(--petrol-soft)}
 
