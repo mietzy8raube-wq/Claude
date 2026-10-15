@@ -213,7 +213,23 @@ body:not(.edit-locked) .dino-config{display:block}
 .dino-config-row input{flex:1; min-width:0; border:0; border-bottom:1.5px solid var(--line); background:transparent; padding:4px 2px; font-family:'IBM Plex Mono'; font-size:13px; color:var(--ink)}
 .dino-config-row input:focus{outline:none; border-bottom-color:var(--brand)}
 
-.maincol{min-width:0; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); border-radius:0; box-shadow:var(--shadow-lg); overflow-y:auto; overflow-x:hidden; height:100%; scroll-behavior:smooth}
+.maincol{min-width:0; display:flex; flex-direction:column; background:var(--bg); border:1px solid var(--line); border-radius:0; box-shadow:var(--shadow-lg); overflow-y:auto; overflow-x:hidden; height:100%; scroll-behavior:smooth; position:relative}
+.stage.page-hidden, .hero.page-hidden{display:none !important}
+.page-nav-btn{
+  position:absolute; left:50%; z-index:35; display:flex; align-items:center; gap:8px;
+  font-family:'IBM Plex Mono'; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+  background:var(--ink); color:#fff; border:1.5px solid var(--ink); border-radius:999px; padding:11px 22px;
+  box-shadow:var(--shadow-lg); cursor:pointer; opacity:0; pointer-events:none;
+  transition:opacity .22s var(--ease), transform .22s var(--ease-snap), background .16s var(--ease);
+}
+.page-nav-btn .icon{width:14px;height:14px; flex:none}
+.page-nav-btn:hover{background:var(--brand); border-color:var(--brand)}
+.page-nav-btn:active{transform:translateX(-50%) scale(.95)}
+.page-nav-next{bottom:20px; transform:translateX(-50%) translateY(14px)}
+.page-nav-next.show{opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0)}
+.page-nav-prev{top:78px; transform:translateX(-50%) translateY(-14px)}
+.page-nav-prev.show{opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0)}
+@media (prefers-reduced-motion:reduce){.page-nav-btn{transition:opacity .15s linear !important; transform:translateX(-50%) !important}}
 .maincol.locked{overflow:hidden}
 .maincol::-webkit-scrollbar{width:10px}
 .maincol::-webkit-scrollbar-thumb{background:var(--line-strong); border-radius:8px}
@@ -299,6 +315,7 @@ main{padding:0 28px 90px}
     linear-gradient(165deg, #FFFFFF 0%, #F9F5EB 55%, #F1E9D6 100%);
   border-bottom:2px solid var(--ink);
 }
+.hero-band.page-hidden{padding:0; margin:0; background:none; border-bottom:0}
 .hero-band::after{
   content:""; position:absolute; inset:0; pointer-events:none; opacity:.6;
   background-image:radial-gradient(rgba(18,17,13,.07) 1px, transparent 1px);
@@ -621,6 +638,7 @@ dl.glossary dd{margin:0; font-size:14px; color:var(--ink-soft)}
 .finish .kicker::before{background:var(--teal)}
 
 footer.sitefoot{border-top:1px solid var(--line); padding:26px 0 34px; display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:12.5px; color:var(--ink-faint)}
+footer.sitefoot.page-hidden{display:none !important}
 footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 .totop{display:inline-flex; align-items:center; gap:6px}
 
@@ -785,6 +803,8 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   </aside>
 
   <div class="maincol" id="maincol">
+    <button class="page-nav-btn page-nav-prev" id="pagePrevBtn" type="button"><svg class="icon"><use href="#i-chevron" style="transform:rotate(-90deg)"/></svg><span>Vorherige Seite</span></button>
+    <button class="page-nav-btn page-nav-next" id="pageNextBtn" type="button"><span>Nächste Seite</span><svg class="icon"><use href="#i-chevron" style="transform:rotate(90deg)"/></svg></button>
     <header class="topbar" id="topbar">
       <div class="readbar" id="readbar"></div>
       <button class="search-trigger" id="searchTrigger" type="button" aria-haspopup="dialog">
@@ -1571,7 +1591,8 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     var target = document.querySelector(hit.s);
     if(!target) return;
     closePalette();
-    var stageEl = target.closest(".stage") || target;
+    var stageEl = target.closest(".stage, .hero") || target;
+    if(stageEl.id && PAGES.indexOf(stageEl.id) > -1 && stageEl.id !== currentPageId) switchToPage(stageEl.id);
     var flashTarget = stageEl;
     if(hit.direct){
       var directEl = document.querySelector(hit.direct);
@@ -2228,11 +2249,15 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
 
   updateProgress();
 
-  /* ---------- Active section tracking ---------- */
+  /* ---------- Paged navigation: only the active stage is scrollable ---------- */
+  var PAGES = ["hero"].concat(stages);
   var scrollRoot = document.getElementById("maincol");
   var navLinks = Array.prototype.slice.call(document.querySelectorAll("#railnav a"));
-  var sections = stages.map(function(id){ return document.getElementById(id); });
   var railIndicator = document.getElementById("railIndicator");
+  var pagePrevBtn = document.getElementById("pagePrevBtn");
+  var pageNextBtn = document.getElementById("pageNextBtn");
+  var currentPageId = "hero";
+
   function moveRailIndicator(){
     var activeLink = document.querySelector("#railnav a.active");
     if(!activeLink){ railIndicator.classList.remove("show"); return; }
@@ -2242,22 +2267,97 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
     railIndicator.classList.add("show");
   }
   window.addEventListener("resize", function(){ moveRailIndicator(); });
-  var sectionRatios = {};
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(entry){
-      sectionRatios[entry.target.id] = entry.isIntersecting ? entry.intersectionRatio : 0;
-    });
-    var bestId = null, bestRatio = 0;
-    stages.forEach(function(id){
-      var r = sectionRatios[id] || 0;
-      if(r > bestRatio){ bestRatio = r; bestId = id; }
-    });
-    if(bestId){
-      navLinks.forEach(function(l){ l.classList.toggle("active", l.dataset.target === bestId); });
-      moveRailIndicator();
+
+  function hidePageNextBtn(){ pageNextBtn.classList.remove("show"); }
+  function hidePagePrevBtn(){ pagePrevBtn.classList.remove("show"); }
+  function hasNextPage(){ return PAGES.indexOf(currentPageId) < PAGES.length - 1; }
+  function hasPrevPage(){ return PAGES.indexOf(currentPageId) > 0; }
+  function showPageNextBtn(){ if(hasNextPage()) pageNextBtn.classList.add("show"); }
+  function showPagePrevBtn(){ if(hasPrevPage()) pagePrevBtn.classList.add("show"); }
+
+  var siteFootEl = document.querySelector("footer.sitefoot");
+  var heroBandEl = document.querySelector(".hero-band");
+  function switchToPage(id){
+    if(PAGES.indexOf(id) === -1 || id === currentPageId) return;
+    var prevEl = document.getElementById(currentPageId);
+    var nextEl = document.getElementById(id);
+    if(!nextEl) return;
+    if(prevEl) prevEl.classList.add("page-hidden");
+    nextEl.classList.remove("page-hidden");
+    currentPageId = id;
+    scrollRoot.scrollTop = 0;
+    lastScrollTop = 0;
+    navLinks.forEach(function(l){ l.classList.toggle("active", l.dataset.target === id); });
+    moveRailIndicator();
+    hidePageNextBtn();
+    hidePagePrevBtn();
+    if(siteFootEl) siteFootEl.classList.toggle("page-hidden", id !== "s13");
+    if(heroBandEl) heroBandEl.classList.toggle("page-hidden", id !== "hero");
+    if(window.history && history.replaceState) history.replaceState(null, "", "#" + id);
+  }
+
+  pageNextBtn.addEventListener("click", function(){ if(hasNextPage()) switchToPage(PAGES[PAGES.indexOf(currentPageId) + 1]); });
+  pagePrevBtn.addEventListener("click", function(){ if(hasPrevPage()) switchToPage(PAGES[PAGES.indexOf(currentPageId) - 1]); });
+
+  function atScrollBottom(){ return (scrollRoot.scrollTop + scrollRoot.clientHeight) >= (scrollRoot.scrollHeight - 2); }
+  function atScrollTop(){ return scrollRoot.scrollTop <= 2; }
+
+  // Wheel/touch: detect an attempt to scroll past a boundary even on short pages that don't scroll at all.
+  scrollRoot.addEventListener("wheel", function(e){
+    if(e.deltaY > 0){
+      atScrollBottom() ? showPageNextBtn() : hidePageNextBtn();
+      hidePagePrevBtn();
+    } else if(e.deltaY < 0){
+      atScrollTop() ? showPagePrevBtn() : hidePagePrevBtn();
+      hidePageNextBtn();
     }
-  }, {root:scrollRoot, threshold:[0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]});
-  sections.forEach(function(s){ if(s) io.observe(s); });
+  }, {passive:true});
+
+  var touchStartY = null;
+  scrollRoot.addEventListener("touchstart", function(e){ touchStartY = e.touches[0].clientY; }, {passive:true});
+  scrollRoot.addEventListener("touchmove", function(e){
+    if(touchStartY === null) return;
+    var dy = touchStartY - e.touches[0].clientY;
+    if(dy > 8){
+      atScrollBottom() ? showPageNextBtn() : hidePageNextBtn();
+      hidePagePrevBtn();
+    } else if(dy < -8){
+      atScrollTop() ? showPagePrevBtn() : hidePagePrevBtn();
+      hidePageNextBtn();
+    }
+  }, {passive:true});
+  scrollRoot.addEventListener("touchend", function(){ touchStartY = null; });
+
+  // Scroll-direction fallback: covers keyboard/scrollbar-drag scrolling on pages that do scroll.
+  var lastScrollTop = 0;
+  scrollRoot.addEventListener("scroll", function(){
+    var st = scrollRoot.scrollTop;
+    var dir = st > lastScrollTop ? "down" : (st < lastScrollTop ? "up" : null);
+    lastScrollTop = st;
+    if(dir === "down"){ atScrollBottom() ? showPageNextBtn() : hidePageNextBtn(); }
+    else if(dir === "up"){ atScrollTop() ? showPagePrevBtn() : hidePagePrevBtn(); }
+  }, {passive:true});
+
+  navLinks.forEach(function(a){
+    a.addEventListener("click", function(e){ e.preventDefault(); switchToPage(a.dataset.target); });
+  });
+  document.querySelectorAll(".rchip").forEach(function(a){
+    a.addEventListener("click", function(e){ e.preventDefault(); switchToPage(a.dataset.scope); });
+  });
+  var totopLink = document.querySelector(".totop");
+  if(totopLink){
+    totopLink.addEventListener("click", function(e){ e.preventDefault(); switchToPage("hero"); });
+  }
+
+  document.querySelectorAll(".stage, .hero").forEach(function(el){ el.classList.add("page-hidden"); });
+  var initialPageId = (location.hash || "").replace("#", "");
+  if(PAGES.indexOf(initialPageId) === -1) initialPageId = "hero";
+  currentPageId = initialPageId;
+  document.getElementById(initialPageId).classList.remove("page-hidden");
+  navLinks.forEach(function(l){ l.classList.toggle("active", l.dataset.target === initialPageId); });
+  if(siteFootEl) siteFootEl.classList.toggle("page-hidden", initialPageId !== "s13");
+  if(heroBandEl) heroBandEl.classList.toggle("page-hidden", initialPageId !== "hero");
+  requestAnimationFrame(moveRailIndicator);
 
   /* ---------- Scroll-reveal choreography ---------- */
   if(!reduceMotion){
