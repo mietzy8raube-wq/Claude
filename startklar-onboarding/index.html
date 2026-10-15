@@ -217,13 +217,16 @@ body:not(.edit-locked) .dino-config{display:block}
 .maincol-scroll{overflow-y:auto; overflow-x:hidden; height:100%; flex:1; min-height:0; scroll-behavior:smooth}
 .stage.page-hidden, .hero.page-hidden{display:none !important}
 .page-nav-btn{
-  position:absolute; left:50%; z-index:35; display:flex; align-items:center; gap:8px;
+  position:absolute; left:50%; z-index:35; display:flex; align-items:center; gap:8px; min-width:200px;
   font-family:'IBM Plex Mono'; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
   background:var(--ink); color:#fff; border:1.5px solid var(--ink); border-radius:999px; padding:11px 22px;
   cursor:pointer; opacity:0; pointer-events:none;
   transition:opacity .22s var(--ease), transform .22s var(--ease-snap), background .16s var(--ease);
 }
+.page-nav-btn span{flex:1; text-align:center}
 .page-nav-btn .icon{width:14px;height:14px; flex:none}
+.page-nav-prev .icon{transform:rotate(-90deg)}
+.page-nav-next .icon{transform:rotate(90deg)}
 .page-nav-btn:hover{background:var(--brand); border-color:var(--brand)}
 .page-nav-btn:active{transform:translateX(-50%) scale(.95)}
 .page-nav-next{bottom:20px; transform:translateX(-50%) translateY(14px)}
@@ -804,8 +807,8 @@ footer.sitefoot a{text-decoration:underline; text-underline-offset:2px}
   </aside>
 
   <div class="maincol" id="maincol">
-    <button class="page-nav-btn page-nav-prev" id="pagePrevBtn" type="button"><svg class="icon"><use href="#i-chevron" style="transform:rotate(-90deg)"/></svg><span>Vorherige Seite</span></button>
-    <button class="page-nav-btn page-nav-next" id="pageNextBtn" type="button"><span>Nächste Seite</span><svg class="icon"><use href="#i-chevron" style="transform:rotate(90deg)"/></svg></button>
+    <button class="page-nav-btn page-nav-prev" id="pagePrevBtn" type="button"><span>Vorherige Seite</span><svg class="icon"><use href="#i-chevron"/></svg></button>
+    <button class="page-nav-btn page-nav-next" id="pageNextBtn" type="button"><span>Nächste Seite</span><svg class="icon"><use href="#i-chevron"/></svg></button>
     <div class="maincol-scroll" id="maincolScroll">
     <header class="topbar" id="topbar">
       <div class="readbar" id="readbar"></div>
