@@ -1,0 +1,1030 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GF-Suite Tickets</title>
+<meta name="description" content="Ticketsystem für Aufgaben, Projekte und Fristen – eigenständige Version, läuft komplett im Browser.">
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --fg: #1d2230; --muted: #6b7280; --border: #e3e6ec; --soft: #f1f3f6;
+  --primary: #24306b; --primary-fg: #ffffff; --primary-soft: #e8ebf7;
+  --danger: #c2343a; --danger-soft: #fbe9ea; --warn: #9a6200; --warn-soft: #fdf3dc; --ok: #1f7a4d; --ok-soft: #e3f4ea;
+  --info: #2563a8; --info-soft: #e6eff9;
+  --sidebar: #121726; --sidebar-fg: #d6dae4; --sidebar-muted: #7d8497; --sidebar-active: #222a40;
+  --brand: linear-gradient(135deg, #24306b 0%, #463a8f 55%, #6a3e9e 100%);
+  --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --radius: 12px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e111a; --card: #161b27; --fg: #e6e8ee; --muted: #9298a8; --border: #262d3d; --soft: #1d2333;
+    --primary: #9fb0ff; --primary-fg: #10142a; --primary-soft: #232b4a;
+    --danger: #ff8086; --danger-soft: #3a1d22; --warn: #f2c066; --warn-soft: #3a2f17; --ok: #6fd6a0; --ok-soft: #173326;
+    --info: #8cbcf5; --info-soft: #1b2a40;
+    --sidebar: #0a0d15; --sidebar-active: #1a2032; --shadow: 0 1px 2px rgba(0,0,0,.4); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e111a; --card: #161b27; --fg: #e6e8ee; --muted: #9298a8; --border: #262d3d; --soft: #1d2333;
+  --primary: #9fb0ff; --primary-fg: #10142a; --primary-soft: #232b4a;
+  --danger: #ff8086; --danger-soft: #3a1d22; --warn: #f2c066; --warn-soft: #3a2f17; --ok: #6fd6a0; --ok-soft: #173326;
+  --info: #8cbcf5; --info-soft: #1b2a40;
+  --sidebar: #0a0d15; --sidebar-active: #1a2032; --shadow: 0 1px 2px rgba(0,0,0,.4); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: inherit; }
+.app { display: flex; min-height: 100vh; }
+/* Sidebar */
+.sidebar { width: 240px; flex-shrink: 0; background: var(--sidebar); color: var(--sidebar-fg); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
+.brand { display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,.07); font-weight: 600; font-size: 15px; color: #fff; }
+.brand-logo { width: 32px; height: 32px; border-radius: 9px; background: var(--brand); display: grid; place-items: center; }
+.nav { padding: 14px 10px; overflow-y: auto; flex: 1; }
+.nav-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--sidebar-muted); padding: 0 10px; margin: 14px 0 6px; font-weight: 600; }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; text-decoration: none; color: rgba(214,218,228,.75); font-weight: 500; }
+.nav a:hover { background: rgba(255,255,255,.05); color: #fff; }
+.nav a.active { background: var(--sidebar-active); color: #fff; }
+.nav a .count { margin-left: auto; background: var(--danger); color: #fff; border-radius: 99px; font-size: 11px; padding: 0 7px; font-weight: 600; }
+.nav svg { width: 17px; height: 17px; flex-shrink: 0; opacity: .8; }
+.sidebar-foot { padding: 12px 16px; font-size: 12px; color: var(--sidebar-muted); border-top: 1px solid rgba(255,255,255,.07); }
+/* Main */
+.main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.topbar { position: sticky; top: 0; z-index: 20; height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 20px; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--border); }
+.topbar h1 { font-size: 14px; font-weight: 600; margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.menu-btn { display: none; }
+.content { padding: 24px 28px 48px; max-width: 1400px; width: 100%; margin: 0 auto; }
+.page-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; justify-content: space-between; margin-bottom: 22px; }
+.page-head h2 { font-size: 24px; margin: 0; letter-spacing: -.01em; }
+.page-head p { margin: 4px 0 0; color: var(--muted); }
+/* UI */
+.card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.card-pad { padding: 18px; }
+.card h3 { margin: 0 0 4px; font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.card .sub { color: var(--muted); font-size: 13px; margin: 0 0 12px; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--card); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 500; white-space: nowrap; text-decoration: none; }
+.btn:hover { background: var(--soft); }
+.btn.primary { background: var(--primary); border-color: var(--primary); color: var(--primary-fg); }
+.btn.primary:hover { filter: brightness(1.1); }
+.btn.danger { color: var(--danger); }
+.btn.ghost { border-color: transparent; background: transparent; }
+.btn.ghost:hover { background: var(--soft); }
+.btn.sm { padding: 4px 9px; font-size: 13px; }
+.btn.icon { padding: 7px; }
+.btn svg { width: 16px; height: 16px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+input[type=text], input[type=email], input[type=date], input[type=search], select, textarea {
+  border: 1px solid var(--border); background: var(--card); border-radius: 8px; padding: 7px 10px; width: 100%; min-width: 0; }
+textarea { resize: vertical; }
+input:focus, select:focus, textarea:focus, .btn:focus-visible { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 1px; }
+label.field { display: grid; gap: 5px; font-size: 13px; font-weight: 500; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+.g4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.spacer { flex: 1; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 12px; color: var(--muted); }
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 99px; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.b-danger { background: var(--danger-soft); color: var(--danger); }
+.b-warn { background: var(--warn-soft); color: var(--warn); }
+.b-ok { background: var(--ok-soft); color: var(--ok); }
+.b-info { background: var(--info-soft); color: var(--info); }
+.b-primary { background: var(--primary-soft); color: var(--primary); }
+.avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--brand); color: #fff; display: inline-grid; place-items: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.avatar.lg { width: 40px; height: 40px; font-size: 13px; }
+.stat { display: flex; align-items: center; gap: 14px; padding: 16px; }
+.stat .ico { width: 40px; height: 40px; border-radius: 10px; display: grid; place-items: center; background: var(--primary-soft); color: var(--primary); }
+.stat .ico svg { width: 20px; height: 20px; }
+.stat .val { font-size: 24px; font-weight: 650; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat.clickable { cursor: pointer; } .stat.clickable:hover { box-shadow: 0 4px 14px rgba(16,24,40,.1); }
+.tone-danger .ico { background: var(--danger-soft); color: var(--danger); } .tone-danger .val { color: var(--danger); }
+.tone-warn .ico { background: var(--warn-soft); color: var(--warn); }
+.tone-ok .ico { background: var(--ok-soft); color: var(--ok); }
+/* Table */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--soft); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tbody tr { cursor: pointer; } tbody tr:hover { background: var(--soft); }
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.overdue { color: var(--danger); font-weight: 600; }
+/* Filters */
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.filters > * { width: auto; }
+.filters input[type=search] { width: 240px; }
+.seg { display: inline-flex; background: var(--soft); border-radius: 9px; padding: 3px; gap: 2px; }
+.seg button { border: 0; background: transparent; padding: 5px 12px; border-radius: 7px; cursor: pointer; font-weight: 500; color: var(--muted); }
+.seg button.on { background: var(--card); color: var(--fg); box-shadow: var(--shadow); }
+/* Kanban */
+.kanban { display: grid; grid-template-columns: repeat(5, minmax(220px, 1fr)); gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+.col { background: var(--soft); border-radius: 12px; padding: 10px; min-height: 220px; }
+.col.drop { outline: 2px dashed var(--primary); }
+.col-head { display: flex; justify-content: space-between; font-weight: 600; font-size: 13px; margin: 2px 4px 10px; }
+.kcard { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 8px; cursor: grab; box-shadow: var(--shadow); }
+.kcard:hover { border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); }
+.kcard .t { font-weight: 600; margin: 2px 0 8px; line-height: 1.35; }
+/* Lists */
+.list-row { display: flex; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+.list-row:last-child { border-bottom: 0; }
+.list-row .main-col { flex: 1; min-width: 220px; cursor: pointer; }
+.section-title { display: flex; align-items: center; gap: 8px; font-weight: 650; font-size: 14px; margin: 22px 0 8px; }
+.empty { text-align: center; padding: 48px 20px; color: var(--muted); border: 1px dashed var(--border); border-radius: 12px; background: color-mix(in srgb, var(--soft) 50%, transparent); }
+/* Bars */
+.bar { height: 8px; background: var(--soft); border-radius: 99px; overflow: hidden; }
+.bar > i { display: block; height: 100%; border-radius: 99px; }
+.mini-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 6px; text-align: center; }
+.mini-stats div { background: var(--soft); border-radius: 8px; padding: 7px 2px; }
+.mini-stats b { display: block; font-size: 17px; font-variant-numeric: tabular-nums; }
+.mini-stats span { font-size: 11px; color: var(--muted); }
+.note { border-radius: 8px; padding: 9px 12px; font-size: 13px; }
+.note.warn { background: var(--warn-soft); color: var(--warn); }
+.note.info { background: var(--info-soft); color: var(--info); }
+.note.danger { background: var(--danger-soft); color: var(--danger); }
+/* Drawer & modal */
+.overlay { position: fixed; inset: 0; background: rgba(10,14,25,.45); z-index: 40; display: none; }
+.overlay.open { display: block; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100vw); background: var(--card); z-index: 50; box-shadow: -8px 0 30px rgba(0,0,0,.18); transform: translateX(100%); transition: transform .2s ease; overflow-y: auto; }
+.drawer.open { transform: none; }
+.drawer-head { padding: 18px 20px 12px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--card); z-index: 1; }
+.drawer-body { padding: 16px 20px 40px; display: grid; gap: 18px; }
+.modal { position: fixed; z-index: 60; top: 50%; left: 50%; transform: translate(-50%,-50%); width: min(620px, calc(100vw - 32px)); max-height: calc(100vh - 40px); overflow-y: auto; background: var(--card); border-radius: 14px; border: 1px solid var(--border); box-shadow: 0 20px 50px rgba(0,0,0,.25); padding: 22px; display: none; }
+.modal.open { display: block; }
+.modal h3 { margin: 0 0 4px; font-size: 18px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.kv { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
+.kv label { font-size: 12px; color: var(--muted); display: grid; gap: 4px; }
+.check-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; }
+.check-item.done span { text-decoration: line-through; color: var(--muted); }
+.comment { display: flex; gap: 10px; }
+.comment .bubble { background: var(--soft); border-radius: 10px; padding: 8px 12px; flex: 1; }
+/* Popover */
+.popover { position: absolute; top: 48px; right: 16px; width: min(380px, calc(100vw - 24px)); background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,.18); z-index: 45; display: none; overflow: hidden; }
+.popover.open { display: block; }
+.notif { display: flex; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.notif:hover { background: var(--soft); }
+.notif.unread { background: color-mix(in srgb, var(--primary-soft) 50%, transparent); }
+.notif .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--primary); margin-top: 6px; flex-shrink: 0; }
+.bell { position: relative; }
+.bell .n { position: absolute; top: -3px; right: -3px; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; border-radius: 99px; min-width: 16px; height: 16px; display: grid; place-items: center; padding: 0 4px; }
+.dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 28px; text-align: center; color: var(--muted); cursor: pointer; }
+.dropzone.hover { border-color: var(--primary); background: var(--primary-soft); }
+.toast-wrap { position: fixed; bottom: 18px; right: 18px; z-index: 80; display: grid; gap: 8px; }
+.toast { background: var(--fg); color: var(--bg); padding: 10px 14px; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.25); font-size: 13px; max-width: 360px; }
+svg.i { width: 16px; height: 16px; }
+@media (max-width: 1100px) { .g4 { grid-template-columns: repeat(2, minmax(0,1fr)); } .g3 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 860px) {
+  .sidebar { position: fixed; left: 0; z-index: 55; transform: translateX(-100%); transition: transform .2s; }
+  .sidebar.open { transform: none; }
+  .menu-btn { display: inline-flex; }
+  .content { padding: 18px 16px 40px; }
+  .g2, .g3, .g4 { grid-template-columns: minmax(0,1fr); }
+  .filters input[type=search] { width: 100%; }
+  .filters > select { flex: 1 1 140px; }
+  .kv { grid-template-columns: minmax(0,1fr); }
+}
+@media print { .sidebar, .topbar, .no-print { display: none !important; } .content { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="brand-logo"><svg class="i" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1M9 13h1m4 0h1M9 17h1m4 0h1"/></svg></div>GF-Suite Tickets</div>
+    <nav class="nav" id="nav"></nav>
+    <div class="sidebar-foot">Eigenständige Version · Daten bleiben in diesem Browser</div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="btn ghost icon menu-btn" data-act="toggle-menu" aria-label="Menü"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      <h1 id="title"></h1>
+      <button class="btn primary sm no-print" data-act="new-ticket"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg><span>Ticket</span></button>
+      <button class="btn ghost icon bell" data-act="toggle-notifs" aria-label="Benachrichtigungen" id="bell"></button>
+      <button class="btn ghost icon" data-act="toggle-theme" aria-label="Hell/Dunkel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+      <select id="user-switch" aria-label="Angemeldet als" style="width:auto;max-width:180px"></select>
+      <div class="popover" id="notifs"></div>
+    </header>
+    <main class="content" id="view"></main>
+  </div>
+</div>
+<div class="overlay" id="overlay" data-act="close-all"></div>
+<aside class="drawer" id="drawer" aria-label="Ticketdetails"></aside>
+<div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+"use strict";
+/* =====================================================================
+   GF-Suite Tickets – eigenständige HTML-Version
+   Alle Daten liegen im localStorage dieses Browsers (Export/Import als
+   JSON-Sicherung unter „Einstellungen“).
+   ===================================================================== */
+const KEY = "gfsuite-tickets-v1";
+const STATUS = { OFFEN: "Offen", IN_BEARBEITUNG: "In Bearbeitung", BLOCKIERT: "Blockiert", ZUR_PRUEFUNG: "Zur Prüfung", ERLEDIGT: "Erledigt" };
+const STATUS_CLS = { OFFEN: "", IN_BEARBEITUNG: "b-info", BLOCKIERT: "b-danger", ZUR_PRUEFUNG: "b-warn", ERLEDIGT: "b-ok" };
+const PRIO = { NIEDRIG: "Niedrig", MITTEL: "Mittel", HOCH: "Hoch", KRITISCH: "Kritisch" };
+const PRIO_CLS = { NIEDRIG: "", MITTEL: "b-info", HOCH: "b-warn", KRITISCH: "b-danger" };
+const PRIO_POINTS = { NIEDRIG: 1, MITTEL: 2, HOCH: 3, KRITISCH: 5 };
+const ROLES = { GESCHAEFTSFUEHRER: "Geschäftsführung", ADMINISTRATOR: "Administrator", MITARBEITER: "Mitarbeiter" };
+const CAPACITY = 20;
+const ICONS = {
+  dash: '<path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/>',
+  mine: '<path d="M9 6h11M9 12h11M9 18h11M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>',
+  all: '<path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1zM8 6H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V7a1 1 0 0 0-1-1h-2M9 12h6M9 16h4"/>',
+  clock: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M5 3 2 6m17-3 3 3"/>',
+  team: '<circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 3.1a4 4 0 0 1 0 7.8M22 21a7 7 0 0 0-5-6.7"/>',
+  mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/>',
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  alert: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/>',
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
+  ticket: '<path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  palm: '<path d="M13 8c0-2.8-2.2-5-5-5S3 5.2 3 8M13 8h-2m2 0c0-2.8 2.2-5 5-5s5 2.2 5 5M13 8l-2 13m2-13c2 0 4 2 4 5"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>', edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4z"/>',
+  trash: '<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/>', download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>'
+};
+const icon = (n, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ""}</svg>`;
+
+/* ---------- Hilfsfunktionen ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const pad = (n) => String(n).padStart(2, "0");
+const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayKey = () => keyOf(new Date());
+const addDays = (key, n) => { const [y, m, d] = key.split("-").map(Number); return keyOf(new Date(y, m - 1, d + n)); };
+const parseKey = (key) => { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d); };
+const diffDays = (key) => Math.round((parseKey(key) - parseKey(todayKey())) / 864e5);
+const fmtDate = (key) => key ? parseKey(key).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–";
+const fmtShort = (key) => parseKey(key).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+const fmtDateTime = (iso) => new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
+const ticketNo = (n) => `T-${String(n).padStart(4, "0")}`;
+const initials = (name) => (name || "?").split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+function relDue(key) {
+  const d = diffDays(key);
+  if (d === 0) return "heute"; if (d === 1) return "morgen"; if (d === -1) return "seit gestern";
+  return d < 0 ? `seit ${-d} Tagen` : `in ${d} Tagen`;
+}
+function timeAgo(iso) {
+  const min = Math.round((Date.now() - new Date(iso)) / 6e4); const rtf = new Intl.RelativeTimeFormat("de-DE", { numeric: "auto" });
+  if (min < 60) return rtf.format(-min, "minute"); const h = Math.round(min / 60);
+  return h < 24 ? rtf.format(-h, "hour") : rtf.format(-Math.round(h / 24), "day");
+}
+function toast(msg) {
+  const el = document.createElement("div"); el.className = "toast"; el.textContent = msg;
+  $("#toasts").appendChild(el); setTimeout(() => el.remove(), 3200);
+}
+
+/* ---------- Speicher ---------- */
+let memoryStore = null;
+function loadDb() {
+  try { const raw = localStorage.getItem(KEY); if (raw) return JSON.parse(raw); } catch (e) { /* privater Modus */ }
+  return memoryStore || seed();
+}
+function save() {
+  try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { memoryStore = db; }
+}
+function seed() {
+  const t = todayKey();
+  const users = [
+    { id: "u1", name: "Anna Müller", email: "anna.mueller@druckluft-chemnitz.de", role: "GESCHAEFTSFUEHRER", active: true },
+    { id: "u2", name: "Thomas Weber", email: "thomas.weber@druckluft-chemnitz.de", role: "GESCHAEFTSFUEHRER", active: true },
+    { id: "u3", name: "Lisa Schmidt", email: "lisa.schmidt@druckluft-chemnitz.de", role: "MITARBEITER", active: true },
+    { id: "u4", name: "Jonas Neumann", email: "jonas.neumann@druckluft-chemnitz.de", role: "MITARBEITER", active: true },
+    { id: "u5", name: "System Administrator", email: "admin@druckluft-chemnitz.de", role: "ADMINISTRATOR", active: true },
+  ];
+  const projects = [
+    { id: "p1", name: "Einführung neue Kompressorenlinie" },
+    { id: "p2", name: "Digitalisierung Auftragsabwicklung" },
+    { id: "p3", name: "Hallenumbau Halle 2" },
+  ];
+  const now = new Date().toISOString();
+  const mk = (no, title, assigneeId, createdById, priority, status, due, projectId, category, desc, extra = {}) => ({
+    id: uid(), no, title, desc: desc || "", status, priority, assigneeId, createdById, dueDate: due, projectId: projectId || null,
+    category: category || "", checklist: [], comments: [], activity: [{ at: now, userId: createdById, text: "Ticket erstellt" }],
+    createdAt: now, completedAt: status === "ERLEDIGT" ? now : null, ...extra,
+  });
+  const tickets = [
+    mk(1, "Angebot Sächsische Fahrzeugwerke finalisieren", "u2", "u1", "HOCH", "IN_BEARBEITUNG", addDays(t, -3), null, "Vertrieb", "Preiskalkulation abschließen und Angebot versenden.", {
+      checklist: [{ id: uid(), text: "Kalkulation prüfen", done: true }, { id: uid(), text: "Rabattstaffel abstimmen", done: false }, { id: uid(), text: "Angebot senden", done: false }],
+      comments: [{ id: uid(), userId: "u1", text: "Bitte Rabatt maximal 4 % ansetzen.", at: now }] }),
+    mk(2, "Hallenumbau abnehmen", "u2", "u2", "KRITISCH", "ZUR_PRUEFUNG", addDays(t, 0), "p3", "Bau", "Bauabnahme mit Bauleiter, Mängelprotokoll erstellen."),
+    mk(3, "Ersatzteilbestellung Schraubenkompressor freigeben", "u1", "u3", "KRITISCH", "OFFEN", addDays(t, 1), null, "Einkauf"),
+    mk(4, "Wartungsvertrag Kompressorstation erneuern", "u3", "u2", "HOCH", "IN_BEARBEITUNG", addDays(t, -2), null, "Service"),
+    mk(5, "Kundenreklamation Druckluftaufbereitung beantworten", "u3", "u1", "MITTEL", "OFFEN", addDays(t, 2), null, "Service"),
+    mk(6, "IT-Sicherheitsaudit vorbereiten", "u1", "u1", "MITTEL", "OFFEN", addDays(t, 6), "p2", "IT"),
+    mk(7, "Anforderungsanalyse Auftragsabwicklung", "u4", "u2", "HOCH", "BLOCKIERT", addDays(t, 4), "p2", "IT", "Wartet auf Rückmeldung des Softwarepartners."),
+    mk(8, "Schulungsplan Q1 für Servicetechniker erstellen", "u2", "u1", "NIEDRIG", "OFFEN", addDays(t, 12), null, "Personal"),
+    mk(9, "Website: Referenzprojekte aktualisieren", null, "u2", "MITTEL", "OFFEN", addDays(t, 5), null, "Marketing"),
+    mk(10, "Angebot Leckageortung für Stadtwerke kalkulieren", null, "u1", "HOCH", "OFFEN", addDays(t, 3), null, "Vertrieb"),
+    mk(11, "Monatliches Liquiditäts-Reporting", "u1", "u1", "MITTEL", "ERLEDIGT", addDays(t, -5), null, "Finanzen"),
+    mk(12, "Recruiting Produktionsmitarbeiter (2 Stellen)", "u2", "u1", "HOCH", "IN_BEARBEITUNG", null, null, "Personal"),
+  ];
+  const absences = [
+    { id: uid(), userId: "u3", start: addDays(t, 1), end: addDays(t, 4), type: "Urlaub", approved: true },
+    { id: uid(), userId: "u2", start: addDays(t, 9), end: addDays(t, 10), type: "Fortbildung", approved: false },
+  ];
+  return { users, projects, tickets, absences, notifications: [], seq: 12, currentUserId: "u2", version: 1 };
+}
+let db = loadDb();
+const ui = { ticketView: "list", filters: { q: "", assignee: "", status: "", priority: "", project: "" }, deadlineScope: "mine", openTicket: null };
+
+/* ---------- Abfragen ---------- */
+const me = () => db.users.find((u) => u.id === db.currentUserId) || db.users[0];
+const userById = (id) => db.users.find((u) => u.id === id);
+const userName = (id) => userById(id)?.name || "Nicht zugewiesen";
+const projectName = (id) => db.projects.find((p) => p.id === id)?.name || "";
+const activeUsers = () => db.users.filter((u) => u.active);
+const isOpen = (t) => t.status !== "ERLEDIGT";
+const isOverdue = (t) => isOpen(t) && t.dueDate && diffDays(t.dueDate) < 0;
+function absenceOn(userId, key, approvedOnly = true) {
+  return db.absences.find((a) => a.userId === userId && (!approvedOnly || a.approved) && a.start <= key && key <= (a.end || "9999-12-31"));
+}
+const absenceLabel = (a) => `${a.type || "Abwesend"} ${a.start === a.end ? "am " + fmtShort(a.start) : fmtShort(a.start) + "–" + fmtShort(a.end)}`;
+function bucketOf(key) {
+  const d = diffDays(key); if (d < 0) return "overdue"; if (d === 0) return "today"; if (d === 1) return "tomorrow";
+  const weekday = (new Date().getDay() + 6) % 7; const toSunday = 6 - weekday;
+  if (d <= toSunday) return "thisWeek"; if (d <= toSunday + 7) return "nextWeek"; return "later";
+}
+const BUCKETS = { overdue: "Überfällig", today: "Heute", tomorrow: "Morgen", thisWeek: "Diese Woche", nextWeek: "Nächste Woche", later: "Später" };
+function loadOf(userId) { return db.tickets.filter((t) => isOpen(t) && t.assigneeId === userId).reduce((s, t) => s + PRIO_POINTS[t.priority], 0); }
+function loadLevel(load) {
+  const r = load / CAPACITY;
+  if (r >= 1) return { label: "Überlastet", color: "var(--danger)" };
+  if (r >= .7) return { label: "Hoch", color: "var(--warn)" };
+  if (r > 0) return { label: "Normal", color: "var(--ok)" };
+  return { label: "Frei", color: "var(--muted)" };
+}
+
+/* ---------- Benachrichtigungen ---------- */
+function notify(userIds, type, title, message, ticketId, key) {
+  const actor = db.currentUserId;
+  [...new Set(userIds.filter(Boolean))].forEach((userId) => {
+    if (!key && userId === actor) return;
+    const k = key ? `${key}:${userId}` : null;
+    if (k && db.notifications.some((n) => n.key === k)) return;
+    db.notifications.unshift({ id: uid(), userId, type, title, message, ticketId, at: new Date().toISOString(), read: false, key: k });
+  });
+  db.notifications = db.notifications.slice(0, 500);
+}
+const label = (t) => `${ticketNo(t.no)} · ${t.title}`;
+/** Fristen prüfen: bald fällig, überfällig (Eskalation an Ersteller), Vertretung bei Abwesenheit. */
+function deadlineCheck() {
+  const t0 = todayKey();
+  db.tickets.filter((t) => isOpen(t) && t.dueDate).forEach((t) => {
+    const owner = t.assigneeId || t.createdById; const d = diffDays(t.dueDate);
+    if (d < 0) notify([owner, t.createdById], "UEBERFAELLIG", `Überfällig: ${label(t)}`, t.assigneeId ? "Frist abgelaufen – erledigen, neu terminieren oder neu zuweisen." : "Frist abgelaufen und niemandem zugewiesen.", t.id, `overdue:${t.id}:${t.dueDate}`);
+    else if (d <= 2) notify([owner], "FRIST_BALD", `Frist läuft bald ab: ${label(t)}`, `Fällig ${relDue(t.dueDate)} (${fmtDate(t.dueDate)}).`, t.id, `soon:${t.id}:${t.dueDate}`);
+    if (t.assigneeId && d >= 0 && d <= 7) {
+      const a = absenceOn(t.assigneeId, t.dueDate);
+      if (a) {
+        let recipients = [t.createdById];
+        if (t.createdById === t.assigneeId) recipients = db.users.filter((u) => u.role === "GESCHAEFTSFUEHRER" && u.active && u.id !== t.assigneeId).map((u) => u.id);
+        notify(recipients, "VERTRETUNG", `Vertretung nötig: ${label(t)}`, `${userName(t.assigneeId)} ist am Fälligkeitstag nicht da (${absenceLabel(a)}).`, t.id, `absence:${t.id}:${a.id}:${t.dueDate}`);
+      }
+    }
+  });
+  void t0; save();
+}
+
+/* ---------- Ticket-Aktionen ---------- */
+function logActivity(t, text) { t.activity.unshift({ at: new Date().toISOString(), userId: db.currentUserId, text }); }
+function createTicket(data) {
+  db.seq += 1;
+  const t = {
+    id: uid(), no: db.seq, title: data.title.trim(), desc: data.desc || "", status: data.status || "OFFEN", priority: data.priority || "MITTEL",
+    assigneeId: data.assigneeId || null, createdById: db.currentUserId, dueDate: data.dueDate || null, projectId: data.projectId || null,
+    category: data.category || "", checklist: (data.checklist || []).map((text) => ({ id: uid(), text, done: false })), comments: [],
+    activity: [], createdAt: new Date().toISOString(), completedAt: null, source: data.source || null,
+  };
+  logActivity(t, data.source ? "Ticket aus E-Mail erstellt" : "Ticket erstellt");
+  db.tickets.push(t);
+  if (t.assigneeId) notify([t.assigneeId], "ZUGEWIESEN", `Neues Ticket für Sie: ${label(t)}`, `${me().name} hat Ihnen dieses Ticket zugewiesen${t.dueDate ? ` (fällig ${fmtDate(t.dueDate)})` : ""}.`, t.id);
+  deadlineCheck(); save(); return t;
+}
+function updateTicket(t, changes) {
+  const before = { ...t };
+  Object.assign(t, changes);
+  if ("status" in changes && changes.status !== before.status) {
+    t.completedAt = changes.status === "ERLEDIGT" ? new Date().toISOString() : null;
+    logActivity(t, `Status: ${STATUS[before.status]} → ${STATUS[t.status]}`);
+    notify([t.createdById, t.assigneeId], "STATUS", `${STATUS[t.status]}: ${label(t)}`, `${me().name} hat den Status auf „${STATUS[t.status]}“ gesetzt.`, t.id);
+  }
+  if ("assigneeId" in changes && changes.assigneeId !== before.assigneeId) {
+    logActivity(t, `Zugewiesen an ${userName(t.assigneeId)}`);
+    if (t.assigneeId) notify([t.assigneeId], "ZUGEWIESEN", `Ticket zugewiesen: ${label(t)}`, `${me().name} hat Ihnen dieses Ticket zugewiesen${t.dueDate ? ` (fällig ${fmtDate(t.dueDate)})` : ""}.`, t.id);
+  }
+  if ("dueDate" in changes && changes.dueDate !== before.dueDate) {
+    logActivity(t, `Frist: ${fmtDate(before.dueDate)} → ${fmtDate(t.dueDate)}`);
+    if (!("assigneeId" in changes && changes.assigneeId !== before.assigneeId)) notify([t.assigneeId], "STATUS", `Frist geändert: ${label(t)}`, t.dueDate ? `Neue Frist: ${fmtDate(t.dueDate)}.` : "Frist entfernt.", t.id);
+  }
+  if ("priority" in changes && changes.priority !== before.priority) logActivity(t, `Priorität: ${PRIO[before.priority]} → ${PRIO[t.priority]}`);
+  if ("title" in changes && changes.title !== before.title) logActivity(t, "Titel geändert");
+  deadlineCheck(); save();
+}
+function postpone(t, days) {
+  const base = t.dueDate && diffDays(t.dueDate) >= 0 ? t.dueDate : todayKey();
+  updateTicket(t, { dueDate: addDays(base, days) });
+}
+function mailtoFor(t) {
+  const a = userById(t.assigneeId);
+  const body = `Hallo ${a ? a.name.split(" ")[0] : ""},\n\nbitte beachte folgendes Ticket:\n\n${label(t)}\nStatus: ${STATUS[t.status]} · Priorität: ${PRIO[t.priority]}\nFrist: ${fmtDate(t.dueDate)}\n\n${t.desc}\n\nViele Grüße\n${me().name}`;
+  return `mailto:${encodeURIComponent(a?.email || "")}?subject=${encodeURIComponent(`[${ticketNo(t.no)}] ${t.title}`)}&body=${encodeURIComponent(body)}`;
+}
+
+/* ---------- Rendering: Bausteine ---------- */
+const prioBadge = (p) => `<span class="badge ${PRIO_CLS[p]}">${PRIO[p]}</span>`;
+const statusBadge = (s) => `<span class="badge ${STATUS_CLS[s]}">${STATUS[s]}</span>`;
+const avatar = (id, lg) => id ? `<span class="avatar${lg ? " lg" : ""}" title="${esc(userName(id))}">${esc(initials(userName(id)))}</span>` : "";
+function userOptions(selected, { allowNone = true, noneLabel = "Nicht zugewiesen", markAbsent = true } = {}) {
+  const t = todayKey();
+  return (allowNone ? `<option value="">${noneLabel}</option>` : "") + activeUsers().map((u) =>
+    `<option value="${u.id}" ${u.id === selected ? "selected" : ""}>${esc(u.name)}${markAbsent && absenceOn(u.id, t) ? " (abwesend)" : ""}</option>`).join("");
+}
+const projectOptions = (selected) => `<option value="">Kein Projekt</option>` + db.projects.map((p) => `<option value="${p.id}" ${p.id === selected ? "selected" : ""}>${esc(p.name)}</option>`).join("");
+const enumOptions = (map, selected) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${k === selected ? "selected" : ""}>${v}</option>`).join("");
+function statTile(label, value, ico, tone, href) {
+  return `<div class="card stat ${tone ? "tone-" + tone : ""} ${href ? "clickable" : ""}" ${href ? `data-act="goto" data-href="${href}"` : ""}><div class="ico">${icon(ico)}</div><div><div class="val">${value}</div><div class="small muted">${label}</div></div></div>`;
+}
+function dueCell(t) {
+  if (!t.dueDate) return `<span class="muted">–</span>`;
+  return `<span class="${isOverdue(t) ? "overdue" : ""}">${fmtDate(t.dueDate)}</span>`;
+}
+
+/* ---------- Navigation ---------- */
+const ROUTES = {
+  dashboard: { title: "Dashboard", ico: "dash", group: "Übersicht" },
+  mine: { title: "Meine Tickets", ico: "mine", group: "Arbeit" },
+  tickets: { title: "Alle Tickets", ico: "all", group: "Arbeit" },
+  deadlines: { title: "Fristen", ico: "clock", group: "Arbeit" },
+  team: { title: "Team & Auslastung", ico: "team", group: "Arbeit" },
+  mail: { title: "E-Mail → Ticket", ico: "mail", group: "Arbeit" },
+  projects: { title: "Projekte", ico: "folder", group: "Arbeit" },
+  settings: { title: "Einstellungen", ico: "gear", group: "System" },
+};
+const route = () => (location.hash.replace("#", "").split("?")[0] || "dashboard");
+function renderNav() {
+  const r = route(); let html = ""; let group = "";
+  const overdueMine = db.tickets.filter((t) => isOverdue(t) && t.assigneeId === db.currentUserId).length;
+  for (const [key, def] of Object.entries(ROUTES)) {
+    if (def.group !== group) { group = def.group; html += `<div class="nav-label">${group}</div>`; }
+    const count = key === "deadlines" && overdueMine ? `<span class="count">${overdueMine}</span>` : "";
+    html += `<a href="#${key}" class="${r === key ? "active" : ""}">${icon(def.ico)}<span>${def.title}</span>${count}</a>`;
+  }
+  $("#nav").innerHTML = html;
+  $("#title").textContent = ROUTES[r]?.title || "";
+  $("#user-switch").innerHTML = activeUsers().map((u) => `<option value="${u.id}" ${u.id === db.currentUserId ? "selected" : ""}>${esc(u.name)}</option>`).join("");
+  const unread = db.notifications.filter((n) => n.userId === db.currentUserId && !n.read).length;
+  $("#bell").innerHTML = icon("bell") + (unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : "");
+}
+function render() {
+  renderNav();
+  const r = route();
+  const view = VIEWS[r] || VIEWS.dashboard;
+  $("#view").innerHTML = view();
+  if (r === "tickets" || r === "mine") bindKanban();
+  if (r === "mail") bindDropzone();
+  document.title = `${ROUTES[r]?.title || "Dashboard"} · GF-Suite Tickets`;
+  if (ui.openTicket) renderDrawer();
+}
+
+/* ---------- Ansichten ---------- */
+const VIEWS = {
+  dashboard() {
+    const open = db.tickets.filter(isOpen);
+    const mineOpen = open.filter((t) => t.assigneeId === db.currentUserId);
+    const overdue = open.filter(isOverdue).length;
+    const today = open.filter((t) => t.dueDate === todayKey()).length;
+    const critical = open.filter((t) => t.priority === "KRITISCH").length;
+    const upcoming = mineOpen.filter((t) => t.dueDate).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 6);
+    const activity = db.tickets.flatMap((t) => t.activity.map((a) => ({ ...a, t }))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 8);
+    const unassigned = open.filter((t) => !t.assigneeId).length;
+    return `
+      <div class="page-head"><div><h2>Guten Tag, ${esc(me().name.split(" ")[0])}</h2><p>${mineOpen.length} offene Tickets für Sie · ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</p></div></div>
+      <div class="grid g4">
+        ${statTile("Offene Tickets", open.length, "ticket", "", "#tickets")}
+        ${statTile("Überfällig", overdue, "alert", overdue ? "danger" : "", "#deadlines")}
+        ${statTile("Heute fällig", today, "cal", today ? "warn" : "", "#deadlines")}
+        ${statTile("Kritisch", critical, "alert", critical ? "danger" : "", "#tickets")}
+      </div>
+      ${unassigned ? `<div class="note warn" style="margin-top:16px">${unassigned} Ticket${unassigned === 1 ? " ist" : "s sind"} niemandem zugewiesen – <a href="#team"><b>jetzt verteilen</b></a></div>` : ""}
+      <div class="grid g2" style="margin-top:16px">
+        <div class="card card-pad"><h3>${icon("clock")} Meine nächsten Fristen</h3><p class="sub">Ihre offenen Tickets nach Fälligkeit</p>
+          ${upcoming.length ? upcoming.map((t) => `<div class="row" style="padding:7px 0;border-bottom:1px solid var(--border);cursor:pointer" data-act="open-ticket" data-id="${t.id}">
+            <span class="mono">${ticketNo(t.no)}</span><span class="trunc" style="flex:1;min-width:0">${esc(t.title)}</span>${prioBadge(t.priority)}
+            <span class="small ${isOverdue(t) ? "overdue" : "muted"}">${relDue(t.dueDate)}</span></div>`).join("") : `<p class="muted">Keine anstehenden Fristen. 🎉</p>`}
+        </div>
+        <div class="card card-pad"><h3>${icon("team")} Team</h3><p class="sub">Auslastung und Abwesenheiten</p>
+          ${activeUsers().map((u) => { const l = loadOf(u.id), lv = loadLevel(l), a = absenceOn(u.id, todayKey());
+            return `<div style="padding:6px 0"><div class="row small"><b style="font-weight:600">${esc(u.name)}</b>${a ? `<span class="badge b-warn">${icon("palm")} ${esc(a.type)}</span>` : ""}<span class="spacer"></span><span style="color:${lv.color}">${lv.label}</span></div>
+            <div class="bar" style="margin-top:4px"><i style="width:${Math.min(100, l / CAPACITY * 100)}%;background:${lv.color}"></i></div></div>`; }).join("")}
+        </div>
+      </div>
+      <div class="card card-pad" style="margin-top:16px"><h3>Letzte Aktivitäten</h3>
+        ${activity.length ? activity.map((a) => `<div class="row small" style="padding:6px 0;border-bottom:1px solid var(--border);cursor:pointer" data-act="open-ticket" data-id="${a.t.id}">
+          ${avatar(a.userId)}<span><b style="font-weight:600">${esc(userName(a.userId))}</b> · ${esc(a.text)} · <span class="mono">${ticketNo(a.t.no)}</span> ${esc(a.t.title)}</span><span class="spacer"></span><span class="muted">${timeAgo(a.at)}</span></div>`).join("") : `<p class="muted">Noch keine Aktivitäten.</p>`}
+      </div>`;
+  },
+  tickets() { return ticketsView("all"); },
+  mine() { return ticketsView("mine"); },
+  deadlines() {
+    const scope = ui.deadlineScope;
+    const items = db.tickets.filter((t) => isOpen(t) && t.dueDate && (scope === "all" || t.assigneeId === db.currentUserId)).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || PRIO_POINTS[b.priority] - PRIO_POINTS[a.priority]);
+    const groups = {}; items.forEach((t) => (groups[bucketOf(t.dueDate)] ||= []).push(t));
+    const noDue = db.tickets.filter((t) => isOpen(t) && !t.dueDate && (scope === "all" || t.assigneeId === db.currentUserId)).length;
+    const n = (b) => (groups[b] || []).length;
+    return `
+      <div class="page-head"><div><h2>Fristen</h2><p>Alle offenen Tickets nach Dringlichkeit – direkt erledigen, verschieben oder neu zuweisen.</p></div>
+        <div class="seg"><button class="${scope === "mine" ? "on" : ""}" data-act="deadline-scope" data-v="mine">Meine Fristen</button><button class="${scope === "all" ? "on" : ""}" data-act="deadline-scope" data-v="all">Alle Fristen</button></div></div>
+      <div class="grid g3">
+        ${statTile("Überfällig", n("overdue"), "alert", n("overdue") ? "danger" : "")}
+        ${statTile("Heute fällig", n("today"), "cal", n("today") ? "warn" : "")}
+        ${statTile("Bis Ende der Woche", n("today") + n("tomorrow") + n("thisWeek"), "clock", "")}
+      </div>
+      ${noDue ? `<p class="small muted" style="margin-top:12px">${noDue} offene${noDue === 1 ? "s Ticket" : " Tickets"} ohne Frist – <a href="#tickets">jetzt terminieren</a></p>` : ""}
+      ${items.length === 0 ? `<div class="empty" style="margin-top:20px">Keine offenen Fristen. 🎉</div>` :
+        Object.keys(BUCKETS).filter((b) => groups[b]).map((b) => `
+          <div class="section-title" style="${b === "overdue" ? "color:var(--danger)" : b === "today" ? "color:var(--warn)" : ""}">${BUCKETS[b]} <span class="badge">${groups[b].length}</span></div>
+          <div class="card" style="${b === "overdue" ? "border-color:color-mix(in srgb,var(--danger) 40%,var(--border))" : ""}">
+            ${groups[b].map((t) => { const a = t.assigneeId && diffDays(t.dueDate) >= 0 ? absenceOn(t.assigneeId, t.dueDate) : null;
+              return `<div class="list-row">
+                <div class="main-col" data-act="open-ticket" data-id="${t.id}">
+                  <div class="row"><span class="mono">${ticketNo(t.no)}</span><b style="font-weight:600">${esc(t.title)}</b></div>
+                  <div class="small muted"><span class="${b === "overdue" ? "overdue" : ""}">${fmtDate(t.dueDate)} · ${relDue(t.dueDate)}</span>${t.projectId ? " · " + esc(projectName(t.projectId)) : ""}</div>
+                  ${a ? `<div class="small" style="color:var(--warn);font-weight:600">${icon("palm")} ${esc(userName(t.assigneeId))} ist dann nicht da (${esc(absenceLabel(a))}) – Vertretung zuweisen</div>` : ""}
+                </div>
+                ${prioBadge(t.priority)} ${statusBadge(t.status)}
+                <select style="width:190px" data-act="assign" data-id="${t.id}" aria-label="Verantwortlich">${userOptions(t.assigneeId)}</select>
+                <select style="width:auto" data-act="postpone" data-id="${t.id}" aria-label="Verschieben"><option value="">Verschieben…</option><option value="1">+1 Tag</option><option value="3">+3 Tage</option><option value="7">+1 Woche</option><option value="14">+2 Wochen</option></select>
+                <button class="btn primary sm" data-act="done" data-id="${t.id}">${icon("check")} Erledigt</button>
+              </div>`; }).join("")}
+          </div>`).join("")}`;
+  },
+  team() {
+    const t0 = todayKey(); const open = db.tickets.filter(isOpen);
+    const queue = open.filter((t) => !t.assigneeId).sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9"));
+    const byLoad = [...activeUsers()].sort((a, b) => Number(!!absenceOn(a.id, t0)) - Number(!!absenceOn(b.id, t0)) || loadOf(a.id) - loadOf(b.id));
+    const since = addDays(t0, -30);
+    return `
+      <div class="page-head"><div><h2>Team &amp; Auslastung</h2><p>Wer arbeitet woran? Auslastung, Abwesenheiten und Termintreue – und offene Tickets verteilen.</p></div></div>
+      <div class="card card-pad"><h3>${icon("inbox")} Nicht zugewiesene Tickets <span class="badge">${queue.length}</span></h3>
+        <p class="sub">Jedes Ticket braucht einen Verantwortlichen. Anwesende mit geringer Auslastung stehen oben.</p>
+        ${queue.length ? `<div class="card" style="box-shadow:none">${queue.map((t) => `<div class="list-row">
+          <div class="main-col" data-act="open-ticket" data-id="${t.id}"><div class="row"><span class="mono">${ticketNo(t.no)}</span><b style="font-weight:600">${esc(t.title)}</b></div>
+          <div class="small muted">Erstellt von ${esc(userName(t.createdById))}${t.dueDate ? ` · <span class="${isOverdue(t) ? "overdue" : ""}">fällig ${fmtDate(t.dueDate)}</span>` : ""}</div></div>
+          ${prioBadge(t.priority)}
+          <select style="width:230px" data-act="assign" data-id="${t.id}"><option value="">Zuweisen an…</option>${byLoad.map((u) => `<option value="${u.id}">${esc(u.name)} · ${absenceOn(u.id, t0) ? "abwesend" : loadLevel(loadOf(u.id)).label}</option>`).join("")}</select>
+        </div>`).join("")}</div>` : `<p class="muted">Alle offenen Tickets sind zugewiesen. 👍</p>`}
+      </div>
+      <div class="grid g3" style="margin-top:16px">
+        ${activeUsers().map((u) => {
+          const mine = open.filter((t) => t.assigneeId === u.id); const l = loadOf(u.id); const lv = loadLevel(l);
+          const overdue = mine.filter(isOverdue).length;
+          const week = mine.filter((t) => t.dueDate && diffDays(t.dueDate) >= 0 && diffDays(t.dueDate) < 7).length;
+          const done = db.tickets.filter((t) => t.assigneeId === u.id && t.status === "ERLEDIGT" && t.completedAt && t.completedAt.slice(0, 10) >= since);
+          const withDue = done.filter((t) => t.dueDate); const onTime = withDue.filter((t) => keyOf(new Date(t.completedAt)) <= t.dueDate).length;
+          const rate = withDue.length ? Math.round(onTime / withDue.length * 100) : null;
+          const cur = absenceOn(u.id, t0);
+          const next = db.absences.filter((a) => a.userId === u.id && a.start > t0 && diffDays(a.start) <= 14).sort((a, b) => a.start.localeCompare(b.start))[0];
+          const duringAbs = mine.filter((t) => t.dueDate && diffDays(t.dueDate) >= 0 && absenceOn(u.id, t.dueDate)).length;
+          const nextTickets = [...mine].sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9")).slice(0, 3);
+          return `<div class="card card-pad">
+            <div class="row" style="margin-bottom:12px">${avatar(u.id, true)}<div style="flex:1;min-width:0"><b class="trunc" style="display:block;font-size:15px">${esc(u.name)}</b><span class="small muted">${ROLES[u.role]}</span></div>
+              ${overdue ? `<span class="badge b-danger">${icon("alert")} ${overdue} überfällig</span>` : ""}</div>
+            ${cur || next ? `<div class="note ${cur ? "warn" : "info"}" style="margin-bottom:12px">${icon("palm")} ${cur ? "Aktuell abwesend: " + esc(absenceLabel(cur)) : "Geplant: " + esc(absenceLabel(next)) + (next.approved ? "" : " (beantragt)")}
+              ${duringAbs ? `<div style="color:var(--danger);font-weight:600;margin-top:2px">${duringAbs} Ticket${duringAbs === 1 ? "" : "s"} während der Abwesenheit fällig – Vertretung klären</div>` : ""}</div>` : ""}
+            <div class="row small"><span class="muted">Auslastung</span><span class="spacer"></span><b style="color:${lv.color}">${lv.label}</b></div>
+            <div class="bar" style="margin:5px 0 12px"><i style="width:${Math.min(100, l / CAPACITY * 100)}%;background:${lv.color}"></i></div>
+            <div class="mini-stats"><div><b>${mine.length}</b><span>Offen</span></div><div><b>${mine.filter((t) => t.status === "IN_BEARBEITUNG" || t.status === "ZUR_PRUEFUNG").length}</b><span>In Arbeit</span></div><div><b>${week}</b><span>7 Tage</span></div><div><b>${mine.filter((t) => t.priority === "HOCH" || t.priority === "KRITISCH").length}</b><span>Hoch/Krit.</span></div></div>
+            <p class="small muted" style="margin:10px 0 6px">${done.length} erledigt in 30 Tagen${rate !== null ? ` · <b style="color:${rate >= 90 ? "var(--ok)" : rate >= 70 ? "var(--warn)" : "var(--danger)"}">${rate}% termingerecht</b>` : ""}</p>
+            ${nextTickets.map((t) => `<div class="row small" style="padding:4px 0;cursor:pointer" data-act="open-ticket" data-id="${t.id}"><span class="mono">${ticketNo(t.no)}</span><span class="trunc" style="flex:1;min-width:0">${esc(t.title)}</span><span class="${isOverdue(t) ? "overdue" : "muted"}">${t.dueDate ? fmtShort(t.dueDate) : "ohne Frist"}</span></div>`).join("")}
+            <a class="small" href="#tickets" data-act="filter-assignee" data-id="${u.id}" style="display:inline-block;margin-top:8px;font-weight:600">Alle Tickets von ${esc(u.name.split(" ")[0])} →</a>
+          </div>`; }).join("")}
+      </div>`;
+  },
+  mail() {
+    return `
+      <div class="page-head"><div><h2>E-Mail → Ticket</h2><p>E-Mails aus Outlook als Ticket übernehmen: Datei hierher ziehen oder Inhalt einfügen.</p></div></div>
+      <div class="grid g2">
+        <div class="card card-pad">
+          <h3>${icon("upload")} E-Mail-Datei (.eml)</h3>
+          <p class="sub">In Outlook die E-Mail auf den Desktop ziehen bzw. „Speichern unter → .eml“ und hier ablegen.</p>
+          <div class="dropzone" id="dropzone" data-act="pick-eml">${icon("mail")}<div style="margin-top:6px"><b>.eml-Datei hierher ziehen</b> oder klicken zum Auswählen</div></div>
+          <input type="file" id="eml-input" accept=".eml,message/rfc822,text/plain" hidden>
+          <div class="note info" style="margin-top:14px">Tipp: Das Live-Postfach (Outlook-Posteingang direkt in der App, Antworten, automatischer E-Mail-Versand) gibt es in der Server-Version mit Microsoft-365-Anbindung.</div>
+        </div>
+        <div class="card card-pad">
+          <h3>${icon("edit")} Oder Inhalt einfügen</h3>
+          <div class="grid" style="gap:10px;margin-top:10px">
+            <label class="field">Von<input type="text" id="mail-from" placeholder="Peter Kunde <peter@kunde.de>"></label>
+            <label class="field">Betreff<input type="text" id="mail-subject" placeholder="Störung Kompressor Halle 2"></label>
+            <label class="field">Text<textarea id="mail-body" rows="6" placeholder="E-Mail-Text hier einfügen…"></textarea></label>
+            <div><button class="btn primary" data-act="mail-to-ticket">${icon("ticket")} Als Ticket übernehmen</button></div>
+          </div>
+        </div>
+      </div>
+      <div class="section-title">Zuletzt aus E-Mails erstellt</div>
+      ${(() => { const list = db.tickets.filter((t) => t.source).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 10);
+        return list.length ? `<div class="card">${list.map((t) => `<div class="list-row"><div class="main-col" data-act="open-ticket" data-id="${t.id}"><div class="row"><span class="mono">${ticketNo(t.no)}</span><b style="font-weight:600">${esc(t.title)}</b></div><div class="small muted">Von ${esc(t.source.from || "unbekannt")} · ${fmtDateTime(t.createdAt)}</div></div>${statusBadge(t.status)} ${avatar(t.assigneeId)}${t.source.email ? `<a class="btn sm" href="mailto:${encodeURIComponent(t.source.email)}?subject=${encodeURIComponent("AW: " + (t.source.subject || t.title))}">Antworten</a>` : ""}</div>`).join("")}</div>` : `<div class="empty">Noch keine Tickets aus E-Mails.</div>`; })()}`;
+  },
+  projects() {
+    return `
+      <div class="page-head"><div><h2>Projekte</h2><p>Fortschritt aus den Tickets je Projekt.</p></div><button class="btn primary" data-act="new-project">+ Projekt</button></div>
+      ${db.projects.length ? `<div class="grid g3">${db.projects.map((p) => {
+        const ts = db.tickets.filter((t) => t.projectId === p.id); const done = ts.filter((t) => t.status === "ERLEDIGT").length;
+        const pct = ts.length ? Math.round(done / ts.length * 100) : 0; const overdue = ts.filter(isOverdue).length;
+        return `<div class="card card-pad"><h3>${icon("folder")} ${esc(p.name)}</h3><p class="sub">${ts.length} Tickets · ${done} erledigt${overdue ? ` · <span class="overdue">${overdue} überfällig</span>` : ""}</p>
+          <div class="bar"><i style="width:${pct}%;background:var(--primary)"></i></div><p class="small muted">${pct}% erledigt</p>
+          ${ts.filter(isOpen).slice(0, 4).map((t) => `<div class="row small" style="padding:3px 0;cursor:pointer" data-act="open-ticket" data-id="${t.id}"><span class="mono">${ticketNo(t.no)}</span><span class="trunc" style="flex:1;min-width:0">${esc(t.title)}</span>${avatar(t.assigneeId)}</div>`).join("")}
+          <div class="row" style="margin-top:10px"><a class="btn sm" href="#tickets" data-act="filter-project" data-id="${p.id}">Tickets ansehen</a><span class="spacer"></span><button class="btn sm ghost danger" data-act="delete-project" data-id="${p.id}">Löschen</button></div></div>`; }).join("")}</div>` : `<div class="empty">Noch keine Projekte.</div>`}`;
+  },
+  settings() {
+    const isAdmin = me().role !== "MITARBEITER";
+    return `
+      <div class="page-head"><div><h2>Einstellungen</h2><p>Team, Abwesenheiten und Datensicherung.</p></div></div>
+      <div class="grid g2">
+        <div class="card card-pad"><h3>${icon("team")} Team-Mitglieder</h3><p class="sub">Personen, denen Tickets zugewiesen werden können.</p>
+          ${db.users.map((u) => `<div class="row" style="padding:8px 0;border-bottom:1px solid var(--border);${u.active ? "" : "opacity:.55"}">${avatar(u.id)}<div style="flex:1;min-width:140px"><b style="font-weight:600">${esc(u.name)}</b><div class="small muted">${esc(u.email)}</div></div>
+            <select style="width:auto" data-act="user-role" data-id="${u.id}" ${isAdmin ? "" : "disabled"}>${enumOptions(ROLES, u.role)}</select>
+            <label class="small row" style="gap:4px"><input type="checkbox" data-act="user-active" data-id="${u.id}" ${u.active ? "checked" : ""} ${isAdmin && u.id !== db.currentUserId ? "" : "disabled"}> aktiv</label></div>`).join("")}
+          ${isAdmin ? `<div class="grid g2" style="gap:8px;margin-top:12px"><input type="text" id="new-user-name" placeholder="Name"><input type="email" id="new-user-email" placeholder="E-Mail"></div>
+          <div class="row" style="margin-top:8px"><select id="new-user-role" style="width:auto">${enumOptions(ROLES, "MITARBEITER")}</select><button class="btn primary" data-act="add-user">+ Person hinzufügen</button></div>` : `<p class="small muted">Nur Geschäftsführung/Administration kann das Team verwalten.</p>`}
+        </div>
+        <div class="card card-pad"><h3>${icon("palm")} Abwesenheiten</h3><p class="sub">Urlaub, Krankheit, Fortbildung – für Vertretungs-Warnungen. Import als CSV z. B. aus Factorial HR (Export „Abwesenheiten“).</p>
+          <div style="max-height:260px;overflow-y:auto">${db.absences.length ? [...db.absences].sort((a, b) => a.start.localeCompare(b.start)).map((a) => `<div class="row small" style="padding:6px 0;border-bottom:1px solid var(--border)">${avatar(a.userId)}<span style="flex:1;min-width:0"><b style="font-weight:600">${esc(userName(a.userId))}</b> · ${esc(absenceLabel(a))}${a.approved ? "" : ' <span class="badge b-warn">beantragt</span>'}</span><button class="btn sm ghost" data-act="toggle-absence" data-id="${a.id}">${a.approved ? "Als beantragt" : "Genehmigen"}</button><button class="btn sm ghost danger" data-act="delete-absence" data-id="${a.id}" aria-label="Löschen">${icon("trash")}</button></div>`).join("") : `<p class="muted">Keine Abwesenheiten erfasst.</p>`}</div>
+          <div class="grid g2" style="gap:8px;margin-top:12px">
+            <select id="abs-user">${userOptions(null, { allowNone: false, markAbsent: false })}</select>
+            <select id="abs-type"><option>Urlaub</option><option>Krankheit</option><option>Fortbildung</option><option>Dienstreise</option><option>Sonstiges</option></select>
+            <label class="field">Von<input type="date" id="abs-start" value="${todayKey()}"></label><label class="field">Bis<input type="date" id="abs-end" value="${todayKey()}"></label>
+          </div>
+          <div class="row" style="margin-top:8px"><button class="btn primary" data-act="add-absence">+ Abwesenheit</button><button class="btn" data-act="pick-absence-csv">${icon("upload")} CSV importieren</button><input type="file" id="abs-csv" accept=".csv,text/csv" hidden></div>
+          <p class="small muted">CSV-Spalten (Reihenfolge egal): <code>E-Mail</code> oder <code>Name</code>, <code>Von/Start</code>, <code>Bis/Ende</code>, optional <code>Art/Typ</code>, <code>Status</code>. Datum als TT.MM.JJJJ oder JJJJ-MM-TT.</p>
+        </div>
+        <div class="card card-pad"><h3>${icon("download")} Daten &amp; Sicherung</h3><p class="sub">Alle Daten liegen nur in diesem Browser. Regelmäßig sichern oder zwischen Rechnern übertragen.</p>
+          <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung (JSON)</button><button class="btn" data-act="pick-json">${icon("upload")} Sicherung laden</button><input type="file" id="json-input" accept=".json,application/json" hidden>
+          <button class="btn" data-act="export-csv">${icon("download")} Tickets als Excel/CSV</button></div>
+          <div class="row" style="margin-top:12px"><button class="btn danger" data-act="reset-demo">Demo-Daten wiederherstellen</button><button class="btn danger" data-act="reset-empty">Alles leeren</button></div>
+        </div>
+        <div class="card card-pad"><h3>${icon("bell")} Benachrichtigungen</h3><p class="sub">Die Glocke zeigt Zuweisungen, Kommentare, Statuswechsel, Fristwarnungen (48 h vorher), Überfälligkeit (an Verantwortliche und Ersteller) und Vertretungsbedarf bei Abwesenheit.</p>
+          <p class="small muted">Diese Version läuft ohne Server: Benachrichtigungen sehen Kolleginnen und Kollegen, wenn sie diese Datei auf demselben Gerät nutzen bzw. die Sicherung laden. Per „Per E-Mail informieren“ im Ticket öffnet sich Outlook mit einer vorbereiteten Nachricht. Automatischer E-Mail-Versand, Mehrbenutzer-Betrieb, Outlook-Postfach und Factorial-Live-Abgleich: Server-Version (GF-Suite).</p>
+        </div>
+      </div>`;
+  },
+};
+
+function filteredTickets(scope) {
+  const f = ui.filters; const q = f.q.trim().toLowerCase();
+  const m = q.match(/^(?:#|t-?)(\d+)$/i);
+  return db.tickets.filter((t) => {
+    if (scope === "mine" && t.assigneeId !== db.currentUserId) return false;
+    if (m) return t.no === Number(m[1]);
+    if (q && !(`${t.title} ${t.desc} ${t.category}`.toLowerCase().includes(q))) return false;
+    if (scope !== "mine" && f.assignee && (f.assignee === "__none" ? t.assigneeId : t.assigneeId !== f.assignee)) return false;
+    if (f.status === "OPEN" ? !isOpen(t) : f.status && t.status !== f.status) return false;
+    if (f.priority && t.priority !== f.priority) return false;
+    if (f.project && t.projectId !== f.project) return false;
+    return true;
+  }).sort((a, b) => (isOpen(b) - isOpen(a)) || (a.dueDate || "9999").localeCompare(b.dueDate || "9999") || PRIO_POINTS[b.priority] - PRIO_POINTS[a.priority]);
+}
+function ticketsView(scope) {
+  const f = ui.filters; const list = filteredTickets(scope);
+  const filters = `<div class="filters">
+    <input type="search" data-filter="q" value="${esc(f.q)}" placeholder="Suchen… (z. B. T-12)">
+    ${scope === "all" ? `<select data-filter="assignee"><option value="">Alle Verantwortlichen</option><option value="__none" ${f.assignee === "__none" ? "selected" : ""}>Nicht zugewiesen</option>${activeUsers().map((u) => `<option value="${u.id}" ${f.assignee === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select>` : ""}
+    <select data-filter="status"><option value="">Alle Status</option><option value="OPEN" ${f.status === "OPEN" ? "selected" : ""}>Alle offenen</option>${enumOptions(STATUS, f.status)}</select>
+    <select data-filter="priority"><option value="">Alle Prioritäten</option>${enumOptions(PRIO, f.priority)}</select>
+    <select data-filter="project"><option value="">Alle Projekte</option>${db.projects.map((p) => `<option value="${p.id}" ${f.project === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>
+    ${Object.values(f).some(Boolean) ? `<button class="btn ghost" data-act="clear-filters">Filter zurücksetzen</button>` : ""}
+  </div>`;
+  const head = `<div class="page-head"><div><h2>${scope === "mine" ? "Meine Tickets" : "Alle Tickets"}</h2><p>${list.length} Ticket${list.length === 1 ? "" : "s"}${scope === "mine" ? " · Ihnen zugewiesen" : ""}</p></div>
+    <div class="row"><div class="seg"><button class="${ui.ticketView === "list" ? "on" : ""}" data-act="ticket-view" data-v="list">Liste</button><button class="${ui.ticketView === "kanban" ? "on" : ""}" data-act="ticket-view" data-v="kanban">Kanban</button></div>
+    <button class="btn" data-act="export-csv">${icon("download")} Excel/CSV</button><button class="btn primary" data-act="new-ticket">+ Ticket erstellen</button></div></div>`;
+  if (ui.ticketView === "kanban") {
+    return head + filters + `<div class="kanban">${Object.keys(STATUS).map((s) => { const col = list.filter((t) => t.status === s);
+      return `<div class="col" data-status="${s}"><div class="col-head"><span>${STATUS[s]}</span><span class="badge">${col.length}</span></div>
+        ${col.map((t) => `<div class="kcard" draggable="true" data-id="${t.id}" data-act="open-ticket"><span class="mono">${ticketNo(t.no)}</span><div class="t">${esc(t.title)}</div>
+          <div class="row">${prioBadge(t.priority)}<span class="spacer"></span>${avatar(t.assigneeId)}</div>
+          <div class="row small" style="margin-top:6px">${t.dueDate ? `<span class="${isOverdue(t) ? "overdue" : "muted"}">${fmtDate(t.dueDate)}</span>` : '<span class="muted">ohne Frist</span>'}<span class="spacer"></span>${t.checklist.length ? `<span class="muted">☑ ${t.checklist.filter((c) => c.done).length}/${t.checklist.length}</span>` : ""}${t.comments.length ? `<span class="muted">💬 ${t.comments.length}</span>` : ""}</div></div>`).join("")}
+      </div>`; }).join("")}</div>`;
+  }
+  return head + filters + (list.length ? `<div class="card table-wrap"><table><thead><tr><th>Ticket</th><th>Titel</th><th>Verantwortlich</th><th>Priorität</th><th>Status</th><th>Fällig</th><th>Projekt</th></tr></thead><tbody>
+    ${list.map((t) => `<tr data-act="open-ticket" data-id="${t.id}"><td class="mono">${ticketNo(t.no)}</td>
+      <td style="max-width:340px"><div class="trunc" style="font-weight:600">${esc(t.title)}</div>${t.category ? `<div class="small muted">${esc(t.category)}</div>` : ""}</td>
+      <td>${t.assigneeId ? `<span class="row" style="flex-wrap:nowrap">${avatar(t.assigneeId)}<span class="trunc">${esc(userName(t.assigneeId))}</span></span>` : '<span class="muted">Nicht zugewiesen</span>'}</td>
+      <td>${prioBadge(t.priority)}</td><td>${statusBadge(t.status)}</td><td style="white-space:nowrap">${dueCell(t)}</td><td class="small muted trunc" style="max-width:180px">${esc(projectName(t.projectId))}</td></tr>`).join("")}
+    </tbody></table></div>` : `<div class="empty">Keine Tickets gefunden. Filter anpassen oder ein neues Ticket erstellen.</div>`);
+}
+
+/* ---------- Ticket-Detail (Drawer) ---------- */
+function openTicket(id) { ui.openTicket = id; renderDrawer(); $("#drawer").classList.add("open"); $("#overlay").classList.add("open"); }
+function closeAll() {
+  ui.openTicket = null; $("#drawer").classList.remove("open"); $("#modal").classList.remove("open");
+  $("#overlay").classList.remove("open"); $("#notifs").classList.remove("open"); $("#sidebar").classList.remove("open");
+}
+function renderDrawer() {
+  const t = db.tickets.find((x) => x.id === ui.openTicket); if (!t) { closeAll(); return; }
+  const a = t.assigneeId && t.dueDate ? absenceOn(t.assigneeId, t.dueDate) : null;
+  $("#drawer").innerHTML = `
+    <div class="drawer-head">
+      <div class="row" style="align-items:flex-start"><div style="flex:1;min-width:0"><span class="mono">${ticketNo(t.no)}</span>
+        <input type="text" value="${esc(t.title)}" data-field="title" style="font-size:17px;font-weight:650;border-color:transparent;padding:2px 4px;margin-left:-5px" aria-label="Titel"></div>
+        <a class="btn ghost icon" href="${mailtoFor(t)}" title="Per E-Mail informieren">${icon("mail")}</a>
+        <button class="btn ghost icon danger" data-act="delete-ticket" data-id="${t.id}" title="Löschen">${icon("trash")}</button>
+        <button class="btn ghost icon" data-act="close-all" aria-label="Schließen">${icon("x")}</button></div>
+      <div class="row" style="margin-top:6px">${prioBadge(t.priority)} ${statusBadge(t.status)} ${t.dueDate ? `<span class="small ${isOverdue(t) ? "overdue" : "muted"}">fällig ${fmtDate(t.dueDate)} (${relDue(t.dueDate)})</span>` : ""}</div>
+    </div>
+    <div class="drawer-body">
+      ${t.status !== "ERLEDIGT" ? `<div class="row"><button class="btn primary sm" data-act="done" data-id="${t.id}">${icon("check")} Erledigt</button>
+        ${t.status === "OFFEN" ? `<button class="btn sm" data-act="set-status" data-id="${t.id}" data-v="IN_BEARBEITUNG">Bearbeitung starten</button>` : ""}
+        ${t.status === "IN_BEARBEITUNG" ? `<button class="btn sm" data-act="set-status" data-id="${t.id}" data-v="ZUR_PRUEFUNG">Zur Prüfung geben</button>` : ""}
+        <a class="btn sm" href="${mailtoFor(t)}">${icon("mail")} Per E-Mail informieren</a></div>` : `<div class="note info">Erledigt am ${fmtDateTime(t.completedAt || t.createdAt)} · <a href="#" data-act="set-status" data-id="${t.id}" data-v="OFFEN">wieder öffnen</a></div>`}
+      ${a && isOpen(t) ? `<div class="note warn">${icon("palm")} ${esc(userName(t.assigneeId))} ist am Fälligkeitstag nicht da (${esc(absenceLabel(a))}). Bitte Vertretung zuweisen oder Frist anpassen.</div>` : ""}
+      ${t.source ? `<div class="note info">${icon("mail")} Aus E-Mail von ${esc(t.source.from || "unbekannt")}${t.source.email ? ` · <a href="mailto:${encodeURIComponent(t.source.email)}?subject=${encodeURIComponent("AW: " + (t.source.subject || t.title))}">Antworten</a>` : ""}</div>` : ""}
+      <div class="kv">
+        <label>Verantwortlich<select data-field="assigneeId">${userOptions(t.assigneeId)}</select></label>
+        <label>Frist<input type="date" data-field="dueDate" value="${t.dueDate || ""}"></label>
+        <label>Status<select data-field="status">${enumOptions(STATUS, t.status)}</select></label>
+        <label>Priorität<select data-field="priority">${enumOptions(PRIO, t.priority)}</select></label>
+        <label>Projekt<select data-field="projectId">${projectOptions(t.projectId)}</select></label>
+        <label>Kategorie<input type="text" data-field="category" value="${esc(t.category)}" placeholder="z. B. Vertrieb"></label>
+      </div>
+      <div class="small muted">Erstellt von ${esc(userName(t.createdById))} am ${fmtDateTime(t.createdAt)}</div>
+      <label class="field">Beschreibung<textarea rows="5" data-field="desc" placeholder="Was ist zu tun?">${esc(t.desc)}</textarea></label>
+      <div><b>Checkliste</b> ${t.checklist.length ? `<span class="small muted">${t.checklist.filter((c) => c.done).length}/${t.checklist.length}</span>` : ""}
+        ${t.checklist.map((c) => `<div class="check-item ${c.done ? "done" : ""}"><input type="checkbox" data-act="check" data-id="${c.id}" ${c.done ? "checked" : ""}><span style="flex:1">${esc(c.text)}</span><button class="btn ghost sm" data-act="del-check" data-id="${c.id}" aria-label="Entfernen">${icon("x")}</button></div>`).join("")}
+        <div class="row" style="margin-top:6px;flex-wrap:nowrap"><input type="text" id="new-check" placeholder="Punkt hinzufügen"><button class="btn" data-act="add-check">+</button></div></div>
+      <div><b>Kommentare</b>
+        <div class="grid" style="gap:10px;margin-top:8px">${t.comments.map((c) => `<div class="comment">${avatar(c.userId)}<div class="bubble"><div class="row small"><b style="font-weight:600">${esc(userName(c.userId))}</b><span class="spacer"></span><span class="muted">${fmtDateTime(c.at)}</span></div><div style="white-space:pre-wrap">${esc(c.text)}</div></div></div>`).join("") || '<span class="small muted">Noch keine Kommentare.</span>'}</div>
+        <div class="row" style="margin-top:8px;flex-wrap:nowrap;align-items:flex-end"><textarea id="new-comment" rows="2" placeholder="Kommentar schreiben…"></textarea><button class="btn primary icon" data-act="add-comment" aria-label="Senden">${icon("send")}</button></div></div>
+      <div><b>Verlauf</b>${t.activity.slice(0, 15).map((x) => `<div class="small muted" style="padding:2px 0">${fmtDateTime(x.at)} · ${esc(userName(x.userId))} · ${esc(x.text)}</div>`).join("")}</div>
+    </div>`;
+}
+
+/* ---------- Modal: neues Ticket ---------- */
+function openModal(html) { $("#modal").innerHTML = html; $("#modal").classList.add("open"); $("#overlay").classList.add("open"); setTimeout(() => $("#modal input, #modal textarea")?.focus(), 30); }
+function ticketForm(prefill = {}) {
+  openModal(`<h3>${prefill.source ? "Ticket aus E-Mail" : "Neues Ticket"}</h3><p class="muted small">${prefill.source ? "Absender und Text werden in die Beschreibung übernommen." : "Pflichtfeld ist nur der Titel."}</p>
+    <form id="ticket-form" class="grid" style="gap:12px;margin-top:12px">
+      <label class="field">Titel<input type="text" name="title" required maxlength="200" value="${esc(prefill.title || "")}"></label>
+      <div class="grid g2" style="gap:12px">
+        <label class="field">Verantwortlich<select name="assigneeId">${userOptions(prefill.assigneeId ?? db.currentUserId)}</select></label>
+        <label class="field">Frist<input type="date" name="dueDate" value="${prefill.dueDate || ""}"></label>
+        <label class="field">Priorität<select name="priority">${enumOptions(PRIO, prefill.priority || "MITTEL")}</select></label>
+        <label class="field">Projekt<select name="projectId">${projectOptions(prefill.projectId)}</select></label>
+      </div>
+      <label class="field">Kategorie<input type="text" name="category" value="${esc(prefill.category || "")}" placeholder="z. B. Service, Vertrieb, IT"></label>
+      <label class="field">Beschreibung<textarea name="desc" rows="5">${esc(prefill.desc || "")}</textarea></label>
+      <label class="field">Checkliste (eine Zeile pro Punkt, optional)<textarea name="checklist" rows="2"></textarea></label>
+      <div class="modal-actions"><button type="button" class="btn" data-act="close-all">Abbrechen</button><button type="submit" class="btn primary">Ticket erstellen</button></div>
+    </form>`);
+  $("#ticket-form").addEventListener("submit", (e) => {
+    e.preventDefault(); const fd = new FormData(e.target);
+    const t = createTicket({ title: fd.get("title"), assigneeId: fd.get("assigneeId"), dueDate: fd.get("dueDate"), priority: fd.get("priority"), projectId: fd.get("projectId"),
+      category: fd.get("category"), desc: fd.get("desc"), checklist: String(fd.get("checklist") || "").split("\n").map((s) => s.trim()).filter(Boolean), source: prefill.source || null });
+    closeAll(); render(); toast(`${ticketNo(t.no)} erstellt`); openTicket(t.id);
+  });
+}
+
+/* ---------- E-Mail (.eml) einlesen ---------- */
+function decodeWords(s) {
+  return s.replace(/=\?([^?]+)\?([QB])\?([^?]*)\?=/gi, (_, cs, enc, txt) => {
+    try {
+      const bytes = enc.toUpperCase() === "B" ? Uint8Array.from(atob(txt), (c) => c.charCodeAt(0))
+        : Uint8Array.from(txt.replace(/_/g, " ").replace(/=([0-9A-F]{2})/gi, (m, h) => String.fromCharCode(parseInt(h, 16))), (c) => c.charCodeAt(0));
+      return new TextDecoder(cs).decode(bytes);
+    } catch { return txt; }
+  });
+}
+function decodeBody(body, encoding, charset) {
+  let bytes;
+  if (/base64/i.test(encoding)) { try { bytes = Uint8Array.from(atob(body.replace(/\s+/g, "")), (c) => c.charCodeAt(0)); } catch { return body; } }
+  else if (/quoted-printable/i.test(encoding)) bytes = Uint8Array.from(body.replace(/=\r?\n/g, "").replace(/=([0-9A-F]{2})/gi, (m, h) => String.fromCharCode(parseInt(h, 16))), (c) => c.charCodeAt(0) & 255);
+  else return body;
+  try { return new TextDecoder(charset || "utf-8").decode(bytes); } catch { return new TextDecoder("utf-8").decode(bytes); }
+}
+function parseHeaders(block) {
+  const h = {}; block.replace(/\r?\n[ \t]+/g, " ").split(/\r?\n/).forEach((line) => { const i = line.indexOf(":"); if (i > 0) h[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim(); });
+  return h;
+}
+function splitPart(raw) { const m = raw.match(/\r?\n\r?\n/); return m ? [raw.slice(0, m.index), raw.slice(m.index + m[0].length)] : [raw, ""]; }
+function extractText(headers, body) {
+  const ct = headers["content-type"] || "text/plain"; const charset = (ct.match(/charset="?([^";]+)/i) || [])[1];
+  const boundary = (ct.match(/boundary="?([^";]+)"?/i) || [])[1];
+  if (/multipart\//i.test(ct) && boundary) {
+    const parts = body.split("--" + boundary).slice(1).filter((p) => !p.startsWith("--"));
+    let html = null;
+    for (const p of parts) {
+      const [hb, bb] = splitPart(p.replace(/^\r?\n/, "")); const ph = parseHeaders(hb);
+      const pct = ph["content-type"] || "text/plain";
+      if (/attachment/i.test(ph["content-disposition"] || "")) continue;
+      if (/multipart\//i.test(pct)) { const r = extractText(ph, bb); if (r.text) return r; html = html || r.html; continue; }
+      const decoded = decodeBody(bb, ph["content-transfer-encoding"] || "", (pct.match(/charset="?([^";]+)/i) || [])[1]);
+      if (/text\/plain/i.test(pct)) return { text: decoded.trim() };
+      if (/text\/html/i.test(pct)) html = decoded;
+    }
+    return { text: html ? htmlToText(html) : "", html };
+  }
+  const decoded = decodeBody(body, headers["content-transfer-encoding"] || "", charset);
+  return { text: /text\/html/i.test(ct) ? htmlToText(decoded) : decoded.trim() };
+}
+function htmlToText(html) {
+  const doc = new DOMParser().parseFromString(html.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(p|div|li|tr|h\d)>/gi, "\n"), "text/html");
+  return (doc.body.textContent || "").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+function parseEml(raw) {
+  const [hb, body] = splitPart(raw); const h = parseHeaders(hb);
+  const from = decodeWords(h.from || ""); const email = (from.match(/<([^>]+)>/) || from.match(/([\w.+-]+@[\w.-]+)/) || [])[1] || "";
+  return { from, email, subject: decodeWords(h.subject || ""), date: h.date ? new Date(h.date) : null, text: extractText(h, body).text, high: /high|urgent|1/i.test(h["x-priority"] || h.importance || "") && !/normal|3/i.test(h["x-priority"] || "") };
+}
+function mailToTicket(mail) {
+  const header = [mail.from && `Von: ${mail.from}`, mail.date && !isNaN(mail.date) && `Eingang: ${mail.date.toLocaleString("de-DE")}`].filter(Boolean).join("\n");
+  ticketForm({ title: (mail.subject || "E-Mail ohne Betreff").replace(/^((re|aw|fw|fwd|wg):\s*)+/i, "").slice(0, 200), desc: [header, mail.text].filter(Boolean).join("\n\n").slice(0, 8000),
+    priority: mail.high ? "HOCH" : "MITTEL", category: "E-Mail", source: { from: mail.from, email: mail.email, subject: mail.subject } });
+}
+function readFile(file, cb) { const r = new FileReader(); r.onload = () => cb(String(r.result)); r.readAsText(file, "utf-8"); }
+function bindDropzone() {
+  const dz = $("#dropzone"); if (!dz) return;
+  ["dragenter", "dragover"].forEach((ev) => dz.addEventListener(ev, (e) => { e.preventDefault(); dz.classList.add("hover"); }));
+  ["dragleave", "drop"].forEach((ev) => dz.addEventListener(ev, () => dz.classList.remove("hover")));
+  dz.addEventListener("drop", (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) readFile(f, (raw) => mailToTicket(parseEml(raw))); });
+  $("#eml-input").addEventListener("change", (e) => { const f = e.target.files[0]; if (f) readFile(f, (raw) => mailToTicket(parseEml(raw))); e.target.value = ""; });
+}
+
+/* ---------- Kanban Drag & Drop ---------- */
+function bindKanban() {
+  $$(".kcard").forEach((c) => c.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", c.dataset.id)));
+  $$(".col").forEach((col) => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drop"); });
+    col.addEventListener("dragleave", () => col.classList.remove("drop"));
+    col.addEventListener("drop", (e) => { e.preventDefault(); col.classList.remove("drop"); const t = db.tickets.find((x) => x.id === e.dataTransfer.getData("text/plain"));
+      if (t && t.status !== col.dataset.status) { updateTicket(t, { status: col.dataset.status }); render(); toast(`${ticketNo(t.no)} → ${STATUS[t.status]}`); } });
+  });
+}
+
+/* ---------- CSV / JSON ---------- */
+function download(name, content, type) {
+  const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+function exportCsv() {
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = [["Ticket", "Titel", "Status", "Priorität", "Verantwortlich", "Frist", "Projekt", "Kategorie", "Erstellt von", "Erstellt am", "Erledigt am", "Beschreibung"]]
+    .concat(db.tickets.sort((a, b) => a.no - b.no).map((t) => [ticketNo(t.no), t.title, STATUS[t.status], PRIO[t.priority], t.assigneeId ? userName(t.assigneeId) : "", t.dueDate ? fmtDate(t.dueDate) : "", projectName(t.projectId), t.category, userName(t.createdById), fmtDateTime(t.createdAt), t.completedAt ? fmtDateTime(t.completedAt) : "", t.desc]));
+  download(`tickets-${todayKey()}.csv`, "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n"), "text/csv;charset=utf-8");
+}
+function parseCsv(text) {
+  const sep = (text.split("\n")[0].match(/;/g) || []).length >= (text.split("\n")[0].match(/,/g) || []).length ? ";" : ",";
+  const rows = []; let row = [], cell = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) { if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; } else if (c === '"') inQ = false; else cell += c; }
+    else if (c === '"') inQ = true; else if (c === sep) { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim()));
+}
+function toKey(s) {
+  s = (s || "").trim(); let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})/); if (m) return `${m[3].length === 2 ? "20" + m[3] : m[3]}-${pad(m[2])}-${pad(m[1])}`;
+  return null;
+}
+function importAbsences(text) {
+  const rows = parseCsv(text.replace(/^﻿/, "")); if (rows.length < 2) return toast("CSV enthält keine Daten.");
+  const head = rows[0].map((h) => h.trim().toLowerCase());
+  const col = (...names) => head.findIndex((h) => names.some((n) => h.includes(n)));
+  const ci = { email: col("mail"), name: col("name", "mitarbeiter", "employee"), start: col("von", "start", "beginn", "from"), end: col("bis", "ende", "end", "finish", "to"), type: col("art", "typ", "type", "grund", "leave"), status: col("status", "genehm", "approved") };
+  if (ci.start < 0) return toast("Spalte „Von/Start“ nicht gefunden.");
+  let added = 0, skipped = 0;
+  rows.slice(1).forEach((r) => {
+    const email = ci.email >= 0 ? r[ci.email]?.trim().toLowerCase() : ""; const name = ci.name >= 0 ? r[ci.name]?.trim().toLowerCase() : "";
+    const u = db.users.find((x) => (email && x.email.toLowerCase() === email) || (name && x.name.toLowerCase() === name));
+    const start = toKey(r[ci.start]); const end = ci.end >= 0 ? toKey(r[ci.end]) || start : start;
+    if (!u || !start) { skipped++; return; }
+    const status = ci.status >= 0 ? (r[ci.status] || "").toLowerCase() : "";
+    if (/abgelehnt|rejected|false/.test(status)) { skipped++; return; }
+    const type = ci.type >= 0 && r[ci.type]?.trim() ? r[ci.type].trim() : "Abwesend";
+    if (db.absences.some((a) => a.userId === u.id && a.start === start && a.end === end)) { skipped++; return; }
+    db.absences.push({ id: uid(), userId: u.id, start, end, type, approved: !/ausstehend|pending|beantragt/.test(status) });
+    added++;
+  });
+  deadlineCheck(); save(); render(); toast(`${added} Abwesenheiten importiert${skipped ? `, ${skipped} übersprungen (unbekannte Person/Datum/Duplikat)` : ""}`);
+}
+
+/* ---------- Benachrichtigungs-Popover ---------- */
+function renderNotifs() {
+  const list = db.notifications.filter((n) => n.userId === db.currentUserId).slice(0, 40);
+  const unread = list.filter((n) => !n.read).length;
+  const cls = { UEBERFAELLIG: "b-danger", FRIST_BALD: "b-warn", VERTRETUNG: "b-warn", ZUGEWIESEN: "b-info", KOMMENTAR: "", STATUS: "b-ok" };
+  const ico = { UEBERFAELLIG: "alert", FRIST_BALD: "clock", VERTRETUNG: "palm", ZUGEWIESEN: "ticket", KOMMENTAR: "mail", STATUS: "check" };
+  $("#notifs").innerHTML = `<div class="row" style="padding:10px 14px;border-bottom:1px solid var(--border)"><b>Benachrichtigungen</b><span class="spacer"></span>${unread ? `<button class="btn ghost sm" data-act="read-all">Alle gelesen</button>` : ""}</div>
+    <div style="max-height:420px;overflow-y:auto">${list.length ? list.map((n) => `<div class="notif ${n.read ? "" : "unread"}" data-act="open-notif" data-id="${n.id}">
+      <span class="badge ${cls[n.type] || ""}" style="padding:5px;border-radius:50%">${icon(ico[n.type] || "bell")}</span>
+      <div style="flex:1;min-width:0"><div style="${n.read ? "" : "font-weight:600"}">${esc(n.title)}</div>${n.message ? `<div class="small muted">${esc(n.message)}</div>` : ""}<div class="small muted">${timeAgo(n.at)}</div></div>${n.read ? "" : '<span class="dot"></span>'}</div>`).join("") : `<div class="muted" style="padding:30px;text-align:center">Keine Benachrichtigungen – alles im Griff.</div>`}</div>`;
+}
+
+/* ---------- Ereignisse ---------- */
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]"); if (!el) return;
+  const act = el.dataset.act; const id = el.dataset.id; const t = id ? db.tickets.find((x) => x.id === id) : null;
+  if (el.tagName === "SELECT" || (el.tagName === "INPUT" && el.type !== "checkbox")) return;
+  switch (act) {
+    case "toggle-menu": $("#sidebar").classList.toggle("open"); break;
+    case "toggle-theme": { const cur = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.dataset.theme = cur === "dark" ? "light" : "dark"; try { localStorage.setItem(KEY + "-theme", document.documentElement.dataset.theme); } catch {} break; }
+    case "toggle-notifs": { const p = $("#notifs"); p.classList.toggle("open"); if (p.classList.contains("open")) renderNotifs(); break; }
+    case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderNav(); break;
+    case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderNav(); if (n.ticketId) openTicket(n.ticketId); } break; }
+    case "close-all": e.preventDefault(); closeAll(); break;
+    case "goto": location.hash = el.dataset.href; break;
+    case "new-ticket": ticketForm(); break;
+    case "open-ticket": if (e.target.closest("select, button:not([data-act=open-ticket]), a")) return; openTicket(id); break;
+    case "ticket-view": ui.ticketView = el.dataset.v; render(); break;
+    case "clear-filters": ui.filters = { q: "", assignee: "", status: "", priority: "", project: "" }; render(); break;
+    case "deadline-scope": ui.deadlineScope = el.dataset.v; render(); break;
+    case "filter-assignee": ui.filters = { q: "", assignee: id, status: "OPEN", priority: "", project: "" }; if (route() === "tickets") render(); break;
+    case "filter-project": ui.filters = { q: "", assignee: "", status: "", priority: "", project: id }; if (route() === "tickets") render(); break;
+    case "done": if (t) { updateTicket(t, { status: "ERLEDIGT" }); render(); toast(`${ticketNo(t.no)} erledigt ✓`); } break;
+    case "set-status": e.preventDefault(); if (t) { updateTicket(t, { status: el.dataset.v }); render(); } break;
+    case "delete-ticket": if (t && confirm(`${ticketNo(t.no)} „${t.title}“ wirklich löschen?`)) { db.tickets = db.tickets.filter((x) => x.id !== t.id); db.notifications = db.notifications.filter((n) => n.ticketId !== t.id); save(); closeAll(); render(); toast("Ticket gelöscht"); } break;
+    case "check": { const tk = db.tickets.find((x) => x.id === ui.openTicket); const c = tk?.checklist.find((x) => x.id === id); if (c) { c.done = el.checked; save(); renderDrawer(); } break; }
+    case "del-check": { const tk = db.tickets.find((x) => x.id === ui.openTicket); if (tk) { tk.checklist = tk.checklist.filter((x) => x.id !== id); save(); renderDrawer(); } break; }
+    case "add-check": { const tk = db.tickets.find((x) => x.id === ui.openTicket); const v = $("#new-check").value.trim(); if (tk && v) { tk.checklist.push({ id: uid(), text: v, done: false }); save(); renderDrawer(); $("#new-check")?.focus(); } break; }
+    case "add-comment": { const tk = db.tickets.find((x) => x.id === ui.openTicket); const v = $("#new-comment").value.trim(); if (tk && v) {
+      tk.comments.push({ id: uid(), userId: db.currentUserId, text: v, at: new Date().toISOString() }); logActivity(tk, "Kommentar hinzugefügt");
+      notify([tk.assigneeId, tk.createdById, ...tk.comments.map((c) => c.userId)], "KOMMENTAR", `Neuer Kommentar: ${label(tk)}`, `${me().name}: ${v.slice(0, 140)}`, tk.id); save(); render(); } break; }
+    case "mail-to-ticket": { const subject = $("#mail-subject").value.trim(), body = $("#mail-body").value.trim(), from = $("#mail-from").value.trim();
+      if (!subject && !body) return toast("Bitte Betreff oder Text eingeben.");
+      mailToTicket({ from, email: (from.match(/<([^>]+)>/) || from.match(/([\w.+-]+@[\w.-]+)/) || [])[1] || "", subject, text: body, date: new Date() }); break; }
+    case "pick-eml": $("#eml-input").click(); break;
+    case "new-project": { const name = prompt("Name des Projekts:"); if (name?.trim()) { db.projects.push({ id: uid(), name: name.trim() }); save(); render(); } break; }
+    case "delete-project": if (confirm("Projekt löschen? Die Tickets bleiben erhalten.")) { db.projects = db.projects.filter((p) => p.id !== id); db.tickets.forEach((x) => { if (x.projectId === id) x.projectId = null; }); save(); render(); } break;
+    case "add-user": { const name = $("#new-user-name").value.trim(), email = $("#new-user-email").value.trim().toLowerCase();
+      if (!name || !/^\S+@\S+\.\S+$/.test(email)) return toast("Bitte Name und gültige E-Mail angeben.");
+      if (db.users.some((u) => u.email.toLowerCase() === email)) return toast("Diese E-Mail ist bereits vorhanden.");
+      db.users.push({ id: uid(), name, email, role: $("#new-user-role").value, active: true }); save(); render(); toast(`${name} hinzugefügt`); break; }
+    case "user-active": { const u = userById(id); if (u) { u.active = el.checked; save(); render(); } break; }
+    case "add-absence": { const s = $("#abs-start").value, en = $("#abs-end").value || s; if (!s) return; if (en < s) return toast("„Bis“ liegt vor „Von“.");
+      db.absences.push({ id: uid(), userId: $("#abs-user").value, start: s, end: en, type: $("#abs-type").value, approved: true }); deadlineCheck(); save(); render(); toast("Abwesenheit gespeichert"); break; }
+    case "toggle-absence": { const a = db.absences.find((x) => x.id === id); if (a) { a.approved = !a.approved; deadlineCheck(); save(); render(); } break; }
+    case "delete-absence": db.absences = db.absences.filter((x) => x.id !== id); save(); render(); break;
+    case "pick-absence-csv": $("#abs-csv").click(); break;
+    case "export-csv": exportCsv(); break;
+    case "export-json": download(`gf-suite-sicherung-${todayKey()}.json`, JSON.stringify(db, null, 2), "application/json"); break;
+    case "pick-json": $("#json-input").click(); break;
+    case "reset-demo": if (confirm("Alle Daten durch Demo-Daten ersetzen?")) { db = seed(); deadlineCheck(); save(); closeAll(); render(); } break;
+    case "reset-empty": if (confirm("Wirklich ALLE Tickets, Projekte, Abwesenheiten und Benachrichtigungen löschen? (Team bleibt erhalten)")) {
+      db = { ...db, tickets: [], projects: [], absences: [], notifications: [], seq: 0 }; save(); closeAll(); render(); } break;
+  }
+});
+document.addEventListener("change", (e) => {
+  const el = e.target; const act = el.dataset.act; const id = el.dataset.id;
+  if (el.id === "user-switch") { db.currentUserId = el.value; save(); closeAll(); render(); toast(`Angemeldet als ${me().name}`); return; }
+  if (el.dataset.filter) { ui.filters[el.dataset.filter] = el.value; render(); return; }
+  if (el.dataset.field && ui.openTicket) {
+    const t = db.tickets.find((x) => x.id === ui.openTicket); if (!t) return;
+    let v = el.value; if (el.dataset.field === "title" && !v.trim()) { el.value = t.title; return; }
+    if (["assigneeId", "dueDate", "projectId"].includes(el.dataset.field)) v = v || null;
+    updateTicket(t, { [el.dataset.field]: v }); render(); return;
+  }
+  if (act === "assign") { const t = db.tickets.find((x) => x.id === id); if (t) { updateTicket(t, { assigneeId: el.value || null }); render(); toast(el.value ? `Zugewiesen an ${userName(el.value)}` : "Zuweisung entfernt"); } }
+  if (act === "postpone" && el.value) { const t = db.tickets.find((x) => x.id === id); if (t) { postpone(t, Number(el.value)); render(); toast(`Frist verschoben auf ${fmtDate(t.dueDate)}`); } }
+  if (act === "user-role") { const u = userById(id); if (u) { u.role = el.value; save(); render(); } }
+  if (el.id === "abs-csv" && el.files[0]) { readFile(el.files[0], importAbsences); el.value = ""; }
+  if (el.id === "json-input" && el.files[0]) { readFile(el.files[0], (raw) => { try { const data = JSON.parse(raw);
+      if (!Array.isArray(data.tickets) || !Array.isArray(data.users)) throw new Error();
+      if (confirm("Aktuelle Daten durch die Sicherung ersetzen?")) { db = data; save(); closeAll(); render(); toast("Sicherung geladen"); } } catch { toast("Ungültige Sicherungsdatei."); } }); el.value = ""; }
+});
+document.addEventListener("input", (e) => {
+  if (e.target.dataset.filter === "q") { ui.filters.q = e.target.value; const pos = e.target.selectionStart; render(); const s = $('[data-filter="q"]'); s.focus(); s.setSelectionRange(pos, pos); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeAll();
+  if (e.key === "Enter" && e.target.id === "new-check") { e.preventDefault(); $('[data-act="add-check"]').click(); }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "new-comment") $('[data-act="add-comment"]').click();
+  if (e.key === "n" && !e.ctrlKey && !e.metaKey && !["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName) && !$("#modal").classList.contains("open")) { e.preventDefault(); ticketForm(); }
+});
+document.addEventListener("click", (e) => { if (!e.target.closest("#notifs, #bell")) $("#notifs").classList.remove("open"); }, true);
+window.addEventListener("hashchange", () => { $("#sidebar").classList.remove("open"); render(); });
+window.addEventListener("storage", (e) => { if (e.key === KEY) { db = loadDb(); render(); } });
+
+/* ---------- Start ---------- */
+try { const th = localStorage.getItem(KEY + "-theme"); if (th) document.documentElement.dataset.theme = th; } catch {}
+deadlineCheck();
+render();
+setInterval(() => { deadlineCheck(); renderNav(); }, 60000);
+</script>
+</body>
+</html>
