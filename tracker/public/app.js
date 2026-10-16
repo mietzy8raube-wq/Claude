@@ -858,6 +858,11 @@ function viewSettings() {
         <input type="password" name="next" placeholder="Neues Passwort (mind. 10 Zeichen)" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort">
         <input type="password" name="repeat" placeholder="Neues Passwort wiederholen" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort wiederholen">
         <div><button class="btn" type="submit">Passwort ändern</button></div></form>
+      <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
+      ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
+        : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
+        <p class="small muted" style="margin:6px 0 0;line-height:1.6"><b>PC (Edge/Chrome):</b> in der Adresszeile auf das Symbol „App installieren“ klicken bzw. Menü ⋯ → Apps → „Diese Website als App installieren“. Danach eigenes Fenster, Startmenü- und Taskleisten-Eintrag.<br>
+        <b>iPhone/iPad:</b> in Safari „Teilen“ → „Zum Home-Bildschirm“. <b>Android:</b> Chrome-Menü → „App installieren“.</p>`}
       <h3 style="font-size:15px;margin:20px 0 6px">Tastenkürzel</h3><div class="small" style="line-height:2"><span class="kbd">c</span> Vorgang erstellen · <span class="kbd">/</span> Suche · <span class="kbd">Esc</span> Schließen · <span class="kbd">Strg</span>+<span class="kbd">Enter</span> Kommentar senden</div></div>
     <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Personen</h3>
       ${db.users.map((x) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border);${x.active ? "" : "opacity:.5"}">${avatar(x.id)}<div style="flex:1;min-width:0"><div class="b trunc">${esc(x.name)}</div><div class="small muted trunc">${esc(x.email)}</div></div>
@@ -872,7 +877,9 @@ function viewSettings() {
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
       ${sync.mail ? `<button class="btn" data-act="mail-test">Test-E-Mail an mich senden</button>` : ""}
-      <h3 style="font-size:15px;margin:18px 0 6px">Kundenportal</h3><p class="small muted" style="margin:0">Öffentliche Adresse für Kunden: <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a></p></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
+      <h3 style="font-size:15px;margin:18px 0 6px">Kundenportal auf Ihrer Website</h3><p class="small muted" style="margin:0 0 8px">Öffentliche Adresse: <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – als Link/Button „Störung melden“ verwenden oder direkt in eine Seite einbetten:</p>
+      <textarea id="embed-code" class="jql" rows="3" readonly>&lt;iframe src="${esc(location.origin)}/portal?embed=1" title="Service-Portal" style="width:100%;min-height:900px;border:0" loading="lazy"&gt;&lt;/iframe&gt;</textarea>
+      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
     </div>`;
 }
 
@@ -1097,6 +1104,8 @@ document.addEventListener("click", (e) => {
     case "logout": api("/api/logout", { method: "POST" }).finally(() => (location.href = "/login")); break;
     case "set-password": { const u = user(id); const pw = prompt(`Neues Passwort für ${u.name} (mind. 10 Zeichen):`); if (!pw) break;
       api(`/api/admin/users/${id}/password`, { method: "POST", body: { password: pw } }).then(() => toast(`Passwort für ${u.name} gesetzt – bitte persönlich übergeben.`)).catch((err) => toast(err.message)); break; }
+    case "install-app": if (installPrompt) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; render(); }); } break;
+    case "copy-embed": navigator.clipboard?.writeText($("#embed-code").value).then(() => toast("In die Zwischenablage kopiert.")).catch(() => { $("#embed-code").select(); toast("Bitte mit Strg+C kopieren."); }); break;
     case "mail-test": api("/api/admin/mail-test", { method: "POST" }).then((r) => toast(`Test-E-Mail an ${r.to} gesendet.`)).catch((err) => toast(err.message)); break;
     case "user-active": { const u = user(id); if (u) { u.active = el.checked; save(); render(); } break; }
     // Vorgang
@@ -1227,6 +1236,13 @@ document.addEventListener("mousemove", (e) => { const t = e.target.closest("[dat
   if (!t) { tip.style.display = "none"; return; } tip.textContent = t.dataset.tip; tip.style.display = "block";
   const x = Math.min(window.innerWidth - tip.offsetWidth - 10, e.clientX + 14); tip.style.left = x + "px"; tip.style.top = (e.clientY + 14) + "px"; });
 window.addEventListener("hashchange", () => { $("#topnav").classList.remove("menu-open"); if (ui.modal) closeModal(); render(); window.scrollTo(0, 0); });
+
+/* ---------- Als App installieren (PWA) ---------- */
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; if (route().parts[0] === "settings") render(); });
+window.addEventListener("appinstalled", () => { installPrompt = null; toast("GF Tracker wurde als App installiert."); });
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
 /* ---------- Start ---------- */
 try { const th = localStorage.getItem("gft-theme"); if (th) document.documentElement.dataset.theme = th; } catch {}

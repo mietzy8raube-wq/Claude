@@ -25,6 +25,8 @@ const CFG = {
   backupKeep: Number(env.BACKUP_KEEP || 14),
   seedDemo: env.SEED_DEMO === "1" || env.SEED_DEMO === "true",
   demoPassword: env.DEMO_PASSWORD || "Passwort123!",
+  // Websites, die das Kundenportal per <iframe> einbetten dürfen (Leerzeichen-getrennt), z. B. "https://www.ihre-firma.de"
+  portalFrameAncestors: String(env.PORTAL_FRAME_ANCESTORS || "").split(/[\s,]+/).filter((o) => /^https?:\/\/[^\s/]+$/.test(o)),
 };
 CFG.secureCookies = env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" || env.COOKIE_SECURE === "1" : CFG.appUrl.startsWith("https://");
 fs.mkdirSync(path.join(CFG.dataDir, "backups"), { recursive: true });
@@ -78,6 +80,7 @@ const SECURITY_HEADERS = {
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 function send(res, status, body, headers = {}) {
   const h = { ...SECURITY_HEADERS, ...headers };
+  for (const k of Object.keys(h)) if (h[k] === undefined) delete h[k];
   if (CFG.secureCookies) h["Strict-Transport-Security"] = "max-age=31536000";
   if (body !== undefined && typeof body !== "string" && !Buffer.isBuffer(body)) { body = JSON.stringify(body); h["Content-Type"] = "application/json; charset=utf-8"; h["Cache-Control"] = "no-store"; }
   res.writeHead(status, h); res.end(body);
@@ -90,12 +93,12 @@ async function readJson(req, limit = 2e6) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new HttpError(400, "Ungültiges JSON."); }
 }
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".webmanifest": "application/manifest+json" };
-function serveFile(req, res, file) {
+function serveFile(req, res, file, extraHeaders = {}) {
   const full = path.join(PUBLIC, file);
   if (!full.startsWith(PUBLIC + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) return send(res, 404, "Nicht gefunden", { "Content-Type": "text/plain; charset=utf-8" });
   const st = fs.statSync(full); const etag = `"${st.size}-${st.mtimeMs}"`;
-  if (req.headers["if-none-match"] === etag) return send(res, 304, undefined, { ETag: etag });
-  send(res, 200, fs.readFileSync(full), { "Content-Type": MIME[path.extname(full)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag });
+  if (req.headers["if-none-match"] === etag) return send(res, 304, undefined, { ETag: etag, ...extraHeaders });
+  send(res, 200, fs.readFileSync(full), { "Content-Type": MIME[path.extname(full)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag, ...extraHeaders });
 }
 
 /* ---------- Live-Aktualisierung (Server-Sent Events) ---------- */
@@ -482,7 +485,11 @@ const server = http.createServer(async (req, res) => {
       return serveFile(req, res, "index.html");
     }
     if (url.pathname === "/login") return serveFile(req, res, "login.html");
-    if (url.pathname === "/portal" || url.pathname.startsWith("/portal/")) return serveFile(req, res, "portal.html");
+    if (url.pathname === "/portal" || url.pathname.startsWith("/portal/")) {
+      // Das Portal darf auf freigegebenen Websites eingebettet werden; die App selbst nie.
+      const frame = CFG.portalFrameAncestors.length ? { "Content-Security-Policy": SECURITY_HEADERS["Content-Security-Policy"].replace("frame-ancestors 'none'", `frame-ancestors 'self' ${CFG.portalFrameAncestors.join(" ")}`), "X-Frame-Options": undefined } : {};
+      return serveFile(req, res, "portal.html", frame);
+    }
     return serveFile(req, res, decodeURIComponent(url.pathname).replace(/^\/+/, ""));
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, { error: e.message });

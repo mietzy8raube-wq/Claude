@@ -6,7 +6,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const fmtDT = (iso) => new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" });
 const ICON = { alert: '<path d="M12 3 2 21h20zM12 10v5M12 18h.01"/>', wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>', help: '<path d="M9 9a3 3 0 1 1 4 2.8c-.7.3-1 .9-1 1.7V14M12 18h.01"/>', send: '<path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/>' };
 const icon = (n) => `<svg class="i" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON[n] || ""}</svg>`;
-const state = { cfg: null, type: null, project: new URLSearchParams(location.search).get("p") };
+const params = new URLSearchParams(location.search);
+const EMBED = params.get("embed") === "1" || sessionStorageGet("gft-embed") === "1";
+function sessionStorageGet(k) { try { return sessionStorage.getItem(k); } catch { return null; } }
+if (params.get("embed") === "1") { try { sessionStorage.setItem("gft-embed", "1"); } catch {} }
+if (EMBED) document.documentElement.classList.add("embed");
+const state = { cfg: null, type: null, project: params.get("p") };
 function toast(msg) { const el = document.createElement("div"); el.className = "toast"; el.textContent = msg; $("#toasts").appendChild(el); setTimeout(() => el.remove(), 5000); }
 async function api(path, opts = {}) {
   const res = await fetch(path, { method: opts.method || "GET", headers: { "Content-Type": "application/json", "X-GFT": "1" }, body: opts.body ? JSON.stringify(opts.body) : undefined });
@@ -17,6 +22,7 @@ async function api(path, opts = {}) {
 const tokenFromPath = () => (location.pathname.match(/^\/portal\/r\/([A-Za-z0-9_-]{20,64})$/) || [])[1];
 
 function hero() {
+  if (EMBED) return "";
   return `<div class="portal-hero"><h1>${esc(state.cfg.company)} – Service-Portal</h1><p style="margin:6px 0 0;opacity:.9">Störung melden, Wartung anfragen oder den Stand Ihrer Anfrage verfolgen – rund um die Uhr.</p></div>`;
 }
 function renderHome() {

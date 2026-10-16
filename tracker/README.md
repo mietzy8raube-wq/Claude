@@ -40,6 +40,12 @@ docker compose logs tracker | grep Startpasswort
 Ausführlich – inklusive Serveranforderungen, Updates, Sicherung/Wiederherstellung
 und Microsoft-365-Einrichtung – in [ARCHITEKTUR.md, Abschnitt 7 und 8](ARCHITEKTUR.md#7-betrieb).
 
+## Als App nutzen und auf der Website einbinden
+
+- **App:** In Edge/Chrome „App installieren“ (eigenes Fenster, Startmenü/Taskleiste); auf dem Handy „Zum Home-Bildschirm“. Firmenweit per Intune/Gruppenrichtlinie verteilbar.
+- **Website:** Kundenportal als Link oder per `<iframe>` einbetten (`PORTAL_FRAME_ANCESTORS`).
+- Details und Fahrplan für Teams, Outlook, Factorial & Co.: [ARCHITEKTUR.md, Abschnitt 13](ARCHITEKTUR.md#13-integration).
+
 ## Entwicklung
 
 ```bash

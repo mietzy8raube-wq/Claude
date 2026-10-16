@@ -19,6 +19,7 @@ Inhalt
 10. [Empfohlene Arbeitsweise](#10-empfohlene-arbeitsweise)
 11. [Grenzen und mögliche Erweiterungen](#11-grenzen-und-mögliche-erweiterungen)
 12. [Fehlerbehebung](#12-fehlerbehebung)
+13. [Integration: als App, auf der Website und mit Ihren Programmen](#13-integration)
 
 ---
 
@@ -278,6 +279,7 @@ npm test         # automatische Tests
 | `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD` | Administrator; wird beim Start angelegt, falls diese E-Mail noch keinen Zugang hat |
 | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MAIL_SENDER` | E-Mail über Microsoft 365 (optional) |
 | `BACKUP_KEEP` | Anzahl aufbewahrter Tagessicherungen (Standard 14) |
+| `PORTAL_FRAME_ANCESTORS` | Website(s), die das Kundenportal einbetten dürfen, z. B. `https://www.ihre-firma.de` |
 | `SEED_DEMO` | `1` = Beispieldaten beim ersten Start (nur zum Testen) |
 | `DATA_DIR`, `PORT`, `HOST`, `TRUST_PROXY`, `COOKIE_SECURE` | Technische Feineinstellungen; in Docker vorbelegt |
 
@@ -450,3 +452,64 @@ Die Zeiten laufen derzeit in **Kalenderzeit** (auch nachts/am Wochenende).
 | E-Mails kommen nicht an | *Einstellungen → Test-E-Mail*; Log prüfen. Häufig: Administratorzustimmung fehlt, Geheimnis abgelaufen, `MAIL_SENDER` existiert nicht oder Application Access Policy schließt das Postfach aus |
 | Änderungen erscheinen bei Kollegen nicht live | Reverse Proxy puffert Ereignisse: bei Caddy `flush_interval -1` (enthalten), bei nginx `proxy_buffering off;` für `/api/events` |
 | Datenbank „locked“ | Es darf nur **ein** Server-Prozess auf denselben Datenordner zugreifen |
+
+---
+
+## 13. Integration
+
+### 13.1 Als eigene App auf PC und Handy (fertig eingebaut)
+
+Der GF Tracker ist eine **installierbare Web-App (PWA)**: Nach der Installation
+läuft er in einem **eigenen Fenster** mit eigenem Symbol in Startmenü,
+Taskleiste bzw. auf dem Home-Bildschirm – ohne Adresszeile, wie ein normales
+Programm. Updates kommen automatisch mit jedem Server-Update; es muss nichts
+verteilt werden.
+
+| Gerät | Installation |
+| --- | --- |
+| Windows-PC (Edge/Chrome) | Tracker öffnen → Symbol „App installieren“ in der Adresszeile bzw. Menü ⋯ → *Apps* → *Diese Website als App installieren*. In *Einstellungen* gibt es zusätzlich einen Knopf „Als App installieren“. |
+| **Alle Firmen-PCs automatisch** | Microsoft Intune oder Gruppenrichtlinie für Edge: Richtlinie **`WebAppInstallForceList`** mit `{"url": "https://tracker.ihre-firma.de/", "default_launch_container": "window", "create_desktop_shortcut": true}` – die App erscheint dann bei allen Mitarbeitenden ohne Zutun. |
+| iPhone/iPad | In Safari öffnen → *Teilen* → *Zum Home-Bildschirm* |
+| Android | In Chrome öffnen → Menü → *App installieren* |
+
+Ohne Verbindung zeigt die App eine Hinweisseite statt einer Fehlermeldung.
+Daten werden aus Sicherheitsgründen **nicht** auf dem Gerät zwischengespeichert.
+
+**Brauchen wir eine „echte“ App aus dem App Store?** In der Regel nein. Die
+Web-App deckt PC, Tablet und Handy ab und muss nicht über App-Stores
+aktualisiert werden. Falls gewünscht, lässt sie sich später mit Werkzeugen wie
+PWABuilder für den Microsoft Store oder Google Play verpacken. Ein eigenes
+Windows-Programm (.exe) bringt gegenüber der installierten Web-App keinen
+Vorteil, aber zusätzlichen Aufwand (Signierung, Verteilung, Updates).
+
+### 13.2 Kundenportal auf Ihrer Website (fertig eingebaut)
+
+| Variante | So geht's |
+| --- | --- |
+| **Button/Link** (einfachste) | Auf der Website einen Button „Störung melden“ mit dem Link `https://tracker.ihre-firma.de/portal` |
+| **Direkt eingebettet** | Code aus *Einstellungen → Kundenportal auf Ihrer Website* in eine Seite einfügen (`<iframe … /portal?embed=1>`). Dafür in `.env` die Website-Adresse freigeben: `PORTAL_FRAME_ANCESTORS=https://www.ihre-firma.de` – ohne diese Freigabe verhindert der Browser das Einbetten. |
+| E-Mail-Signatur, Angebote, Rechnungen | Link „Störung melden: tracker.ihre-firma.de/portal“ |
+| **QR-Code an der Anlage** | Aufkleber mit QR-Code auf Kompressoren beim Kunden, der auf das Portal zeigt – der Kunde meldet Störungen direkt vom Handy aus |
+
+Nur das Portal ist einbettbar; die interne App lässt sich nicht in fremde Seiten
+einbetten (Schutz vor Clickjacking).
+
+### 13.3 Verknüpfung mit Ihren anderen Programmen – Fahrplan
+
+| Stufe | Verknüpfung | Nutzen | Aufwand |
+| --- | --- | --- | --- |
+| ✅ fertig | E-Mail-Versand über Microsoft 365 | Benachrichtigungen und Kunden-E-Mails aus Ihrem Postfach | Einrichtung (Abschnitt 8) |
+| **1 – empfohlen** | **Anmeldung mit Microsoft 365 (Single Sign-on)** | Kein eigenes Passwort mehr; Personen kommen und gehen automatisch mit dem Microsoft-Konto; Grundlage für Teams | mittel |
+| 1 | **Microsoft Teams**: Tracker als App/Registerkarte in Teams | Arbeiten direkt in Teams, ohne Programmwechsel | gering (setzt SSO voraus) |
+| 1 | Teams-Kanal-Meldungen (Workflows-Webhook) | z. B. „Neue Störung SD-17“ automatisch im Kanal *Service* | gering |
+| 2 | **Outlook-Kalender**: Fristen als Kalender-Abo | Fälligkeiten erscheinen im eigenen Outlook-Kalender | gering |
+| 2 | **E-Mail → Vorgang**: Mails an `service@…` werden automatisch zu Service-Anfragen, Antworten landen im Vorgang | Kein Abtippen, nichts geht im Postfach verloren | mittel |
+| 2 | **Factorial HR**: Abwesenheiten übernehmen, „Vertretung nötig“ | Keine Fristen verpassen wegen Urlaub/Krankheit (in der GF-Suite bereits umgesetzt, Übernahme in den Tracker) | gering–mittel |
+| 3 | Warenwirtschaft/ERP, Buchhaltung | z. B. Kunden- und Anlagenstammdaten übernehmen, erledigte Serviceeinsätze zur Abrechnung übergeben | je nach System (über deren Schnittstelle) |
+| 3 | GF-Suite und Tracker zusammenführen | Eine Oberfläche für Kennzahlen, Entscheidungen und Tickets | mittel–hoch |
+
+Technisch erfolgen diese Verknüpfungen über die **Microsoft-Graph-Schnittstelle**
+(Outlook, Teams, Kalender, Anmeldung) bzw. die **Programmierschnittstellen
+(APIs)** der jeweiligen Anbieter. Der Tracker selbst bietet mit seiner
+REST-Schnittstelle (Abschnitt 4) bereits die Grundlage, um weitere Systeme
+anzubinden.
