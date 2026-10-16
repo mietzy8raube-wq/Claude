@@ -1,0 +1,22 @@
+# Alternative ohne Docker: systemd-Dienst (z. B. /etc/systemd/system/gf-tracker.service)
+# Voraussetzung: Node.js >= 22.13, Code unter /opt/gf-tracker, Konfiguration in /opt/gf-tracker/.env
+# HTTPS stellt ein vorgeschalteter Reverse Proxy bereit (Caddy, nginx, IIS mit ARR …).
+[Unit]
+Description=GF Tracker
+After=network.target
+
+[Service]
+Type=simple
+User=gftracker
+WorkingDirectory=/opt/gf-tracker
+EnvironmentFile=/opt/gf-tracker/.env
+Environment=DATA_DIR=/var/lib/gf-tracker TZ=Europe/Berlin TRUST_PROXY=1 HOST=127.0.0.1
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning server.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/gf-tracker
+
+[Install]
+WantedBy=multi-user.target

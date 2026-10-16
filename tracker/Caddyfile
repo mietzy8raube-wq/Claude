@@ -1,0 +1,8 @@
+# Caddy holt und erneuert das HTTPS-Zertifikat für die Domain automatisch.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy tracker:3000 {
+		# Live-Aktualisierung (Server-Sent Events) sofort durchreichen
+		flush_interval -1
+	}
+}

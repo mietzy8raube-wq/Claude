@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service-Portal</title>
+<meta name="description" content="Störung melden, Wartung anfragen und den Bearbeitungsstand verfolgen.">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+<style>
+  .portal { max-width: 960px; margin: 0 auto; padding: 24px 16px 60px; }
+  .hp { position: absolute; left: -9999px; }
+  .ok-box { text-align: center; padding: 32px 20px; }
+  .ok-box .big { font-size: 40px; }
+</style>
+</head>
+<body>
+<main class="portal" id="portal"><p class="muted">Lade…</p></main>
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+<script src="/shared.js"></script>
+<script src="/portal.js"></script>
+</body>
+</html>

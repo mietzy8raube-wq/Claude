@@ -1,0 +1,499 @@
+#!/usr/bin/env node
+// GF Tracker – Server. Startet mit: node server.mjs  (Node.js ≥ 22.13)
+// Keine externen Pakete: HTTP, SQLite und Kryptografie kommen aus Node.js selbst.
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
+import { fileURLToPath } from "node:url";
+import { Store, COLLECTIONS } from "./lib/store.mjs";
+import { Sessions, RateLimiter, hashPassword, verifyPassword, validatePassword, randomToken, sha256 } from "./lib/auth.mjs";
+import { Mailer, mailTemplate } from "./lib/mailer.mjs";
+
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC = path.join(ROOT, "public");
+
+/* ---------- Konfiguration (Umgebungsvariablen) ---------- */
+const env = process.env;
+const CFG = {
+  port: Number(env.PORT || 3000),
+  host: env.HOST || "0.0.0.0",
+  dataDir: path.resolve(env.DATA_DIR || path.join(ROOT, "data")),
+  appUrl: (env.APP_URL || `http://localhost:${env.PORT || 3000}`).replace(/\/$/, ""),
+  company: env.COMPANY_NAME || "GF Tracker",
+  trustProxy: env.TRUST_PROXY === "1" || env.TRUST_PROXY === "true",
+  backupKeep: Number(env.BACKUP_KEEP || 14),
+  seedDemo: env.SEED_DEMO === "1" || env.SEED_DEMO === "true",
+  demoPassword: env.DEMO_PASSWORD || "Passwort123!",
+};
+CFG.secureCookies = env.COOKIE_SECURE ? env.COOKIE_SECURE === "true" || env.COOKIE_SECURE === "1" : CFG.appUrl.startsWith("https://");
+fs.mkdirSync(path.join(CFG.dataDir, "backups"), { recursive: true });
+
+/* ---------- Gemeinsame Fachlogik laden (dieselbe Datei wie im Browser) ---------- */
+const sandbox = {}; vm.createContext(sandbox);
+vm.runInContext(fs.readFileSync(path.join(PUBLIC, "shared.js"), "utf8"), sandbox, { filename: "shared.js" });
+const S = sandbox.TrackerShared;
+
+const store = new Store(path.join(CFG.dataDir, "tracker.db"));
+const sessions = new Sessions(store, { secureCookies: CFG.secureCookies });
+const loginLimiter = new RateLimiter(10, 15 * 60e3);
+const portalLimiter = new RateLimiter(8, 10 * 60e3);
+const mailer = new Mailer({ tenantId: env.MS_TENANT_ID, clientId: env.MS_CLIENT_ID, clientSecret: env.MS_CLIENT_SECRET, sender: env.MAIL_SENDER, loginHost: env.MS_LOGIN_HOST, graphBase: env.MS_GRAPH_BASE });
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+const DUMMY_HASH = hashPassword(randomToken(16));
+
+/* ---------- Ersteinrichtung ---------- */
+function setupInitialData() {
+  const accounts = store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)");
+  store.tx(() => {
+    if (!store.meta("initialized")) {
+      if (CFG.seedDemo) {
+        const data = S.seed();
+        for (const type of COLLECTIONS) for (const obj of data[type] || []) store.put(type, obj);
+        const pw = hashPassword(CFG.demoPassword);
+        for (const u of data.users) accounts.run(u.id, u.email.toLowerCase(), pw, new Date().toISOString());
+        log(`Beispieldaten angelegt. Anmeldung z. B. mit ${data.users[1].email} / ${CFG.demoPassword}`);
+      }
+      store.meta("initialized", new Date().toISOString());
+    }
+    // Administrator aus der Konfiguration anlegen, falls diese E-Mail noch keinen Zugang hat (auch als Notfallzugang)
+    const email = (env.ADMIN_EMAIL || "").trim().toLowerCase();
+    if (email && !store.db.prepare("SELECT 1 FROM accounts WHERE email = ?").get(email)) {
+      let pw = env.ADMIN_PASSWORD; let generated = false;
+      if (!pw || validatePassword(pw)) { pw = randomToken(12); generated = true; }
+      const existing = store.all("users").find((u) => u.email.toLowerCase() === email);
+      const user = existing ? { ...existing, role: "ADMIN", active: true } : { id: S.uid(), name: env.ADMIN_NAME || "Administrator", email, role: "ADMIN", active: true, color: S.hashColor(email), notifyEmail: true };
+      store.put("users", user); accounts.run(user.id, email, hashPassword(pw), new Date().toISOString());
+      log(`Administrator angelegt: ${email}${generated ? ` – Startpasswort: ${pw}  (bitte nach dem ersten Login ändern)` : ""}`);
+    }
+    if (!store.db.prepare("SELECT 1 FROM accounts LIMIT 1").get()) log("WARNUNG: Es gibt noch keinen Zugang. Bitte ADMIN_EMAIL (und optional ADMIN_PASSWORD) setzen und neu starten.");
+  });
+}
+
+/* ---------- HTTP-Hilfen ---------- */
+const SECURITY_HEADERS = {
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "X-Frame-Options": "DENY", "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+};
+class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
+function send(res, status, body, headers = {}) {
+  const h = { ...SECURITY_HEADERS, ...headers };
+  if (CFG.secureCookies) h["Strict-Transport-Security"] = "max-age=31536000";
+  if (body !== undefined && typeof body !== "string" && !Buffer.isBuffer(body)) { body = JSON.stringify(body); h["Content-Type"] = "application/json; charset=utf-8"; h["Cache-Control"] = "no-store"; }
+  res.writeHead(status, h); res.end(body);
+}
+function clientIp(req) { return (CFG.trustProxy && String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket.remoteAddress || "?"; }
+async function readJson(req, limit = 2e6) {
+  let size = 0; const chunks = [];
+  for await (const c of req) { size += c.length; if (size > limit) throw new HttpError(413, "Anfrage zu groß."); chunks.push(c); }
+  if (!chunks.length) return {};
+  try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new HttpError(400, "Ungültiges JSON."); }
+}
+const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".webmanifest": "application/manifest+json" };
+function serveFile(req, res, file) {
+  const full = path.join(PUBLIC, file);
+  if (!full.startsWith(PUBLIC + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) return send(res, 404, "Nicht gefunden", { "Content-Type": "text/plain; charset=utf-8" });
+  const st = fs.statSync(full); const etag = `"${st.size}-${st.mtimeMs}"`;
+  if (req.headers["if-none-match"] === etag) return send(res, 304, undefined, { ETag: etag });
+  send(res, 200, fs.readFileSync(full), { "Content-Type": MIME[path.extname(full)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag });
+}
+
+/* ---------- Live-Aktualisierung (Server-Sent Events) ---------- */
+const clients = new Set();
+function broadcast() { const rev = store.rev(); for (const c of clients) c.res.write(`event: rev\ndata: ${rev}\n\n`); }
+setInterval(() => { for (const c of clients) c.res.write(": ping\n\n"); }, 25e3).unref();
+
+/* ---------- Fachliche Hilfen ---------- */
+const userById = (id) => (id ? store.get("users", id) : null);
+const projectById = (id) => store.get("projects", id);
+const issueKey = (i) => `${projectById(i.projectId)?.key || "?"}-${i.no}`;
+const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false });
+const notifId = (key, userId) => "n" + sha256(`${key}:${userId}`).slice(0, 22);
+function createNotification(userId, type, title, text, issueId, key) {
+  const id = key ? notifId(key, userId) : S.uid();
+  if (store.get("notifications", id, true)) return false; // schon einmal erzeugt (auch wenn inzwischen gelöscht)
+  const u = userById(userId); if (!u || !u.active) return false;
+  store.put("notifications", { id, userId, type, title, text, issueId, at: new Date().toISOString(), read: false, key: key || null });
+  return true;
+}
+
+/* ---------- Synchronisierung: Änderungen der Browser anwenden ---------- */
+function canWrite(user, type, op, cur, data) {
+  const admin = user.role === "ADMIN";
+  if (type === "users") {
+    if (op === "put") return "Benutzer werden über die Benutzerverwaltung angelegt.";
+    if (op === "delete") return "Benutzer können nur deaktiviert werden.";
+    if (admin) return null;
+    if (cur.id !== user.id) return "Nur Administratoren dürfen andere Benutzer ändern.";
+    const allowed = new Set(["name", "notifyEmail"]);
+    const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
+    return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
+  }
+  if (type === "projects" && !admin) return "Nur Administratoren dürfen Projekte anlegen, ändern oder löschen.";
+  if (type === "notifications") {
+    if (op === "put") return null;
+    if (!cur || cur.userId !== user.id) return "Fremde Benachrichtigungen können nicht geändert werden.";
+    if (op === "patch" && Object.keys(data.set || {}).some((f) => f !== "read")) return "Nur der Gelesen-Status kann geändert werden.";
+  }
+  return null;
+}
+function sanitize(type, obj, cur) {
+  if (type === "issues") {
+    const p = projectById(obj.projectId); if (!p) throw new HttpError(400, "Projekt existiert nicht.");
+    if (!S.TYPES[obj.type]) throw new HttpError(400, "Unbekannter Vorgangstyp.");
+    if (!S.PRIOS[obj.priority]) obj.priority = "MEDIUM";
+    if (typeof obj.summary !== "string" || !obj.summary.trim()) throw new HttpError(400, "Zusammenfassung fehlt.");
+    obj.summary = obj.summary.slice(0, 255);
+    if (cur) { obj.no = cur.no; obj.projectId = cur.projectId; }
+    else {
+      const clash = store.all("issues").some((x) => x.projectId === obj.projectId && x.no === obj.no && x.id !== obj.id);
+      if (!Number.isInteger(obj.no) || obj.no < 1 || clash) obj.no = store.reserveNumber(obj.projectId);
+    }
+  }
+  if (type === "projects") {
+    obj.key = String(obj.key || "").toUpperCase();
+    if (!/^[A-Z][A-Z0-9]{1,9}$/.test(obj.key)) throw new HttpError(400, "Ungültiger Projektschlüssel.");
+    if (store.all("projects").some((p) => p.key === obj.key && p.id !== obj.id)) throw new HttpError(409, `Schlüssel ${obj.key} ist bereits vergeben.`);
+    if (!S.PROJECT_TYPES[obj.type]) throw new HttpError(400, "Unbekannter Projekttyp.");
+  }
+  if (type === "users" && cur) { obj.email = cur.email; }
+  return obj;
+}
+function applyOp(user, op, effects) {
+  const { type, id } = op;
+  if (!COLLECTIONS.includes(type) || !ID_RE.test(String(id))) throw new HttpError(400, "Ungültiges Objekt.");
+  const cur = store.get(type, id);
+  if (op.op === "delete") {
+    const err = canWrite(user, type, "delete", cur, {}); if (err) throw new HttpError(403, err);
+    if (cur) store.del(type, id);
+    return { type, id, deleted: true };
+  }
+  let next;
+  if (op.op === "put") {
+    if (!op.data || typeof op.data !== "object" || op.data.id !== id) throw new HttpError(400, "Ungültige Daten.");
+    if (cur) {
+      if (type === "notifications") return { type, id, data: cur };
+      const patch = S.diffEntity(cur, op.data) || { set: {} };
+      const err = canWrite(user, type, "patch", cur, patch); if (err) throw new HttpError(403, err);
+      next = S.applyPatch(cur, patch);
+    } else {
+      const err = canWrite(user, type, "put", null, op.data); if (err) throw new HttpError(403, err);
+      if (type === "notifications") { const target = userById(op.data.userId); if (!target) throw new HttpError(400, "Empfänger unbekannt."); }
+      next = op.data;
+    }
+  } else if (op.op === "patch") {
+    if (!cur) return { type, id, deleted: true, error: "Das Objekt wurde inzwischen gelöscht." };
+    const err = canWrite(user, type, "patch", cur, op.patch || {}); if (err) throw new HttpError(403, err);
+    next = S.applyPatch(cur, op.patch || {});
+  } else throw new HttpError(400, "Unbekannte Operation.");
+  next.id = id; next = sanitize(type, next, cur);
+  if (JSON.stringify(next).length > 400e3) throw new HttpError(413, "Objekt zu groß.");
+  if (type === "users" && cur && cur.active && next.active === false) effects.deactivated.push(id);
+  if (type === "issues") effects.issues.push({ before: cur, after: next });
+  store.put(type, next);
+  return { type, id, data: type === "users" ? publicUser(next) : next };
+}
+
+/* ---------- E-Mails an Kunden bei Antworten/Lösung ---------- */
+function portalLink(issueId) {
+  let row = store.db.prepare("SELECT token FROM portal_tokens WHERE issue_id = ?").get(issueId);
+  if (!row) { const token = randomToken(24); store.db.prepare("INSERT INTO portal_tokens (token_hash, issue_id, token, created_at) VALUES (?, ?, ?, ?)").run(sha256(token), issueId, token, Date.now()); row = { token }; }
+  return `${CFG.appUrl}/portal/r/${row.token}`;
+}
+function customerMails({ before, after }) {
+  const p = projectById(after.projectId); if (!p || p.type !== "service" || !after.customer?.email || !mailer.configured) return;
+  const key = issueKey(after); const link = portalLink(after.id);
+  const known = new Set((before?.comments || []).map((c) => c.id));
+  for (const c of after.comments.filter((c) => !known.has(c.id) && c.userId && !c.internal)) {
+    const agent = userById(c.userId)?.name || "Service";
+    queueMail(after.customer.email, `[${key}] Neue Antwort zu Ihrer Anfrage`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`, title: after.summary, lines: [`${agent} hat geantwortet:`, c.text], button: { url: link, label: "Anfrage ansehen und antworten" }, footer: `Vorgang ${key}` }));
+  }
+  if (before && S.statusInfo(p, before.status).cat !== "done" && S.statusInfo(p, after.status).cat === "done") {
+    queueMail(after.customer.email, `[${key}] Ihre Anfrage wurde gelöst`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`, title: `Ihre Anfrage „${after.summary}“ wurde gelöst.`, lines: ["Falls noch etwas offen ist, antworten Sie einfach über den Link – die Anfrage wird dann wieder geöffnet."], button: { url: link, label: "Anfrage ansehen" }, footer: `Vorgang ${key}` }));
+  }
+}
+const mailQueue = [];
+function queueMail(to, subject, html) { mailQueue.push({ to, subject, html }); }
+async function flushMailQueue() {
+  while (mailQueue.length) { const m = mailQueue.shift(); try { await mailer.send(m); log(`E-Mail gesendet an ${m.to}: ${m.subject}`); } catch (e) { log("E-Mail-Fehler:", e.message); } }
+}
+
+/* ---------- Hintergrundaufgaben ---------- */
+/** Fristen und SLA prüfen – erzeugt Benachrichtigungen genau einmal (feste IDs). */
+function deadlineJob() {
+  const t = S.today(); let created = 0;
+  store.tx(() => {
+    for (const i of store.all("issues")) {
+      const p = projectById(i.projectId); if (!p || S.statusInfo(p, i.status).cat === "done") continue;
+      const key = issueKey(i);
+      if (i.dueDate && i.type !== "EPIC") {
+        const d = S.daysBetween(t, i.dueDate);
+        if (d < 0) for (const u of new Set([i.assigneeId, i.reporterId].filter(Boolean))) created += createNotification(u, "overdue", `Überfällig: ${key} ${i.summary}`, `Fällig war ${i.dueDate.split("-").reverse().join(".")}.`, i.id, `od:${i.id}:${i.dueDate}`);
+        else if (d <= 2) { const u = i.assigneeId || i.reporterId; if (u) created += createNotification(u, "due", `Bald fällig: ${key} ${i.summary}`, `Fällig am ${i.dueDate.split("-").reverse().join(".")}.`, i.id, `ds:${i.id}:${i.dueDate}`); }
+      }
+      for (const kind of ["first", "resolve"]) {
+        const s = S.slaCompute(i, p, kind); if (!s || s.stopped) continue;
+        const who = i.assigneeId || p.leadId; if (!who) continue;
+        const name = kind === "first" ? "Erste Antwort" : "Lösung";
+        if (s.breached) created += createNotification(who, "sla", `SLA verletzt (${name}): ${key}`, i.summary, i.id, `slab:${kind}:${i.id}:${i.priority}`);
+        else if (s.risk) created += createNotification(who, "sla", `SLA gefährdet (${name}): ${key}`, `${i.summary} – noch ${S.fmtDur(s.remaining)}`, i.id, `slar:${kind}:${i.id}:${i.priority}`);
+      }
+    }
+  });
+  if (created) broadcast();
+}
+/** Benachrichtigungen per E-Mail (gebündelt je Person, nur der letzten 24 h). */
+async function notificationMailJob() {
+  if (!mailer.configured) return;
+  const sent = new Set(store.db.prepare("SELECT notification_id FROM mail_log").all().map((r) => r.notification_id));
+  const since = Date.now() - 864e5; const byUser = new Map();
+  for (const n of store.all("notifications")) {
+    if (sent.has(n.id) || n.read || new Date(n.at).getTime() < since) continue;
+    (byUser.get(n.userId) || byUser.set(n.userId, []).get(n.userId)).push(n);
+  }
+  const mark = store.db.prepare("INSERT OR IGNORE INTO mail_log (notification_id, sent_at) VALUES (?, ?)");
+  for (const [userId, list] of byUser) {
+    const u = userById(userId); list.forEach((n) => mark.run(n.id, Date.now()));
+    if (!u || !u.active || u.notifyEmail === false || !u.email) continue;
+    const items = list.map((n) => ({ title: n.title, text: n.text, url: n.issueId ? `${CFG.appUrl}/#/issue/${(() => { const i = store.get("issues", n.issueId); return i ? issueKey(i) : ""; })()}` : CFG.appUrl }));
+    const subject = list.length === 1 ? `[${CFG.company}] ${list[0].title}` : `[${CFG.company}] ${list.length} neue Benachrichtigungen`;
+    queueMail(u.email, subject, mailTemplate({ company: CFG.company, greeting: `Hallo ${u.name.split(" ")[0]},`, title: list.length === 1 ? list[0].title : `${list.length} neue Benachrichtigungen`, items, button: { url: CFG.appUrl, label: "GF Tracker öffnen" }, footer: "E-Mail-Benachrichtigungen können Sie in den Einstellungen abschalten." }));
+  }
+  await flushMailQueue();
+}
+function backupJob() {
+  const t = S.today(); const file = path.join(CFG.dataDir, "backups", `tracker-${t}.db`);
+  if (fs.existsSync(file)) return;
+  try {
+    store.backup(file); log(`Sicherung erstellt: ${file}`);
+    const files = fs.readdirSync(path.join(CFG.dataDir, "backups")).filter((f) => /^tracker-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort();
+    for (const f of files.slice(0, Math.max(0, files.length - CFG.backupKeep))) fs.unlinkSync(path.join(CFG.dataDir, "backups", f));
+  } catch (e) { log("Sicherung fehlgeschlagen:", e.message); }
+}
+
+/* ---------- Kundenportal ---------- */
+function portalView(issue) {
+  const p = projectById(issue.projectId); const st = S.statusInfo(p, issue.status);
+  return { key: issueKey(issue), summary: issue.summary, description: issue.description, type: issue.type, status: st.name, statusCat: st.cat, closed: issue.status === "CLOSED", createdAt: issue.createdAt,
+    comments: issue.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, text: c.text, fromCustomer: !c.userId, author: c.userId ? `${userById(c.userId)?.name || "Service"} (Service)` : c.author || "Sie" })) };
+}
+const str = (v, max) => String(v ?? "").trim().slice(0, max);
+async function portalCreate(req) {
+  const ip = clientIp(req); if (!portalLimiter.check(ip)) throw new HttpError(429, "Zu viele Anfragen. Bitte in einigen Minuten erneut versuchen.");
+  const b = await readJson(req, 64e3);
+  if (b.website) throw new HttpError(400, "Ungültige Anfrage."); // Honeypot gegen Spam-Bots
+  const p = store.all("projects").find((x) => x.key === str(b.projectKey, 10).toUpperCase() && x.type === "service");
+  if (!p) throw new HttpError(400, "Service-Bereich nicht gefunden.");
+  const type = S.REQUEST_TYPES.some((r) => r.id === b.type) ? b.type : null; if (!type) throw new HttpError(400, "Bitte eine Anfrageart wählen.");
+  const name = str(b.name, 120), company = str(b.company, 160), email = str(b.email, 200).toLowerCase(), summary = str(b.summary, 200), description = str(b.description, 8000);
+  if (!name || !company || !summary || !description) throw new HttpError(400, "Bitte alle Pflichtfelder ausfüllen.");
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Bitte eine gültige E-Mail-Adresse angeben.");
+  const priority = S.URGENCY.some((u) => u.id === b.urgency) ? b.urgency : "MEDIUM";
+  portalLimiter.hit(ip);
+  const issue = store.tx(() => {
+    const i = S.newIssue({ project: p, no: store.reserveNumber(p.id), type, summary, priority, reporterId: null, labels: ["portal"],
+      description: [str(b.asset, 200) ? `Anlage/Standort: ${str(b.asset, 200)}` : "", description].filter(Boolean).join("\n\n"),
+      customer: { name, company, email, phone: str(b.phone, 60) } });
+    store.put("issues", i);
+    const agents = store.all("users").filter((u) => u.active && (u.role === "AGENT" || u.id === p.leadId));
+    for (const u of agents) createNotification(u.id, "new", `Neue Anfrage: ${p.key}-${i.no}`, `${company} · ${name}: ${summary}`, i.id);
+    return i;
+  });
+  broadcast();
+  const link = portalLink(issue.id); const key = issueKey(issue);
+  if (mailer.configured) {
+    queueMail(email, `[${key}] Ihre Anfrage ist eingegangen`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${name},`, title: `Vielen Dank – Ihre Anfrage „${summary}“ ist eingegangen.`, lines: [`Ihre Vorgangsnummer: ${key}`, "Über den folgenden Link sehen Sie jederzeit den Bearbeitungsstand und können uns antworten."], button: { url: link, label: "Anfrage ansehen" }, footer: "Bitte bewahren Sie diese E-Mail auf." }));
+    flushMailQueue();
+  }
+  return { key, token: link.split("/").pop(), url: link, mailSent: mailer.configured };
+}
+function portalIssue(token) {
+  const row = store.db.prepare("SELECT issue_id FROM portal_tokens WHERE token_hash = ?").get(sha256(String(token)));
+  const issue = row && store.get("issues", row.issue_id);
+  if (!issue) throw new HttpError(404, "Anfrage nicht gefunden. Bitte den Link aus der Bestätigungs-E-Mail verwenden.");
+  return issue;
+}
+async function portalReply(req, token) {
+  const ip = clientIp(req); if (!portalLimiter.check(`r:${ip}`)) throw new HttpError(429, "Zu viele Nachrichten. Bitte später erneut versuchen.");
+  const b = await readJson(req, 32e3); const text = str(b.text, 8000); if (!text) throw new HttpError(400, "Bitte eine Nachricht eingeben.");
+  portalLimiter.hit(`r:${ip}`);
+  const issue = store.tx(() => {
+    const i = portalIssue(token); const p = projectById(i.projectId);
+    if (i.status === "CLOSED") throw new HttpError(409, "Diese Anfrage ist abgeschlossen. Bitte stellen Sie eine neue Anfrage.");
+    const now = new Date().toISOString();
+    i.comments.push({ id: S.uid(), userId: null, author: i.customer?.name || "Kunde", text, at: now, internal: false });
+    if (i.status === "WAITING" || S.statusInfo(p, i.status).cat === "done") {
+      const from = i.status; i.status = "WORKING"; S.applyTransition(i, p, from, "WORKING", now);
+      i.history.unshift({ id: S.uid(), at: now, userId: null, field: "Status", from: S.statusInfo(p, from).name, to: "In Bearbeitung" });
+    }
+    i.updatedAt = now; store.put("issues", i);
+    const who = i.assigneeId || p.leadId; if (who) createNotification(who, "comment", `Kunde hat geantwortet: ${issueKey(i)}`, `${i.customer?.name}: ${text.slice(0, 120)}`, i.id);
+    return i;
+  });
+  broadcast();
+  return portalView(issue);
+}
+
+/* ---------- Admin: Import/Export ---------- */
+function exportAll() {
+  const out = { format: "gf-tracker", version: 1, exportedAt: new Date().toISOString() };
+  for (const t of COLLECTIONS) if (t !== "notifications") out[t] = store.all(t);
+  out.users = out.users.map(publicUser);
+  return out;
+}
+function importAll(data, admin) {
+  if (!data || !Array.isArray(data.issues) || !Array.isArray(data.projects) || !Array.isArray(data.users)) throw new HttpError(400, "Unbekanntes Format. Erwartet wird eine Sicherung des GF Trackers.");
+  store.tx(() => {
+    for (const t of COLLECTIONS) for (const o of store.all(t)) store.del(t, o.id);
+    const users = data.users.map((u) => ({ ...publicUser({ notifyEmail: true, active: true, color: S.hashColor(u.email), ...u }), email: String(u.email).toLowerCase() }));
+    if (!users.some((u) => u.id === admin.id)) users.push(publicUser(admin));
+    for (const u of users) store.put("users", u);
+    for (const t of ["projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) store.put(t, o);
+    store.db.exec("DELETE FROM counters");
+  });
+  broadcast();
+  const missing = store.all("users").filter((u) => !store.db.prepare("SELECT 1 FROM accounts WHERE user_id = ?").get(u.id));
+  return { imported: data.issues.length, usersWithoutPassword: missing.map((u) => u.email) };
+}
+
+/* ---------- Routen ---------- */
+async function handleApi(req, res, url, session) {
+  const m = req.method; const p = url.pathname;
+  const user = session ? userById(session.userId) : null;
+  const needUser = () => { if (!user || !user.active) throw new HttpError(401, "Nicht angemeldet."); return user; };
+  const needAdmin = () => { needUser(); if (user.role !== "ADMIN") throw new HttpError(403, "Nur für Administratoren."); return user; };
+  if (m !== "GET" && req.headers["x-gft"] !== "1") throw new HttpError(403, "Ungültige Anfrage (CSRF-Schutz).");
+
+  if (p === "/api/health") return { ok: true, rev: store.rev(), mail: mailer.configured };
+  if (p === "/api/login" && m === "POST") {
+    const b = await readJson(req, 8e3); const email = str(b.email, 200).toLowerCase(); const key = `${clientIp(req)}|${email}`;
+    if (!loginLimiter.check(key)) throw new HttpError(429, "Zu viele Fehlversuche. Bitte 15 Minuten warten.");
+    const acc = store.db.prepare("SELECT user_id, password_hash FROM accounts WHERE email = ?").get(email);
+    const u = acc && userById(acc.user_id);
+    const ok = verifyPassword(String(b.password || ""), acc?.password_hash || DUMMY_HASH); // gleiche Rechenzeit auch bei unbekannter E-Mail
+    if (!acc || !u || !u.active || !ok) { loginLimiter.hit(key); throw new HttpError(401, "E-Mail oder Passwort falsch."); }
+    loginLimiter.reset(key); log(`Anmeldung: ${email}`);
+    return { __cookie: sessions.create(u.id), body: { user: publicUser(u) } };
+  }
+  if (p === "/api/logout" && m === "POST") return { __cookie: sessions.destroy(req), body: { ok: true } };
+
+  // Kundenportal (öffentlich)
+  if (p === "/api/portal/config") return { company: CFG.company, projects: store.all("projects").filter((x) => x.type === "service").map((x) => ({ key: x.key, name: x.name })), requestTypes: S.REQUEST_TYPES, urgency: S.URGENCY };
+  if (p === "/api/portal/requests" && m === "POST") return await portalCreate(req);
+  let pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})$/);
+  if (pm && m === "GET") return portalView(portalIssue(pm[1]));
+  pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})\/comments$/);
+  if (pm && m === "POST") return await portalReply(req, pm[1]);
+
+  // Ab hier nur angemeldet
+  needUser();
+  if (p === "/api/me" && m === "GET") return { user: publicUser(user), mail: mailer.configured, company: CFG.company, appUrl: CFG.appUrl };
+  if (p === "/api/me/password" && m === "POST") {
+    const b = await readJson(req, 8e3); const acc = store.db.prepare("SELECT password_hash FROM accounts WHERE user_id = ?").get(user.id);
+    if (!acc || !verifyPassword(String(b.current || ""), acc.password_hash)) throw new HttpError(400, "Das aktuelle Passwort ist falsch.");
+    const err = validatePassword(b.next); if (err) throw new HttpError(400, err);
+    store.db.prepare("UPDATE accounts SET password_hash = ? WHERE user_id = ?").run(hashPassword(b.next), user.id);
+    store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash);
+    return { ok: true };
+  }
+  if (p === "/api/state" && m === "GET") {
+    const out = { rev: store.rev() };
+    for (const t of COLLECTIONS) out[t] = store.all(t);
+    out.users = out.users.map(publicUser);
+    out.notifications = out.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300);
+    return out;
+  }
+  if (p === "/api/changes" && m === "GET") {
+    const since = Number(url.searchParams.get("since") || 0);
+    const changes = store.since(since).filter((c) => c.type !== "notifications" || c.data.userId === user.id)
+      .map((c) => (c.deleted ? { type: c.type, id: c.id, deleted: true } : { type: c.type, id: c.id, data: c.type === "users" ? publicUser(c.data) : c.data }));
+    return { rev: store.rev(), changes };
+  }
+  if (p === "/api/sync" && m === "POST") {
+    const b = await readJson(req); if (!Array.isArray(b.ops) || b.ops.length > 500) throw new HttpError(400, "Ungültige Änderungen.");
+    const effects = { issues: [], deactivated: [] }; const results = [];
+    store.tx(() => { for (const op of b.ops) { try { results.push(applyOp(user, op, effects)); } catch (e) { if (!(e instanceof HttpError)) throw e; const cur = store.get(op.type, op.id); results.push({ type: op.type, id: op.id, error: e.message, ...(cur ? { data: op.type === "users" ? publicUser(cur) : cur } : { deleted: true }) }); } } });
+    effects.deactivated.forEach((id) => sessions.destroyUser(id));
+    effects.issues.forEach(customerMails); flushMailQueue();
+    broadcast();
+    return { rev: store.rev(), results };
+  }
+  pm = p.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/reserve$/);
+  if (pm && m === "POST") { if (!projectById(pm[1])) throw new HttpError(404, "Projekt nicht gefunden."); return { no: store.tx(() => store.reserveNumber(pm[1])) }; }
+  if (p === "/api/events" && m === "GET") return { __sse: true };
+
+  // Administration
+  if (p === "/api/admin/users" && m === "POST") {
+    needAdmin(); const b = await readJson(req, 8e3);
+    const name = str(b.name, 120), email = str(b.email, 200).toLowerCase();
+    if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Bitte Name und gültige E-Mail angeben.");
+    if (!S.ROLES[b.role]) throw new HttpError(400, "Unbekannte Rolle.");
+    const err = validatePassword(b.password); if (err) throw new HttpError(400, err);
+    if (store.db.prepare("SELECT 1 FROM accounts WHERE email = ?").get(email)) throw new HttpError(409, "Diese E-Mail-Adresse hat bereits einen Zugang.");
+    const existing = store.all("users").find((u) => u.email.toLowerCase() === email);
+    const u = existing ? { ...existing, name, role: b.role, active: true } : { id: S.uid(), name, email, role: b.role, active: true, color: S.hashColor(email), notifyEmail: true };
+    store.tx(() => { store.put("users", u); store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(u.id, email, hashPassword(b.password), new Date().toISOString()); });
+    broadcast(); log(`Benutzer angelegt: ${email} (${b.role}) durch ${user.email}`);
+    return { user: publicUser(u) };
+  }
+  pm = p.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/password$/);
+  if (pm && m === "POST") {
+    needAdmin(); const b = await readJson(req, 8e3); const target = userById(pm[1]); if (!target) throw new HttpError(404, "Benutzer nicht gefunden.");
+    const err = validatePassword(b.password); if (err) throw new HttpError(400, err);
+    const h = hashPassword(b.password);
+    const exists = store.db.prepare("SELECT 1 FROM accounts WHERE user_id = ?").get(target.id);
+    if (exists) store.db.prepare("UPDATE accounts SET password_hash = ? WHERE user_id = ?").run(h, target.id);
+    else store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(target.id, target.email.toLowerCase(), h, new Date().toISOString());
+    sessions.destroyUser(target.id); log(`Passwort gesetzt für ${target.email} durch ${user.email}`);
+    return { ok: true };
+  }
+  if (p === "/api/admin/export" && m === "GET") { needAdmin(); return { __download: `gf-tracker-sicherung-${S.today()}.json`, body: exportAll() }; }
+  if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 50e6); return importAll(b, user); }
+  if (p === "/api/admin/mail-test" && m === "POST") {
+    needAdmin(); if (!mailer.configured) throw new HttpError(409, "E-Mail ist nicht eingerichtet (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, MAIL_SENDER).");
+    try { await mailer.send({ to: user.email, subject: `[${CFG.company}] Test-E-Mail`, html: mailTemplate({ company: CFG.company, title: "Der E-Mail-Versand funktioniert.", lines: [`Absender: ${env.MAIL_SENDER}`] }) }); }
+    catch (e) { throw new HttpError(502, e.message); }
+    return { ok: true, to: user.email };
+  }
+  throw new HttpError(404, "Unbekannte Schnittstelle.");
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, "http://localhost");
+  try {
+    const session = sessions.resolve(req);
+    if (url.pathname.startsWith("/api/")) {
+      const out = await handleApi(req, res, url, session);
+      const extra = session?.setCookie ? { "Set-Cookie": session.setCookie } : {};
+      if (out && out.__sse) {
+        res.writeHead(200, { "Content-Type": "text/event-stream", "Cache-Control": "no-store", Connection: "keep-alive", "X-Accel-Buffering": "no", ...extra });
+        res.write(`event: rev\ndata: ${store.rev()}\n\n`);
+        const c = { res, userId: session.userId }; clients.add(c); req.on("close", () => clients.delete(c));
+        return;
+      }
+      if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });
+      if (out && out.__download) return send(res, 200, JSON.stringify(out.body, null, 2), { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${out.__download}"`, "Cache-Control": "no-store", ...extra });
+      return send(res, 200, out, extra);
+    }
+    if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Methode nicht erlaubt", { "Content-Type": "text/plain; charset=utf-8" });
+    if (url.pathname === "/" || url.pathname === "/index.html") {
+      if (!session || !userById(session.userId)?.active) return send(res, 302, "", { Location: "/login" });
+      return serveFile(req, res, "index.html");
+    }
+    if (url.pathname === "/login") return serveFile(req, res, "login.html");
+    if (url.pathname === "/portal" || url.pathname.startsWith("/portal/")) return serveFile(req, res, "portal.html");
+    return serveFile(req, res, decodeURIComponent(url.pathname).replace(/^\/+/, ""));
+  } catch (e) {
+    if (e instanceof HttpError) return send(res, e.status, { error: e.message });
+    log("Fehler:", e.stack || e); return send(res, 500, { error: "Interner Serverfehler." });
+  }
+});
+
+setupInitialData();
+deadlineJob(); backupJob();
+setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); }, 60e3).unref();
+setInterval(() => { backupJob(); sessions.cleanup(); }, 60 * 60e3).unref();
+server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
+const shutdown = () => { log("Beende…"); for (const c of clients) c.res.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
+process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);

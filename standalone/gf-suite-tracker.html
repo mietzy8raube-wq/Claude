@@ -249,6 +249,8 @@ tbody tr.click { cursor: pointer; } tbody tr.click:hover { background: var(--sur
 @media (max-width: 860px) { .hide-m { display: none !important; } #whoami { max-width: 90px !important; } }
 .project-tabs { display: none; gap: 6px; overflow-x: auto; margin-bottom: 14px; }
 @media print { .topnav, .psidebar { display: none !important; } }
+.side-layout { display: grid; gap: 16px; grid-template-columns: 220px minmax(0, 1fr); align-items: start; }
+@media (max-width: 860px) { .side-layout { grid-template-columns: minmax(0, 1fr); } }
 </style>
 </head>
 <body>
@@ -1057,7 +1059,7 @@ function viewFilters(params) {
   let sortField = null, sortDir = "DESC"; try { const o = parseJql(jql).order[0]; if (o) { sortField = o.f; sortDir = o.dir; } } catch {}
   ui.lastResults = list;
   return `<div class="page-head"><h1>Vorgänge suchen</h1><div class="row"><button class="btn" data-act="save-filter">${icon("star")} Filter speichern</button><button class="btn" data-act="export-csv">${icon("download")} CSV / Excel</button></div></div>
-    <div class="grid" style="grid-template-columns:220px minmax(0,1fr);align-items:start" id="filter-layout">
+    <div class="side-layout" id="filter-layout">
       <div class="card pad queue-nav"><div class="small b muted" style="margin-bottom:6px">STANDARDFILTER</div>${DEFAULT_FILTERS.map((x) => `<button class="${fid === x.id || (!fid && !params.get("jql") && x.id === "f-mine") ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}">${esc(x.name)}</button>`).join("")}
         <div class="small b muted" style="margin:12px 0 6px">GESPEICHERT</div>${db.filters.length ? db.filters.map((x) => `<div class="row nowrap"><button class="${fid === x.id ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}" style="flex:1">${esc(x.name)}</button><button class="btn subtle sm icon" data-act="delete-filter" data-id="${x.id}" aria-label="Filter löschen">${icon("x")}</button></div>`).join("") : '<p class="small muted" style="margin:0 10px">Noch keine.</p>'}</div>
       <div>
@@ -1087,7 +1089,7 @@ function viewQueue(p) {
   const q = QUEUES.find((x) => x.id === ui.queue) || QUEUES[0];
   const list = items.filter(q.fn).sort((a, b) => { const sa = slaInfo(a, "resolve"), sb = slaInfo(b, "resolve"); return (sa?.stopped ? 1e15 : sa?.remaining ?? 1e15) - (sb?.stopped ? 1e15 : sb?.remaining ?? 1e15); });
   return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Warteschlangen</h1></div><div class="row"><a class="btn" href="#/portal/${p.key}">${icon("portal")} Kundenportal</a><button class="btn primary" data-act="create" data-project="${p.id}">${icon("plus")} Anfrage</button></div></div>
-    <div class="grid" style="grid-template-columns:210px minmax(0,1fr);align-items:start" id="queue-layout">
+    <div class="side-layout" id="queue-layout">
       <div class="card pad queue-nav">${QUEUES.map((x) => { const n = items.filter(x.fn).length; return `<button class="${x.id === q.id ? "on" : ""}" data-act="queue" data-v="${x.id}"><span>${esc(x.name)}</span><span class="${x.id === "risk" && n ? "chip red" : "muted"}">${n}</span></button>`; }).join("")}
         <p class="small muted" style="margin:12px 10px 0">SLA-Ziele (Kalenderzeit): ${Object.entries(SLA).map(([k, v]) => `${PRIOS[k].label} ${v[0]} h / ${v[1] >= 24 ? v[1] / 24 + " T" : v[1] + " h"}`).join(" · ")}. „Wartet auf Kunde“ pausiert die Lösungszeit.</p></div>
       <div>${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Typ</th><th>Schlüssel</th><th>Anfrage / Kunde</th><th>Erste Antwort</th><th>Lösung</th><th>Status</th><th>Prio.</th><th></th></tr></thead><tbody>

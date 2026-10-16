@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Anmelden · GF Tracker</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app.css">
+<style>
+  body { display: grid; place-items: center; min-height: 100vh; padding: 16px; }
+  .login { width: min(400px, 100%); padding: 28px; }
+  .login h1 { font-size: 22px; margin: 14px 0 4px; }
+</style>
+</head>
+<body>
+<main class="card login">
+  <div class="logo"><span class="mark"><img src="/favicon.svg" alt="" width="28" height="28"></span>GF Tracker</div>
+  <h1>Anmelden</h1>
+  <p class="muted" style="margin:0 0 18px">Melden Sie sich mit Ihrer geschäftlichen E-Mail-Adresse an.</p>
+  <form id="login" class="grid" style="gap:12px">
+    <label class="f">E-Mail<input type="email" name="email" autocomplete="username" required autofocus></label>
+    <label class="f">Passwort<input type="password" name="password" autocomplete="current-password" required></label>
+    <div id="err" class="note err" hidden></div>
+    <button class="btn primary" type="submit" style="height:38px">Anmelden</button>
+  </form>
+  <p class="small muted" style="margin:18px 0 0">Passwort vergessen? Bitte an die Administration wenden.<br>Kunden: <a href="/portal">zum Service-Portal</a></p>
+</main>
+<script src="/login.js"></script>
+</body>
+</html>

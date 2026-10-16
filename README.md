@@ -1,5 +1,10 @@
 # GF-Suite — Zentrale Unternehmensübersicht
 
+> **Neu: GF Tracker** – das mehrbenutzerfähige Ticketsystem nach Jira-Vorbild
+> mit Service-Desk und Kundenportal liegt im Ordner [`tracker/`](tracker/README.md)
+> (Architektur und Betrieb: [`tracker/ARCHITEKTUR.md`](tracker/ARCHITEKTUR.md)).
+> Eigenständige Einzel-HTML-Versionen ohne Server: [`standalone/`](standalone/).
+
 Eine zentrale Plattform für zwei Geschäftsführer: Aufgabenmanagement, Projekte,
 Entscheidungen, Meetings, Kennzahlen, Unternehmensinformationen, sowie
 integrierter Outlook- und Excel-Anbindung.
