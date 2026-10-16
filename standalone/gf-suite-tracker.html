@@ -1,0 +1,1578 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GF-Suite Tracker</title>
+<meta name="description" content="Vorgangs- und Projektverfolgung nach Jira-Vorbild mit Service-Desk – eigenständige HTML-Version, läuft komplett im Browser.">
+<style>
+:root {
+  --bg: #f7f8f9; --surface: #ffffff; --surface-2: #f1f2f4; --fg: #172b4d; --fg-2: #44546f; --muted: #626f86; --border: #dcdfe4;
+  --primary: #0c66e4; --primary-hover: #0055cc; --primary-fg: #fff; --primary-soft: #e9f2ff; --sel: #e9f2ff;
+  --todo-bg: #e6e8ec; --todo-fg: #44546f; --prog-bg: #dbe9ff; --prog-fg: #0b5bd0; --done-bg: #d6f5e6; --done-fg: #1a6a45;
+  --danger: #c9372c; --danger-soft: #ffeceb; --warn: #8a5b00; --warn-soft: #fff4d6; --ok: #1a6a45; --ok-soft: #dcfff1;
+  --s1: #2a78d6; --s2: #eb6834; --ref: #8590a2; --grid: #e6e8ec;
+  --nav-h: 56px; --radius: 8px; --shadow: 0 1px 1px rgba(9,30,66,.13), 0 0 1px rgba(9,30,66,.2);
+  --shadow-lg: 0 8px 24px rgba(9,30,66,.2), 0 0 1px rgba(9,30,66,.3);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161a1d; --surface: #1d2125; --surface-2: #22272b; --fg: #dee4ea; --fg-2: #b6c2cf; --muted: #8c9bab; --border: #343b42;
+    --primary: #579dff; --primary-hover: #85b8ff; --primary-fg: #1d2125; --primary-soft: #1c2b41; --sel: #1c2b41;
+    --todo-bg: #2c333a; --todo-fg: #b6c2cf; --prog-bg: #12325c; --prog-fg: #85b8ff; --done-bg: #164b35; --done-fg: #7ee2b8;
+    --danger: #fd9891; --danger-soft: #42221f; --warn: #f5cd47; --warn-soft: #3a2f13; --ok: #7ee2b8; --ok-soft: #163a2a;
+    --s1: #3987e5; --s2: #d95926; --ref: #738496; --grid: #2c333a;
+    --shadow: 0 1px 1px rgba(3,4,4,.5), 0 0 1px rgba(3,4,4,.5); --shadow-lg: 0 8px 24px rgba(3,4,4,.6); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161a1d; --surface: #1d2125; --surface-2: #22272b; --fg: #dee4ea; --fg-2: #b6c2cf; --muted: #8c9bab; --border: #343b42;
+  --primary: #579dff; --primary-hover: #85b8ff; --primary-fg: #1d2125; --primary-soft: #1c2b41; --sel: #1c2b41;
+  --todo-bg: #2c333a; --todo-fg: #b6c2cf; --prog-bg: #12325c; --prog-fg: #85b8ff; --done-bg: #164b35; --done-fg: #7ee2b8;
+  --danger: #fd9891; --danger-soft: #42221f; --warn: #f5cd47; --warn-soft: #3a2f13; --ok: #7ee2b8; --ok-soft: #163a2a;
+  --s1: #3987e5; --s2: #d95926; --ref: #738496; --grid: #2c333a;
+  --shadow: 0 1px 1px rgba(3,4,4,.5), 0 0 1px rgba(3,4,4,.5); --shadow-lg: 0 8px 24px rgba(3,4,4,.6); color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.45 "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--primary); text-decoration: none; } a:hover { text-decoration: underline; }
+h1, h2, h3 { margin: 0; letter-spacing: -.01em; }
+svg.i { width: 16px; height: 16px; flex-shrink: 0; }
+/* Top-Navigation */
+.topnav { position: sticky; top: 0; z-index: 30; height: var(--nav-h); background: var(--surface); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 4px; padding: 0 12px; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--fg); margin-right: 10px; white-space: nowrap; }
+.logo .mark { width: 28px; height: 28px; border-radius: 7px; background: linear-gradient(135deg, #0c66e4, #6250d6); display: grid; place-items: center; color: #fff; }
+.topnav .navlink { padding: 6px 10px; border-radius: 6px; color: var(--fg-2); font-weight: 500; white-space: nowrap; }
+.topnav .navlink:hover { background: var(--surface-2); text-decoration: none; }
+.topnav .navlink.on { color: var(--primary); box-shadow: inset 0 -3px 0 var(--primary); border-radius: 0; }
+.topnav .search { position: relative; margin-left: auto; width: 240px; }
+.topnav .search input { padding-left: 30px; height: 34px; }
+.topnav .search svg { position: absolute; left: 9px; top: 9px; color: var(--muted); }
+.hamb { display: none; }
+/* Layout */
+.layout { display: flex; min-height: calc(100vh - var(--nav-h)); }
+.psidebar { width: 236px; flex-shrink: 0; background: var(--surface); border-right: 1px solid var(--border); padding: 16px 10px; position: sticky; top: var(--nav-h); height: calc(100vh - var(--nav-h)); overflow-y: auto; }
+.psidebar .phead { display: flex; gap: 10px; align-items: center; padding: 0 6px 16px; }
+.pavatar { width: 32px; height: 32px; border-radius: 6px; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 12px; flex-shrink: 0; }
+.psidebar .label { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; padding: 10px 10px 4px; }
+.psidebar a { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 6px; color: var(--fg-2); font-weight: 500; }
+.psidebar a:hover { background: var(--surface-2); text-decoration: none; }
+.psidebar a.on { background: var(--sel); color: var(--primary); }
+.content { flex: 1; min-width: 0; padding: 22px 28px 60px; }
+.page-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.page-head h1 { font-size: 22px; font-weight: 650; }
+.crumbs { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+/* Bausteine */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 4px; border: 0; background: var(--surface-2); color: var(--fg-2); font-weight: 500; cursor: pointer; white-space: nowrap; }
+.btn:hover { filter: brightness(.96); text-decoration: none; }
+.btn.primary { background: var(--primary); color: var(--primary-fg); }
+.btn.primary:hover { background: var(--primary-hover); filter: none; }
+.btn.subtle { background: transparent; } .btn.subtle:hover { background: var(--surface-2); }
+.btn.danger { color: var(--danger); }
+.btn.sm { height: 26px; padding: 0 8px; font-size: 13px; }
+.btn.icon { width: 32px; padding: 0; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn svg { width: 16px; height: 16px; }
+input[type=text], input[type=email], input[type=date], input[type=number], input[type=search], input[type=tel], select, textarea {
+  border: 2px solid var(--border); background: var(--surface); border-radius: 4px; padding: 5px 8px; width: 100%; min-width: 0; }
+input:hover, select:hover, textarea:hover { background: var(--surface-2); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); background: var(--surface); }
+.btn:focus-visible, a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+textarea { resize: vertical; }
+label.f { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--fg-2); }
+label.f .req { color: var(--danger); }
+.card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); }
+.pad { padding: 16px; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: repeat(2, minmax(0,1fr)); } .g3 { grid-template-columns: repeat(3, minmax(0,1fr)); } .g4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.nowrap { flex-wrap: nowrap; }
+.sp { flex: 1; }
+.muted { color: var(--muted); } .small { font-size: 12px; } .b { font-weight: 600; }
+.trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.key { font-size: 12px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+a.key:hover { color: var(--primary); }
+.lozenge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; padding: 0 5px; border-radius: 3px; line-height: 18px; white-space: nowrap; }
+.cat-todo { background: var(--todo-bg); color: var(--todo-fg); } .cat-progress { background: var(--prog-bg); color: var(--prog-fg); } .cat-done { background: var(--done-bg); color: var(--done-fg); }
+.tico { width: 16px; height: 16px; border-radius: 3px; display: inline-grid; place-items: center; flex-shrink: 0; }
+.tico svg { width: 11px; height: 11px; color: #fff; }
+.pico svg { width: 16px; height: 16px; }
+.avatar { width: 24px; height: 24px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+.avatar.lg { width: 32px; height: 32px; font-size: 12px; }
+.avatar.none { background: var(--surface-2); color: var(--muted); border: 1px dashed var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 3px; line-height: 18px; white-space: nowrap; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+.chip.gray { background: var(--surface-2); color: var(--fg-2); }
+.chip.red { background: var(--danger-soft); color: var(--danger); } .chip.yellow { background: var(--warn-soft); color: var(--warn); } .chip.green { background: var(--ok-soft); color: var(--ok); }
+.label-chip { background: var(--surface-2); border: 1px solid var(--border); color: var(--fg-2); font-size: 12px; border-radius: 3px; padding: 0 6px; }
+.empty { text-align: center; color: var(--muted); padding: 40px 16px; border: 2px dashed var(--border); border-radius: 8px; }
+.note { padding: 10px 12px; border-radius: 6px; font-size: 13px; }
+.note.info { background: var(--primary-soft); color: var(--fg); } .note.warn { background: var(--warn-soft); color: var(--warn); } .note.err { background: var(--danger-soft); color: var(--danger); }
+.tabs { display: flex; gap: 4px; border-bottom: 2px solid var(--border); margin-bottom: 14px; }
+.tabs button { border: 0; background: none; padding: 8px 4px; margin-right: 12px; color: var(--muted); font-weight: 600; cursor: pointer; margin-bottom: -2px; border-bottom: 2px solid transparent; }
+.tabs button.on { color: var(--primary); border-bottom-color: var(--primary); }
+/* Tabellen */
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 8px 10px; border-bottom: 2px solid var(--border); white-space: nowrap; }
+th[data-sort] { cursor: pointer; } th[data-sort]:hover { color: var(--fg); }
+td { padding: 7px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tbody tr.click { cursor: pointer; } tbody tr.click:hover { background: var(--surface-2); }
+/* Board */
+.board-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.board-tools input[type=search] { width: 200px; }
+.avatars-filter { display: flex; }
+.avatars-filter button { border: 2px solid var(--surface); border-radius: 50%; padding: 0; margin-left: -5px; cursor: pointer; background: none; }
+.avatars-filter button:first-child { margin-left: 0; }
+.avatars-filter button.on { border-color: var(--primary); position: relative; z-index: 1; }
+.toggle { border: 0; background: transparent; padding: 5px 9px; border-radius: 4px; cursor: pointer; font-weight: 500; color: var(--fg-2); }
+.toggle:hover { background: var(--surface-2); } .toggle.on { background: var(--sel); color: var(--primary); }
+.board { display: grid; gap: 8px; grid-auto-flow: column; grid-auto-columns: minmax(250px, 1fr); overflow-x: auto; padding-bottom: 8px; align-items: start; }
+.col { background: var(--surface-2); border-radius: 6px; padding: 8px; min-height: 120px; }
+.col.drop-on { background: var(--primary-soft); outline: 2px dashed var(--primary); }
+.col-h { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; padding: 4px 6px 10px; display: flex; gap: 6px; }
+.lane-h { display: flex; align-items: center; gap: 8px; font-weight: 600; margin: 14px 0 6px; font-size: 13px; }
+.bcard { background: var(--surface); border-radius: 4px; box-shadow: var(--shadow); padding: 10px; margin-bottom: 6px; cursor: pointer; }
+.bcard:hover { background: var(--surface-2); }
+.bcard.dragging { opacity: .4; }
+.bcard .sum { margin-bottom: 8px; line-height: 1.35; word-break: break-word; }
+.pts { background: var(--surface-2); color: var(--fg-2); border-radius: 10px; font-size: 11px; font-weight: 700; padding: 0 7px; line-height: 18px; }
+/* Backlog */
+.sprint-box { background: var(--surface-2); border-radius: 6px; padding: 10px; margin-bottom: 14px; }
+.sprint-box.drop-on { outline: 2px dashed var(--primary); background: var(--primary-soft); }
+.sprint-h { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
+.brow { display: flex; align-items: center; gap: 8px; background: var(--surface); padding: 6px 10px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.brow:first-child { border-radius: 4px 4px 0 0; } .brow:last-child { border-radius: 0 0 4px 4px; border-bottom: 0; }
+.brow:hover { background: var(--sel); }
+.brow.drop-before { box-shadow: inset 0 2px 0 var(--primary); }
+.brows { box-shadow: var(--shadow); border-radius: 4px; }
+.quick-create { display: flex; gap: 6px; margin-top: 6px; }
+/* Zeitleiste */
+.tl { position: relative; overflow-x: auto; }
+.tl-grid { display: grid; grid-template-columns: 260px 1fr; min-width: 900px; }
+.tl-name { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 6px; min-width: 0; background: var(--surface); position: sticky; left: 0; z-index: 1; }
+.tl-track { position: relative; border-bottom: 1px solid var(--border); height: 38px; }
+.tl-bar { position: absolute; top: 9px; height: 20px; border-radius: 4px; cursor: pointer; overflow: hidden; color: #fff; font-size: 11px; font-weight: 600; padding: 0 6px; line-height: 20px; white-space: nowrap; }
+.tl-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(255,255,255,.28); }
+.tl-head { position: relative; height: 30px; border-bottom: 2px solid var(--border); font-size: 11px; color: var(--muted); }
+.tl-head span { position: absolute; top: 7px; padding-left: 4px; border-left: 1px solid var(--border); height: 22px; white-space: nowrap; }
+.tl-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--s2); z-index: 0; pointer-events: none; }
+/* Charts */
+.chart { width: 100%; height: auto; display: block; overflow: visible; }
+.chart text { fill: var(--muted); font-size: 11px; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .hit { fill: transparent; }
+.chart .cross { stroke: var(--muted); stroke-width: 1; opacity: 0; pointer-events: none; }
+.chart g.col-hit:hover .cross { opacity: 1; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--fg-2); margin-bottom: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.legend i.line { height: 2px; border-radius: 0; vertical-align: 3px; width: 14px; }
+.legend i.dash { height: 0; border-top: 2px dashed var(--ref); background: none !important; vertical-align: 3px; width: 14px; }
+.hbar { display: grid; grid-template-columns: 140px 1fr 48px; gap: 8px; align-items: center; padding: 4px 0; font-size: 13px; }
+.hbar .track { height: 14px; }
+.hbar .fill { height: 14px; background: var(--s1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.stack { display: flex; height: 18px; gap: 2px; border-radius: 4px; overflow: hidden; }
+#tip { position: fixed; z-index: 90; pointer-events: none; background: var(--fg); color: var(--bg); font-size: 12px; padding: 6px 9px; border-radius: 6px; box-shadow: var(--shadow-lg); display: none; max-width: 260px; white-space: pre-line; }
+.stat { padding: 14px 16px; }
+.stat .v { font-size: 26px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.stat .l { font-size: 12px; color: var(--muted); }
+/* Modal & Vorgang */
+.overlay { position: fixed; inset: 0; background: rgba(9,30,66,.54); z-index: 50; display: none; }
+.overlay.open { display: block; }
+.modal { position: fixed; z-index: 60; left: 50%; top: 40px; transform: translateX(-50%); width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 80px); overflow-y: auto; background: var(--surface); border-radius: 8px; box-shadow: var(--shadow-lg); display: none; }
+.modal.open { display: block; }
+.modal.wide { width: min(1120px, calc(100vw - 24px)); top: 24px; max-height: calc(100vh - 48px); }
+.modal-h { display: flex; align-items: center; gap: 8px; padding: 18px 22px 6px; }
+.modal-h h2 { font-size: 20px; font-weight: 600; flex: 1; }
+.modal-b { padding: 8px 22px 16px; display: grid; gap: 14px; }
+.modal-f { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 18px; border-top: 1px solid var(--border); align-items: center; }
+.issue-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 28px; padding: 6px 22px 24px; }
+.issue-sum { font-size: 22px; font-weight: 600; border: 2px solid transparent; padding: 2px 6px; margin-left: -8px; width: calc(100% + 8px); background: transparent; }
+.issue-sum:hover { background: var(--surface-2); }
+.sec-title { font-size: 14px; font-weight: 600; margin: 4px 0 8px; display: flex; align-items: center; gap: 8px; }
+.desc-view { white-space: pre-wrap; padding: 6px 8px; margin-left: -8px; border-radius: 4px; cursor: text; min-height: 40px; word-break: break-word; }
+.desc-view:hover { background: var(--surface-2); }
+.details { border: 1px solid var(--border); border-radius: 6px; }
+.details .dh { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.drow { display: grid; grid-template-columns: 120px minmax(0,1fr); gap: 8px; align-items: center; padding: 5px 14px; font-size: 13px; }
+.drow > span:first-child { color: var(--muted); font-weight: 600; font-size: 12px; }
+.drow select, .drow input { border-color: transparent; padding: 3px 6px; }
+.drow select:hover, .drow input:hover { border-color: var(--border); }
+.status-btn { font-weight: 700; text-transform: uppercase; font-size: 12px; border: 0; border-radius: 4px; padding: 6px 10px; cursor: pointer; }
+.subrow, .linkrow { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); border-top: 0; cursor: pointer; background: var(--surface); }
+.subrow:first-child, .linkrow:first-child { border-top: 1px solid var(--border); border-radius: 4px 4px 0 0; }
+.subrow:last-child, .linkrow:last-child { border-radius: 0 0 4px 4px; }
+.subrow:hover, .linkrow:hover { background: var(--surface-2); }
+.progress { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; display: flex; gap: 2px; }
+.progress i { display: block; height: 100%; }
+.comment { display: flex; gap: 10px; padding: 8px 0; }
+.comment .body { flex: 1; min-width: 0; }
+.comment .text { white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+.comment.internal .body { background: var(--warn-soft); border-radius: 6px; padding: 6px 10px; }
+.hist { font-size: 13px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.mention { color: var(--primary); font-weight: 600; }
+/* Popover & Toast */
+.pop { position: fixed; top: calc(var(--nav-h) - 4px); right: 12px; width: min(400px, calc(100vw - 24px)); background: var(--surface); border-radius: 8px; box-shadow: var(--shadow-lg); z-index: 45; display: none; max-height: 70vh; overflow-y: auto; }
+.pop.open { display: block; }
+.notif { display: flex; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.notif:hover { background: var(--surface-2); } .notif.unread { background: var(--primary-soft); }
+.bell { position: relative; }
+.bell .n { position: absolute; top: 0; right: 0; background: var(--danger); color: #fff; font-size: 10px; font-weight: 700; min-width: 16px; height: 16px; border-radius: 8px; display: grid; place-items: center; padding: 0 4px; }
+.toasts { position: fixed; left: 20px; bottom: 20px; z-index: 95; display: grid; gap: 8px; }
+.toast { background: var(--fg); color: var(--bg); padding: 10px 14px; border-radius: 6px; box-shadow: var(--shadow-lg); font-size: 13px; max-width: 380px; }
+/* Portal */
+.portal-hero { background: linear-gradient(135deg, #0c66e4, #6250d6); color: #fff; border-radius: 10px; padding: 28px; margin-bottom: 18px; }
+.portal-hero h1 { font-size: 24px; }
+.rtype { padding: 16px; cursor: pointer; display: flex; gap: 12px; align-items: flex-start; border: 2px solid transparent; }
+.rtype:hover, .rtype.on { border-color: var(--primary); }
+.rtype .ic { width: 40px; height: 40px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; color: #fff; }
+.jql { font-family: ui-monospace, Consolas, monospace; font-size: 13px; }
+.queue-nav button { display: flex; width: 100%; text-align: left; gap: 8px; border: 0; background: none; padding: 7px 10px; border-radius: 6px; cursor: pointer; color: var(--fg-2); font-weight: 500; justify-content: space-between; }
+.queue-nav button:hover { background: var(--surface-2); } .queue-nav button.on { background: var(--sel); color: var(--primary); }
+.kbd { font-family: ui-monospace, monospace; font-size: 11px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; background: var(--surface-2); }
+@media (max-width: 1100px) { .g4 { grid-template-columns: repeat(2, minmax(0,1fr)); } .issue-wrap { grid-template-columns: minmax(0,1fr); } .topnav .search { width: 160px; } }
+@media (max-width: 860px) {
+  .hamb { display: inline-flex; }
+  .topnav .navlink, .topnav .search { display: none; }
+  .topnav.menu-open { height: auto; flex-wrap: wrap; padding-bottom: 8px; }
+  .topnav.menu-open .navlink { display: block; width: 100%; } .topnav.menu-open .search { display: block; width: 100%; order: 10; }
+  .psidebar { display: none; }
+  .content { padding: 16px 16px 50px; }
+  .g2, .g3, .g4 { grid-template-columns: minmax(0,1fr); }
+  .project-tabs { display: flex !important; }
+  .board-tools input[type=search] { width: 100%; }
+  .hbar { grid-template-columns: 90px 1fr 40px; }
+  .drow { grid-template-columns: 105px minmax(0,1fr); }
+}
+@media (max-width: 860px) { .hide-m { display: none !important; } #whoami { max-width: 90px !important; } }
+.project-tabs { display: none; gap: 6px; overflow-x: auto; margin-bottom: 14px; }
+@media print { .topnav, .psidebar { display: none !important; } }
+</style>
+</head>
+<body>
+<header class="topnav" id="topnav"></header>
+<div class="layout"><aside class="psidebar" id="psidebar" hidden></aside><main class="content" id="view"></main></div>
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true"></div>
+<div class="pop" id="notifs"></div>
+<div class="toasts" id="toasts"></div>
+<div id="tip"></div>
+<script>
+"use strict";
+/* ======================================================================
+   GF-Suite Tracker – Vorgangs- & Projektverfolgung nach Jira-Vorbild
+   inkl. Service-Desk. Eigenständig: alle Daten im localStorage.
+   ====================================================================== */
+const KEY = "gfsuite-tracker-v1";
+
+/* ---------- Stammdaten ---------- */
+const ICONS = {
+  bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" stroke="none"/>',
+  bookmark: '<path d="M6 3h12v18l-6-4-6 4z" fill="currentColor" stroke="none"/>',
+  check: '<path d="M5 12l5 5 9-10"/>',
+  bug: '<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none"/>',
+  sub: '<path d="M7 4v10h10M13 10l4 4-4 4"/>',
+  alert: '<path d="M12 3 2 21h20zM12 10v5M12 18h.01"/>',
+  help: '<path d="M9 9a3 3 0 1 1 4 2.8c-.7.3-1 .9-1 1.7V14M12 18h.01"/>',
+  wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.2L3 17.8 6.2 21l6.3-6.3a4 4 0 0 0 5.2-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/>',
+  search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M18 6 6 18M6 6l12 12"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  board: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16M15 4v16"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  backlog: '<path d="M4 6h16M4 10h16M4 14h10M4 18h7"/>',
+  timeline: '<path d="M3 6h10M7 12h11M5 18h8"/>',
+  chart: '<path d="M3 21h18M6 17V9m5 8V5m5 12v-6m4 6v-3"/>',
+  queue: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.8 4H7.2a2 2 0 0 0-1.7 1.1z"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3m0 14v3M4.2 4.2l2.1 2.1m11.4 11.4 2.1 2.1M2 12h3m14 0h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  trash: '<path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6"/>', copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', play: '<path d="M7 4v16l13-8z"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>', download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/>', star: '<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/>',
+  home: '<path d="M3 11 12 3l9 8M5 9v12h14V9"/>', folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+  filter: '<path d="M3 4h18l-7 9v6l-4 2v-8z"/>', dash: '<path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/>', portal: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  send: '<path d="m22 2-7 20-4-9-9-4zM22 2 11 13"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+};
+const icon = (n, cls = "i") => `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n] || ""}</svg>`;
+
+const TYPES = {
+  EPIC: { label: "Epic", color: "#8f5bd6", icon: "bolt" },
+  STORY: { label: "Story", color: "#1f9d55", icon: "bookmark" },
+  TASK: { label: "Aufgabe", color: "#2a78d6", icon: "check" },
+  BUG: { label: "Bug", color: "#e34948", icon: "bug" },
+  SUBTASK: { label: "Teilaufgabe", color: "#4ba3e3", icon: "sub" },
+  INCIDENT: { label: "Störung", color: "#d0352c", icon: "alert" },
+  SERVICE: { label: "Serviceanfrage", color: "#2a78d6", icon: "help" },
+  MAINT: { label: "Wartung", color: "#16946a", icon: "wrench" },
+};
+const PROJECT_TYPES = {
+  software: { label: "Software (Scrum)", types: ["STORY", "TASK", "BUG", "EPIC", "SUBTASK"], workflow: "standard" },
+  business: { label: "Business (Kanban)", types: ["TASK", "EPIC", "SUBTASK"], workflow: "standard" },
+  service: { label: "Service-Desk", types: ["INCIDENT", "SERVICE", "MAINT", "SUBTASK"], workflow: "service" },
+};
+const WORKFLOWS = {
+  standard: [{ id: "TODO", name: "Zu erledigen", cat: "todo" }, { id: "PROGRESS", name: "In Arbeit", cat: "progress" }, { id: "REVIEW", name: "In Prüfung", cat: "progress" }, { id: "DONE", name: "Fertig", cat: "done" }],
+  service: [{ id: "OPEN", name: "Offen", cat: "todo" }, { id: "WORKING", name: "In Bearbeitung", cat: "progress" }, { id: "WAITING", name: "Wartet auf Kunde", cat: "progress" }, { id: "RESOLVED", name: "Gelöst", cat: "done" }, { id: "CLOSED", name: "Geschlossen", cat: "done" }],
+};
+const CAT_LABEL = { todo: "Zu erledigen", progress: "In Arbeit", done: "Fertig" };
+const PRIOS = {
+  HIGHEST: { label: "Höchste", color: "#c9372c", rank: 5, svg: '<path d="M6 13l6-6 6 6M6 19l6-6 6 6"/>' },
+  HIGH: { label: "Hoch", color: "#e2483d", rank: 4, svg: '<path d="M6 15l6-6 6 6"/>' },
+  MEDIUM: { label: "Mittel", color: "#d39a00", rank: 3, svg: '<path d="M5 9h14M5 15h14"/>' },
+  LOW: { label: "Niedrig", color: "#2a78d6", rank: 2, svg: '<path d="M6 9l6 6 6-6"/>' },
+  LOWEST: { label: "Niedrigste", color: "#579dff", rank: 1, svg: '<path d="M6 5l6 6 6-6M6 11l6 6 6-6"/>' },
+};
+/* SLA-Ziele (Kalenderstunden) je Priorität: erste Antwort / Lösung */
+const SLA = { HIGHEST: [1, 4], HIGH: [4, 24], MEDIUM: [8, 72], LOW: [24, 120], LOWEST: [48, 240] };
+const REQUEST_TYPES = [
+  { id: "INCIDENT", name: "Störung melden", desc: "Anlage oder Kompressor ausgefallen bzw. fehlerhaft", color: "#d0352c", icon: "alert" },
+  { id: "MAINT", name: "Wartung anfragen", desc: "Wartungstermin, Inspektion oder Prüfung vereinbaren", color: "#16946a", icon: "wrench" },
+  { id: "SERVICE", name: "Ersatzteil / allgemeine Anfrage", desc: "Ersatzteile, Angebote, Fragen zu Anlagen", color: "#2a78d6", icon: "help" },
+];
+const URGENCY = [
+  { id: "HIGHEST", name: "Anlage steht – Produktion betroffen" },
+  { id: "HIGH", name: "Eingeschränkter Betrieb" },
+  { id: "MEDIUM", name: "Normal" },
+  { id: "LOW", name: "Nicht dringend" },
+];
+const PALETTE = ["#2a78d6", "#8f5bd6", "#16946a", "#d0352c", "#c97b00", "#0e8a9c", "#c2477e", "#5b6b8a"];
+const ROLES = { ADMIN: "Administrator", MEMBER: "Mitglied", AGENT: "Service-Mitarbeiter" };
+
+/* ---------- Hilfsfunktionen ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const pad = (n) => String(n).padStart(2, "0");
+const dayKey = (d) => { d = new Date(d); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const today = () => dayKey(new Date());
+const parseDay = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (k, n) => { const d = parseDay(k); d.setDate(d.getDate() + n); return dayKey(d); };
+const daysBetween = (a, b) => Math.round((parseDay(b) - parseDay(a)) / 864e5);
+const fmtDay = (k) => k ? parseDay(k).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" }) : "–";
+const fmtShort = (k) => parseDay(k).toLocaleDateString("de-DE", { day: "numeric", month: "short" });
+const fmtDT = (iso) => iso ? new Date(iso).toLocaleString("de-DE", { dateStyle: "medium", timeStyle: "short" }) : "–";
+const ago = (iso) => { const m = Math.round((Date.now() - new Date(iso)) / 6e4); const r = new Intl.RelativeTimeFormat("de-DE", { numeric: "auto" });
+  if (Math.abs(m) < 60) return r.format(-m, "minute"); const h = Math.round(m / 60); if (Math.abs(h) < 24) return r.format(-h, "hour"); return r.format(-Math.round(h / 24), "day"); };
+const initials = (n) => (n || "?").split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+function fmtDur(ms) {
+  const neg = ms < 0; ms = Math.abs(ms); const min = Math.round(ms / 6e4); const d = Math.floor(min / 1440), h = Math.floor((min % 1440) / 60), m = min % 60;
+  const s = d ? `${d} T ${h} h` : h ? `${h} h ${m} min` : `${m} min`; return neg ? `-${s}` : s;
+}
+function toast(msg) { const el = document.createElement("div"); el.className = "toast"; el.textContent = msg; const box = $("#toasts"); box.appendChild(el); while (box.children.length > 3) box.firstChild.remove(); setTimeout(() => el.remove(), 3500); }
+function hashColor(s) { let h = 0; for (const c of String(s)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return PALETTE[h % PALETTE.length]; }
+
+/* ---------- Speicher ---------- */
+let fallbackStore = null;
+function load() { try { const raw = localStorage.getItem(KEY); if (raw) return JSON.parse(raw); } catch (e) {} return fallbackStore || seed(); }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch (e) { fallbackStore = db; } }
+
+function seed() {
+  const now = Date.now(); const H = 36e5, D = 864e5; const t = today();
+  const iso = (msAgo) => new Date(now - msAgo).toISOString();
+  const users = [
+    { id: "u1", name: "Anna Müller", email: "anna.mueller@druckluft-chemnitz.de", role: "ADMIN", active: true },
+    { id: "u2", name: "Thomas Weber", email: "thomas.weber@druckluft-chemnitz.de", role: "ADMIN", active: true },
+    { id: "u3", name: "Lisa Schmidt", email: "lisa.schmidt@druckluft-chemnitz.de", role: "MEMBER", active: true },
+    { id: "u4", name: "Jonas Neumann", email: "jonas.neumann@druckluft-chemnitz.de", role: "MEMBER", active: true },
+    { id: "u5", name: "Mehmet Yilmaz", email: "mehmet.yilmaz@druckluft-chemnitz.de", role: "AGENT", active: true },
+    { id: "u6", name: "Sarah Becker", email: "sarah.becker@druckluft-chemnitz.de", role: "AGENT", active: true },
+  ];
+  users.forEach((u) => (u.color = hashColor(u.email)));
+  const projects = [
+    { id: "pDIG", key: "DIG", name: "Digitalisierung", type: "software", leadId: "u2", color: "#2a78d6", nextNo: 1, desc: "Kundenportal und digitale Auftragsabwicklung" },
+    { id: "pGF", key: "GF", name: "Geschäftsführung", type: "business", leadId: "u1", color: "#8f5bd6", nextNo: 1, desc: "Aufgaben und Vorhaben der Geschäftsführung" },
+    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
+  ];
+  const sprints = [
+    { id: "s2", projectId: "pDIG", name: "DIG Sprint 2", goal: "Grundgerüst Portal", state: "closed", start: addDays(t, -33), end: addDays(t, -19), committed: 18, completed: 16 },
+    { id: "s3", projectId: "pDIG", name: "DIG Sprint 3", goal: "Login und Anlagenübersicht", state: "closed", start: addDays(t, -19), end: addDays(t, -5), committed: 21, completed: 18 },
+    { id: "s4", projectId: "pDIG", name: "DIG Sprint 4", goal: "Störungsmeldung im Portal live", state: "active", start: addDays(t, -5), end: addDays(t, 9), committed: 26, completed: null },
+    { id: "s5", projectId: "pDIG", name: "DIG Sprint 5", goal: "", state: "future", start: null, end: null, committed: null, completed: null },
+  ];
+  const issues = []; let rank = 1;
+  const add = (pid, o) => {
+    const p = projects.find((x) => x.id === pid);
+    const created = o.createdAgo ?? 10 * D;
+    const issue = {
+      id: uid(), projectId: pid, no: p.nextNo++, type: o.type, summary: o.summary, description: o.description || "",
+      status: o.status, priority: o.priority || "MEDIUM", assigneeId: o.assigneeId ?? null, reporterId: "reporterId" in o ? o.reporterId : "u2",
+      labels: o.labels || [], dueDate: o.dueDate || null, startDate: o.startDate || null, storyPoints: o.storyPoints ?? null,
+      estimateH: o.estimateH ?? null, loggedH: o.loggedH ?? 0, epicId: o.epicId || null, parentId: o.parentId || null, sprintId: o.sprintId || null,
+      links: [], watchers: [], comments: [], history: [], createdAt: iso(created), updatedAt: iso(o.updatedAgo ?? Math.min(created, 2 * D)),
+      resolvedAt: o.resolvedAgo != null ? iso(o.resolvedAgo) : null, customer: o.customer || null, firstResponseAt: o.firstRespAgo != null ? iso(o.firstRespAgo) : null,
+      pausedMs: 0, pausedSince: o.pausedAgo != null ? iso(o.pausedAgo) : null, rank: rank++, color: o.color || null,
+    };
+    issue.watchers = [...new Set([issue.reporterId, issue.assigneeId].filter(Boolean))];
+    (o.comments || []).forEach(([userId, text, agoMs, internal, author]) => issue.comments.push({ id: uid(), userId, author: author || null, text, at: iso(agoMs), internal: !!internal }));
+    issue.history.push({ at: issue.createdAt, userId: issue.reporterId, field: "Vorgang", from: "", to: "erstellt" });
+    issues.push(issue); return issue;
+  };
+  // DIG – Software/Scrum
+  const e1 = add("pDIG", { type: "EPIC", summary: "Kundenportal", status: "PROGRESS", priority: "HIGH", assigneeId: "u2", startDate: addDays(t, -35), dueDate: addDays(t, 40), color: "#2a78d6", createdAgo: 40 * D, description: "Kunden melden Störungen online, sehen Anlagen, Wartungstermine und Rechnungen." });
+  const e2 = add("pDIG", { type: "EPIC", summary: "Digitale Auftragsabwicklung", status: "TODO", priority: "MEDIUM", assigneeId: "u4", startDate: addDays(t, 10), dueDate: addDays(t, 85), color: "#8f5bd6", createdAgo: 30 * D });
+  const e3 = add("pDIG", { type: "EPIC", summary: "Mobile App für Servicetechniker", status: "TODO", priority: "MEDIUM", assigneeId: "u3", startDate: addDays(t, 30), dueDate: addDays(t, 120), color: "#16946a", createdAgo: 20 * D });
+  [["Login mit E-Mail und Passwort", 5, 30, 24], ["Anlagenübersicht je Kunde", 8, 25, 20], ["Passwort zurücksetzen", 3, 22, 18], ["Wartungstermine anzeigen", 5, 20, 8]].forEach(([s, sp, c, r]) =>
+    add("pDIG", { type: "STORY", summary: s, status: "DONE", storyPoints: sp, assigneeId: "u4", epicId: e1.id, sprintId: "s3", createdAgo: c * D, resolvedAgo: r * D, reporterId: "u2" }));
+  const st1 = add("pDIG", { type: "STORY", summary: "Störung über das Portal melden", status: "PROGRESS", storyPoints: 8, priority: "HIGHEST", assigneeId: "u4", epicId: e1.id, sprintId: "s4", createdAgo: 12 * D, labels: ["portal", "service"], estimateH: 24, loggedH: 14, dueDate: addDays(t, 6),
+    description: "Als Kunde möchte ich eine Störung mit Anlage, Fehlercode und Foto melden, damit der Service schneller reagieren kann.\n\nAkzeptanzkriterien:\n- Anlage aus Liste wählbar\n- Dringlichkeit auswählbar\n- Bestätigung per E-Mail",
+    comments: [["u2", "Bitte Fehlercode-Liste aus dem Handbuch übernehmen.", 3 * D], ["u4", "@Thomas erledigt, Liste ist im Formular hinterlegt.", 2 * D]] });
+  add("pDIG", { type: "SUBTASK", summary: "Formular und Validierung", status: "DONE", parentId: st1.id, assigneeId: "u4", sprintId: "s4", createdAgo: 5 * D, resolvedAgo: 3 * D });
+  add("pDIG", { type: "SUBTASK", summary: "Benachrichtigung an Service-Desk", status: "PROGRESS", parentId: st1.id, assigneeId: "u3", sprintId: "s4", createdAgo: 5 * D });
+  add("pDIG", { type: "SUBTASK", summary: "Bestätigungs-E-Mail an Kunden", status: "TODO", parentId: st1.id, assigneeId: null, sprintId: "s4", createdAgo: 5 * D });
+  add("pDIG", { type: "STORY", summary: "Rechnungen im Portal herunterladen", status: "TODO", storyPoints: 5, assigneeId: "u3", epicId: e1.id, sprintId: "s4", createdAgo: 9 * D, labels: ["portal"] });
+  add("pDIG", { type: "STORY", summary: "Mehrere Standorte je Kunde", status: "REVIEW", storyPoints: 5, assigneeId: "u4", epicId: e1.id, sprintId: "s4", createdAgo: 9 * D });
+  add("pDIG", { type: "BUG", summary: "Datum im Wartungskalender um einen Tag verschoben", status: "DONE", storyPoints: 2, priority: "HIGH", assigneeId: "u3", epicId: e1.id, sprintId: "s4", createdAgo: 4 * D, resolvedAgo: 2 * D, labels: ["kalender"] });
+  add("pDIG", { type: "TASK", summary: "Hosting und Backups einrichten", status: "DONE", storyPoints: 3, assigneeId: "u2", sprintId: "s4", createdAgo: 6 * D, resolvedAgo: 4 * D });
+  add("pDIG", { type: "BUG", summary: "Login schlägt bei Umlauten im Passwort fehl", status: "TODO", storyPoints: 3, priority: "HIGHEST", assigneeId: "u4", epicId: e1.id, sprintId: "s4", createdAgo: 1 * D, labels: ["login"] });
+  add("pDIG", { type: "STORY", summary: "Aufträge aus E-Mail automatisch anlegen", status: "TODO", storyPoints: 8, epicId: e2.id, sprintId: "s5", createdAgo: 8 * D });
+  add("pDIG", { type: "STORY", summary: "Auftragsstatus für Kunden sichtbar", status: "TODO", storyPoints: 5, epicId: e2.id, sprintId: "s5", createdAgo: 8 * D });
+  add("pDIG", { type: "STORY", summary: "Offline-Modus für Techniker-App", status: "TODO", storyPoints: 13, epicId: e3.id, createdAgo: 6 * D });
+  add("pDIG", { type: "TASK", summary: "Datenschutz-Folgenabschätzung Portal", status: "TODO", storyPoints: 3, priority: "HIGH", assigneeId: "u1", createdAgo: 3 * D, dueDate: addDays(t, 14) });
+  add("pDIG", { type: "STORY", summary: "Unterschrift auf Servicebericht (Tablet)", status: "TODO", storyPoints: 5, epicId: e3.id, createdAgo: 2 * D });
+  // GF – Business/Kanban
+  const g1 = add("pGF", { type: "EPIC", summary: "Hallenumbau Halle 2", status: "PROGRESS", assigneeId: "u2", startDate: addDays(t, -20), dueDate: addDays(t, 25), color: "#c97b00", createdAgo: 25 * D });
+  add("pGF", { type: "TASK", summary: "Angebot Sächsische Fahrzeugwerke finalisieren", status: "PROGRESS", priority: "HIGH", assigneeId: "u2", reporterId: "u1", dueDate: addDays(t, -2), createdAgo: 9 * D, labels: ["vertrieb"],
+    comments: [["u1", "Bitte Rabatt maximal 4 % ansetzen.", 4 * D]] });
+  add("pGF", { type: "TASK", summary: "Bauabnahme mit Bauleiter, Mängelprotokoll", status: "REVIEW", priority: "HIGHEST", assigneeId: "u2", epicId: g1.id, dueDate: t, createdAgo: 7 * D });
+  add("pGF", { type: "TASK", summary: "Elektroinstallation Halle 2 beauftragen", status: "DONE", assigneeId: "u1", epicId: g1.id, createdAgo: 18 * D, resolvedAgo: 9 * D });
+  add("pGF", { type: "TASK", summary: "Recruiting: 2 Servicetechniker", status: "PROGRESS", priority: "HIGH", assigneeId: "u1", dueDate: addDays(t, 20), createdAgo: 15 * D, labels: ["personal"] });
+  add("pGF", { type: "TASK", summary: "Quartalszahlen für die Bank aufbereiten", status: "TODO", priority: "MEDIUM", assigneeId: "u1", reporterId: "u2", dueDate: addDays(t, 3), createdAgo: 4 * D, labels: ["finanzen"] });
+  add("pGF", { type: "TASK", summary: "Schulungsplan Q1 für Servicetechniker", status: "TODO", priority: "LOW", assigneeId: "u3", reporterId: "u1", dueDate: addDays(t, 12), createdAgo: 2 * D });
+  add("pGF", { type: "TASK", summary: "Website: Referenzprojekte aktualisieren", status: "TODO", priority: "MEDIUM", assigneeId: null, dueDate: addDays(t, 5), createdAgo: 3 * D, labels: ["marketing"] });
+  add("pGF", { type: "TASK", summary: "Monatliches Liquiditäts-Reporting", status: "DONE", assigneeId: "u1", dueDate: addDays(t, -6), createdAgo: 12 * D, resolvedAgo: 7 * D });
+  // SD – Service-Desk
+  const cust = (name, company, email) => ({ name, company, email, phone: "" });
+  add("pSD", { type: "INCIDENT", summary: "Schraubenkompressor zeigt Fehler E42 – Produktion steht", status: "WORKING", priority: "HIGHEST", assigneeId: "u5", reporterId: null, customer: cust("Peter Kunze", "Kunze Metallbau GmbH", "p.kunze@kunze-metallbau.de"),
+    createdAgo: 5 * H, firstRespAgo: 4.6 * H, labels: ["vor-ort"], description: "Anlage: GA 37 VSD, Halle B\nSeit heute Morgen Fehler E42, Kompressor schaltet ab.",
+    comments: [[null, "Kompressor schaltet nach 2 Minuten wieder ab.", 5 * H, false, "Peter Kunze"], ["u5", "Techniker ist unterwegs, Ankunft ca. 11 Uhr.", 4.6 * H], ["u5", "Vermutlich Temperaturfühler – Ersatzteil im Fahrzeug prüfen.", 4.5 * H, true]] });
+  add("pSD", { type: "INCIDENT", summary: "Druckabfall im Leitungsnetz", status: "OPEN", priority: "HIGH", assigneeId: null, reporterId: null, customer: cust("Maria Lorenz", "Lorenz Kunststofftechnik", "m.lorenz@lorenz-kt.de"), createdAgo: 3.5 * H,
+    description: "Netzdruck fällt von 7,5 auf 5,8 bar, Leckage vermutet." });
+  add("pSD", { type: "MAINT", summary: "Jährliche Wartung Kältetrockner", status: "WAITING", priority: "LOW", assigneeId: "u6", reporterId: null, customer: cust("Jens Hofmann", "Hofmann Druckguss", "hofmann@druckguss-hofmann.de"), createdAgo: 2 * D, firstRespAgo: 1.8 * D, pausedAgo: 1.7 * D,
+    comments: [["u6", "Welche Termine passen Ihnen in KW 44?", 1.7 * D]] });
+  add("pSD", { type: "SERVICE", summary: "Angebot Ersatzfilter für 3 Anlagen", status: "WORKING", priority: "MEDIUM", assigneeId: "u6", reporterId: null, customer: cust("Peter Kunze", "Kunze Metallbau GmbH", "p.kunze@kunze-metallbau.de"), createdAgo: 2.5 * D, firstRespAgo: 2.4 * D });
+  add("pSD", { type: "INCIDENT", summary: "Kondensatableiter undicht", status: "RESOLVED", priority: "MEDIUM", assigneeId: "u5", reporterId: null, customer: cust("Maria Lorenz", "Lorenz Kunststofftechnik", "m.lorenz@lorenz-kt.de"), createdAgo: 6 * D, firstRespAgo: 5.9 * D, resolvedAgo: 5 * D });
+  add("pSD", { type: "INCIDENT", summary: "Kompressor sehr laut seit Ölwechsel", status: "WORKING", priority: "HIGH", assigneeId: "u5", reporterId: null, customer: cust("Tom Richter", "Richter Holzbau", "t.richter@richter-holz.de"), createdAgo: 30 * H, firstRespAgo: 25 * H });
+  add("pSD", { type: "MAINT", summary: "Druckbehälterprüfung nach BetrSichV", status: "CLOSED", priority: "MEDIUM", assigneeId: "u6", reporterId: null, customer: cust("Jens Hofmann", "Hofmann Druckguss", "hofmann@druckguss-hofmann.de"), createdAgo: 14 * D, firstRespAgo: 13.8 * D, resolvedAgo: 11 * D });
+  const findI = (s) => issues.find((i) => i.summary.startsWith(s));
+  const a = findI("Login schlägt"), b = findI("Störung über das Portal");
+  a.links.push({ type: "blocks", issueId: b.id }); b.links.push({ type: "blocked_by", issueId: a.id });
+  return { users, projects, sprints, issues, filters: [], notifications: [], recent: {}, starredFilters: [], currentUserId: "u2", version: 1 };
+}
+let db = load();
+const ui = { modal: null, openIssue: null, board: { q: "", mine: false, recent: false, users: [], lane: "none" }, queue: "open", yourWork: "assigned", reportTab: null, editingDesc: false, filterSort: null };
+
+/* ---------- Abfragen ---------- */
+const me = () => db.users.find((u) => u.id === db.currentUserId) || db.users[0];
+const user = (id) => db.users.find((u) => u.id === id);
+const uname = (id) => user(id)?.name || "Nicht zugewiesen";
+const proj = (id) => db.projects.find((p) => p.id === id);
+const projByKey = (k) => db.projects.find((p) => p.key.toUpperCase() === String(k).toUpperCase());
+const issue = (id) => db.issues.find((i) => i.id === id);
+const keyOf = (i) => `${proj(i.projectId)?.key}-${i.no}`;
+const byKey = (k) => { const m = String(k).trim().toUpperCase().match(/^([A-Z][A-Z0-9]*)-(\d+)$/); if (!m) return null; const p = projByKey(m[1]); return p ? db.issues.find((i) => i.projectId === p.id && i.no === Number(m[2])) : null; };
+const workflowOf = (p) => WORKFLOWS[PROJECT_TYPES[p.type].workflow];
+const statusOf = (i) => workflowOf(proj(i.projectId)).find((s) => s.id === i.status) || { id: i.status, name: i.status, cat: "todo" };
+const isDone = (i) => statusOf(i).cat === "done";
+const isOverdue = (i) => !isDone(i) && i.dueDate && i.dueDate < today();
+const activeUsers = () => db.users.filter((u) => u.active);
+const projIssues = (p) => db.issues.filter((i) => i.projectId === p.id);
+const children = (i) => db.issues.filter((x) => x.parentId === i.id);
+const epicChildren = (e) => db.issues.filter((x) => x.epicId === e.id);
+const epicsOf = (p) => projIssues(p).filter((i) => i.type === "EPIC");
+const activeSprint = (p) => db.sprints.find((s) => s.projectId === p.id && s.state === "active");
+const sprint = (id) => db.sprints.find((s) => s.id === id);
+
+/* ---------- SLA ---------- */
+function slaInfo(i, kind) {
+  if (proj(i.projectId)?.type !== "service" || i.type === "SUBTASK") return null;
+  const target = SLA[i.priority][kind === "first" ? 0 : 1] * 36e5;
+  const stopAt = kind === "first" ? i.firstResponseAt : i.resolvedAt;
+  const end = stopAt ? new Date(stopAt).getTime() : Date.now();
+  let paused = 0;
+  if (kind === "resolve") paused = (i.pausedMs || 0) + (i.pausedSince && !stopAt ? Date.now() - new Date(i.pausedSince).getTime() : 0);
+  const elapsed = end - new Date(i.createdAt).getTime() - paused;
+  const remaining = target - elapsed;
+  return { target, elapsed, remaining, stopped: !!stopAt, met: stopAt ? remaining >= 0 : null, breached: remaining < 0, risk: !stopAt && remaining >= 0 && remaining < target * 0.25, paused: kind === "resolve" && !!i.pausedSince && !stopAt };
+}
+function slaChip(s) {
+  if (!s) return '<span class="muted">–</span>';
+  if (s.stopped) return s.met ? `<span class="chip green" title="SLA eingehalten">✓ eingehalten</span>` : `<span class="chip red" title="SLA verletzt">✕ verletzt (${fmtDur(s.remaining)})</span>`;
+  if (s.breached) return `<span class="chip red" title="SLA überschritten">${fmtDur(s.remaining)}</span>`;
+  const cls = s.risk ? "yellow" : "gray";
+  return `<span class="chip ${cls}" title="verbleibend${s.paused ? " (pausiert)" : ""}">${s.paused ? "pausiert · " : ""}${fmtDur(s.remaining)}</span>`;
+}
+
+/* ---------- Benachrichtigungen ---------- */
+function notify(userIds, type, title, text, issueId, key) {
+  const actor = db.currentUserId;
+  [...new Set(userIds.filter(Boolean))].forEach((uid_) => {
+    if (!key && uid_ === actor) return;
+    const k = key ? `${key}:${uid_}` : null;
+    if (k && db.notifications.some((n) => n.key === k)) return;
+    db.notifications.unshift({ id: uid(), userId: uid_, type, title, text, issueId, at: new Date().toISOString(), read: false, key: k });
+  });
+  db.notifications = db.notifications.slice(0, 600);
+}
+function deadlineCheck() {
+  const t = today();
+  db.issues.filter((i) => !isDone(i)).forEach((i) => {
+    const k = keyOf(i);
+    if (i.dueDate) {
+      const d = daysBetween(t, i.dueDate);
+      if (d < 0) notify([i.assigneeId, i.reporterId], "overdue", `Überfällig: ${k} ${i.summary}`, `Fällig war ${fmtDay(i.dueDate)}.`, i.id, `od:${i.id}:${i.dueDate}`);
+      else if (d <= 2) notify([i.assigneeId || i.reporterId], "due", `Bald fällig: ${k} ${i.summary}`, `Fällig am ${fmtDay(i.dueDate)}.`, i.id, `ds:${i.id}:${i.dueDate}`);
+    }
+    for (const kind of ["first", "resolve"]) {
+      const s = slaInfo(i, kind); if (!s || s.stopped) continue;
+      const who = i.assigneeId ? [i.assigneeId] : [proj(i.projectId).leadId];
+      const name = kind === "first" ? "Erste Antwort" : "Lösung";
+      if (s.breached) notify(who, "sla", `SLA verletzt (${name}): ${k}`, i.summary, i.id, `slab:${kind}:${i.id}:${i.priority}`);
+      else if (s.risk) notify(who, "sla", `SLA gefährdet (${name}): ${k}`, `${i.summary} – noch ${fmtDur(s.remaining)}`, i.id, `slar:${kind}:${i.id}:${i.priority}`);
+    }
+  });
+  save();
+}
+
+/* ---------- Vorgänge ändern ---------- */
+const FIELD_LABEL = { summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
+  dueDate: "Fälligkeitsdatum", startDate: "Startdatum", storyPoints: "Story Points", estimateH: "Schätzung", epicId: "Epic", sprintId: "Sprint", type: "Vorgangstyp", parentId: "Übergeordnet", color: "Farbe" };
+function fieldText(i, f, v) {
+  if (v == null || v === "" || (Array.isArray(v) && !v.length)) return "–";
+  if (f === "status") return workflowOf(proj(i.projectId)).find((s) => s.id === v)?.name || v;
+  if (f === "priority") return PRIOS[v]?.label || v;
+  if (f === "assigneeId" || f === "reporterId") return uname(v);
+  if (f === "epicId" || f === "parentId") { const x = issue(v); return x ? `${keyOf(x)} ${x.summary}` : "–"; }
+  if (f === "sprintId") return sprint(v)?.name || "Backlog";
+  if (f === "type") return TYPES[v]?.label || v;
+  if (f === "dueDate" || f === "startDate") return fmtDay(v);
+  if (f === "labels") return v.join(", ");
+  if (f === "description") return v.length > 60 ? v.slice(0, 60) + "…" : v;
+  return String(v);
+}
+function touch(i) { i.updatedAt = new Date().toISOString(); }
+function updateIssue(i, changes) {
+  const actor = db.currentUserId; const p = proj(i.projectId);
+  for (const [f, v] of Object.entries(changes)) {
+    const before = i[f];
+    if (JSON.stringify(before) === JSON.stringify(v)) continue;
+    i[f] = v;
+    i.history.unshift({ at: new Date().toISOString(), userId: actor, field: FIELD_LABEL[f] || f, from: fieldText(i, f, before), to: fieldText(i, f, v) });
+    if (f === "status") {
+      const wf = workflowOf(p); const cat = wf.find((s) => s.id === v)?.cat; const wasCat = wf.find((s) => s.id === before)?.cat;
+      if (cat === "done" && wasCat !== "done") i.resolvedAt = new Date().toISOString();
+      if (cat !== "done") i.resolvedAt = null;
+      if (p.type === "service") {
+        if (before === "OPEN" && !i.firstResponseAt) i.firstResponseAt = new Date().toISOString();
+        if (v === "WAITING" && !i.pausedSince) i.pausedSince = new Date().toISOString();
+        if (before === "WAITING" && i.pausedSince) { i.pausedMs = (i.pausedMs || 0) + (Date.now() - new Date(i.pausedSince).getTime()); i.pausedSince = null; }
+      }
+      notify(i.watchers, "status", `${keyOf(i)} → ${fieldText(i, "status", v)}`, `${me().name} hat den Status geändert: ${i.summary}`, i.id);
+    }
+    if (f === "assigneeId" && v) {
+      if (!i.watchers.includes(v)) i.watchers.push(v);
+      notify([v], "assign", `Ihnen zugewiesen: ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id);
+    }
+  }
+  touch(i); save();
+}
+function createIssue(data) {
+  const p = proj(data.projectId); const no = p.nextNo++;
+  const i = {
+    id: uid(), projectId: p.id, no, type: data.type, summary: data.summary.trim(), description: data.description || "",
+    status: workflowOf(p)[0].id, priority: data.priority || "MEDIUM", assigneeId: data.assigneeId || null, reporterId: data.reporterId === undefined ? db.currentUserId : data.reporterId,
+    labels: data.labels || [], dueDate: data.dueDate || null, startDate: data.startDate || null, storyPoints: data.storyPoints ?? null, estimateH: data.estimateH ?? null, loggedH: 0,
+    epicId: data.epicId || null, parentId: data.parentId || null, sprintId: data.sprintId || null, links: [], watchers: [], comments: [], history: [],
+    createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), resolvedAt: null, customer: data.customer || null, firstResponseAt: null, pausedMs: 0, pausedSince: null,
+    rank: Math.max(0, ...db.issues.map((x) => x.rank || 0)) + 1, color: data.type === "EPIC" ? PALETTE[epicsOf(p).length % PALETTE.length] : null,
+  };
+  if (i.parentId) { const par = issue(i.parentId); if (par) { i.sprintId = par.sprintId; i.epicId = null; } }
+  i.watchers = [...new Set([i.reporterId, i.assigneeId].filter(Boolean))];
+  i.history.push({ at: i.createdAt, userId: i.reporterId, field: "Vorgang", from: "", to: "erstellt" });
+  db.issues.push(i);
+  if (i.assigneeId) notify([i.assigneeId], "assign", `Ihnen zugewiesen: ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id);
+  if (p.type === "service" && !i.reporterId) notify(activeUsers().filter((u) => u.role === "AGENT" || u.id === p.leadId).map((u) => u.id), "new", `Neue Anfrage: ${keyOf(i)}`, `${i.customer?.name || "Kunde"}: ${i.summary}`, i.id, `new:${i.id}`);
+  save(); return i;
+}
+function addComment(i, text, { internal = false, customerName = null } = {}) {
+  const c = { id: uid(), userId: customerName ? null : db.currentUserId, author: customerName, text, at: new Date().toISOString(), internal };
+  i.comments.push(c); touch(i);
+  const p = proj(i.projectId);
+  if (!customerName) {
+    if (!i.watchers.includes(db.currentUserId)) i.watchers.push(db.currentUserId);
+    if (p.type === "service" && !internal && !i.firstResponseAt) i.firstResponseAt = c.at;
+    const mentioned = activeUsers().filter((u) => new RegExp(`@(${escRe(u.name)}|${escRe(u.name.split(" ")[0])})\\b`, "i").test(text)).map((u) => u.id);
+    notify(mentioned, "mention", `${me().name} hat Sie erwähnt: ${keyOf(i)}`, text.slice(0, 140), i.id);
+    notify(i.watchers.filter((w) => !mentioned.includes(w)), "comment", `Neuer Kommentar: ${keyOf(i)}`, `${me().name}: ${text.slice(0, 120)}`, i.id);
+  } else {
+    if (i.status === "WAITING") updateIssue(i, { status: "WORKING" });
+    if (isDone(i)) updateIssue(i, { status: "WORKING" });
+    notify([i.assigneeId || p.leadId], "comment", `Kunde hat geantwortet: ${keyOf(i)}`, `${customerName}: ${text.slice(0, 120)}`, i.id, `cust:${c.id}`);
+  }
+  save(); return c;
+}
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function deleteIssue(i) {
+  const ids = new Set([i.id, ...children(i).map((c) => c.id)]);
+  db.issues = db.issues.filter((x) => !ids.has(x.id));
+  db.issues.forEach((x) => { x.links = x.links.filter((l) => !ids.has(l.issueId)); if (ids.has(x.epicId)) x.epicId = null; });
+  db.notifications = db.notifications.filter((n) => !ids.has(n.issueId)); save();
+}
+function linkIssues(a, type, b) {
+  const inverse = { blocks: "blocked_by", blocked_by: "blocks", relates: "relates", duplicates: "duplicated_by", duplicated_by: "duplicates" }[type];
+  if (a.id === b.id || a.links.some((l) => l.issueId === b.id && l.type === type)) return;
+  a.links.push({ type, issueId: b.id }); b.links.push({ type: inverse, issueId: a.id });
+  a.history.unshift({ at: new Date().toISOString(), userId: db.currentUserId, field: "Verknüpfung", from: "", to: `${LINK_LABEL[type]} ${keyOf(b)}` });
+  touch(a); touch(b); save();
+}
+const LINK_LABEL = { blocks: "blockiert", blocked_by: "wird blockiert durch", relates: "bezieht sich auf", duplicates: "dupliziert", duplicated_by: "wird dupliziert durch" };
+function pushRecent(id) { const r = (db.recent[db.currentUserId] ||= []); const idx = r.indexOf(id); if (idx >= 0) r.splice(idx, 1); r.unshift(id); r.length = Math.min(r.length, 20); save(); }
+
+/* ---------- JQL (Teilmenge) ---------- */
+const JQL_FIELDS = ["project", "type", "issuetype", "status", "statuscategory", "assignee", "reporter", "priority", "labels", "sprint", "due", "duedate", "created", "updated", "resolved", "text", "summary", "description", "resolution", "key", "issuekey", "epic", "parent", "storypoints", "points", "customer", "watcher"];
+function tokenize(q) {
+  const toks = []; let i = 0;
+  while (i < q.length) {
+    const c = q[i];
+    if (/\s/.test(c)) { i++; continue; }
+    if (c === '"' || c === "'") { let j = i + 1, s = ""; while (j < q.length && q[j] !== c) { if (q[j] === "\\") j++; s += q[j++]; } if (j >= q.length) throw new Error("Anführungszeichen nicht geschlossen"); toks.push({ t: "str", v: s }); i = j + 1; continue; }
+    if ("(),".includes(c)) { toks.push({ t: c }); i++; continue; }
+    const op = q.slice(i).match(/^(!=|!~|<=|>=|=|~|<|>)/); if (op) { toks.push({ t: "op", v: op[1] }); i += op[1].length; continue; }
+    const w = q.slice(i).match(/^[^\s(),=!~<>"']+/);
+    if (w) { let v = w[0]; i += v.length; if (q[i] === "(" && q[i + 1] === ")") { v += "()"; i += 2; } toks.push({ t: "word", v }); continue; }
+    throw new Error(`Unerwartetes Zeichen „${c}“`);
+  }
+  return toks;
+}
+function parseJql(q) {
+  const toks = tokenize(q); let p = 0;
+  const peek = () => toks[p]; const isKw = (k) => peek()?.t === "word" && peek().v.toUpperCase() === k;
+  const expectKw = (k) => { if (!isKw(k)) throw new Error(`„${k}“ erwartet`); p++; };
+  function value() {
+    const tk = toks[p++]; if (!tk) throw new Error("Wert erwartet");
+    if (tk.t === "str" || tk.t === "word") return tk.v; throw new Error(`Wert erwartet, gefunden „${tk.v || tk.t}“`);
+  }
+  function clause() {
+    const ft = toks[p++]; if (!ft || ft.t !== "word" && ft.t !== "str") throw new Error("Feldname erwartet");
+    const field = ft.v.toLowerCase().replace(/\s+/g, "");
+    if (!JQL_FIELDS.includes(field)) throw new Error(`Unbekanntes Feld „${ft.v}“`);
+    if (isKw("IS")) { p++; let neg = false; if (isKw("NOT")) { neg = true; p++; } if (!isKw("EMPTY") && !isKw("NULL")) throw new Error("EMPTY erwartet"); p++; return { k: "empty", field, neg }; }
+    let neg = false; if (isKw("NOT")) { neg = true; p++; }
+    if (isKw("IN")) { p++; if (peek()?.t === "word" && peek().v.endsWith("()")) return { k: "in", field, vals: [toks[p++].v], neg };
+      if (peek()?.t !== "(") throw new Error("„(“ erwartet"); p++; const vals = [value()]; while (peek()?.t === ",") { p++; vals.push(value()); } if (peek()?.t !== ")") throw new Error("„)“ erwartet"); p++; return { k: "in", field, vals, neg }; }
+    if (neg) throw new Error("IN nach NOT erwartet");
+    const op = toks[p++]; if (!op || op.t !== "op") throw new Error(`Operator nach „${ft.v}“ erwartet (=, !=, ~, <, >, IN, IS)`);
+    return { k: "cmp", field, op: op.v, val: value() };
+  }
+  function primary() { if (peek()?.t === "(") { p++; const e = orE(); if (peek()?.t !== ")") throw new Error("„)“ erwartet"); p++; return e; } if (isKw("NOT")) { p++; return { k: "not", e: primary() }; } return clause(); }
+  function andE() { let l = primary(); while (isKw("AND")) { p++; l = { k: "and", l, r: primary() }; } return l; }
+  function orE() { let l = andE(); while (isKw("OR")) { p++; l = { k: "or", l, r: andE() }; } return l; }
+  let where = null, order = [];
+  if (toks.length && !isKw("ORDER")) where = orE();
+  if (isKw("ORDER")) { p++; expectKw("BY"); do { if (peek()?.t === ",") p++; const f = value().toLowerCase(); let dir = "ASC"; if (isKw("ASC") || isKw("DESC")) dir = toks[p++].v.toUpperCase(); order.push({ f, dir }); } while (peek()?.t === ","); }
+  if (p < toks.length) throw new Error(`Unerwartet: „${toks[p].v || toks[p].t}“`);
+  return { where, order };
+}
+function jqlDate(v) {
+  const s = String(v).toLowerCase(); const t = today();
+  if (s === "now()" || s === "startofday()" || s === "endofday()") return t;
+  if (s === "startofweek()") { const d = parseDay(t); return addDays(t, -((d.getDay() + 6) % 7)); }
+  if (s === "endofweek()") { const d = parseDay(t); return addDays(t, 6 - ((d.getDay() + 6) % 7)); }
+  if (s === "startofmonth()") return t.slice(0, 8) + "01";
+  const rel = s.match(/^([+-]?)(\d+)([dw])$/); if (rel) return addDays(t, (rel[1] === "-" ? -1 : 1) * Number(rel[2]) * (rel[3] === "w" ? 7 : 1));
+  const m = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/); if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
+  const g = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/); if (g) return `${g[3]}-${pad(g[2])}-${pad(g[1])}`;
+  throw new Error(`Ungültiges Datum „${v}“ (z. B. 2026-10-31, -7d, startOfWeek())`);
+}
+function fieldValues(i, f) {
+  const p = proj(i.projectId);
+  switch (f) {
+    case "project": return [p.key, p.name];
+    case "type": case "issuetype": return [TYPES[i.type].label, i.type];
+    case "status": { const s = statusOf(i); return [s.name, s.id]; }
+    case "statuscategory": { const c = statusOf(i).cat; return [CAT_LABEL[c], { todo: "To Do", progress: "In Progress", done: "Done" }[c]]; }
+    case "assignee": return i.assigneeId ? [user(i.assigneeId)?.name, user(i.assigneeId)?.email, i.assigneeId] : [];
+    case "reporter": return i.reporterId ? [user(i.reporterId)?.name, user(i.reporterId)?.email, i.reporterId] : (i.customer ? [i.customer.name, i.customer.email] : []);
+    case "watcher": return i.watchers;
+    case "priority": return [PRIOS[i.priority].label, i.priority];
+    case "labels": return i.labels;
+    case "sprint": return i.sprintId ? [sprint(i.sprintId)?.name, i.sprintId] : [];
+    case "resolution": return isDone(i) ? ["Done", "Erledigt", "Fertig"] : ["Unresolved", "Ungelöst"];
+    case "key": case "issuekey": return [keyOf(i)];
+    case "epic": case "parent": { const e = issue(f === "epic" ? i.epicId : i.parentId); return e ? [keyOf(e), e.summary] : []; }
+    case "customer": return i.customer ? [i.customer.name, i.customer.company, i.customer.email] : [];
+    default: return [];
+  }
+}
+function resolveVal(v) {
+  const s = String(v).toLowerCase();
+  if (s === "currentuser()") return db.currentUserId;
+  return v;
+}
+function matchClause(i, c) {
+  const f = c.field;
+  if (c.k === "empty") {
+    const val = { due: i.dueDate, duedate: i.dueDate, assignee: i.assigneeId, sprint: i.sprintId, epic: i.epicId, parent: i.parentId, labels: i.labels.length ? 1 : null, resolved: i.resolvedAt, storypoints: i.storyPoints, points: i.storyPoints, description: i.description || null }[f];
+    return c.neg ? val != null : val == null;
+  }
+  if (["due", "duedate", "created", "updated", "resolved"].includes(f)) {
+    const raw = { due: i.dueDate, duedate: i.dueDate, created: i.createdAt, updated: i.updatedAt, resolved: i.resolvedAt }[f];
+    if (!raw) return c.k === "cmp" && c.op === "!=";
+    const d = raw.length > 10 ? dayKey(raw) : raw; const ops = c.k === "in" ? c.vals.map(jqlDate) : [jqlDate(c.val)];
+    if (c.k === "in") return c.neg !== ops.includes(d);
+    const v = ops[0]; return { "=": d === v, "!=": d !== v, "<": d < v, ">": d > v, "<=": d <= v, ">=": d >= v }[c.op] ?? false;
+  }
+  if (["storypoints", "points"].includes(f)) {
+    const n = i.storyPoints; if (n == null) return false; const v = Number(c.val);
+    if (c.k === "in") return c.neg !== c.vals.map(Number).includes(n);
+    return { "=": n === v, "!=": n !== v, "<": n < v, ">": n > v, "<=": n <= v, ">=": n >= v }[c.op] ?? false;
+  }
+  if (["text", "summary", "description"].includes(f) || c.op === "~" || c.op === "!~") {
+    const hay = (f === "summary" ? i.summary : f === "description" ? i.description : f === "text" ? `${i.summary} ${i.description} ${i.comments.map((x) => x.text).join(" ")} ${i.customer ? i.customer.name + " " + i.customer.company : ""}` : fieldValues(i, f).join(" ")).toLowerCase();
+    const needle = String(c.val ?? (c.vals || []).join(" ")).toLowerCase();
+    const hit = needle.split(/\s+/).filter(Boolean).every((w) => hay.includes(w.replace(/\*/g, "")));
+    if (c.op === "!~") return !hit; return hit;
+  }
+  if (f === "sprint") {
+    const vals = (c.k === "in" ? c.vals : [c.val]).map((v) => String(v).toLowerCase());
+    const sp = sprint(i.sprintId);
+    const ok = vals.some((v) => v === "opensprints()" ? sp && sp.state !== "closed" : v === "closedsprints()" ? sp && sp.state === "closed" : v === "activesprint()" ? sp && sp.state === "active" : sp && (sp.name.toLowerCase() === v || sp.id === v));
+    if (c.k === "in") return c.neg !== ok; return c.op === "!=" ? !ok : ok;
+  }
+  const have = fieldValues(i, f).filter(Boolean).map((x) => String(x).toLowerCase());
+  const want = (c.k === "in" ? c.vals : [c.val]).map((v) => String(resolveVal(v)).toLowerCase());
+  const ok = want.some((w) => have.includes(w));
+  if (c.k === "in") return c.neg !== ok;
+  if (c.op === "=") return ok; if (c.op === "!=") return !ok;
+  if (f === "priority" && ["<", ">", "<=", ">="].includes(c.op)) {
+    const r = PRIOS[i.priority].rank; const wv = Object.values(PRIOS).find((x) => x.label.toLowerCase() === want[0])?.rank ?? PRIOS[String(c.val).toUpperCase()]?.rank;
+    if (wv == null) throw new Error(`Unbekannte Priorität „${c.val}“`);
+    return { "<": r < wv, ">": r > wv, "<=": r <= wv, ">=": r >= wv }[c.op];
+  }
+  throw new Error(`Operator ${c.op} ist für „${f}“ nicht möglich`);
+}
+function evalWhere(i, e) {
+  if (!e) return true;
+  if (e.k === "and") return evalWhere(i, e.l) && evalWhere(i, e.r);
+  if (e.k === "or") return evalWhere(i, e.l) || evalWhere(i, e.r);
+  if (e.k === "not") return !evalWhere(i, e.e);
+  return matchClause(i, e);
+}
+function sortVal(i, f) {
+  switch (f) {
+    case "priority": return PRIOS[i.priority].rank; case "key": case "issuekey": return proj(i.projectId).key + String(i.no).padStart(6, "0");
+    case "created": return i.createdAt; case "updated": return i.updatedAt; case "resolved": return i.resolvedAt || "";
+    case "due": case "duedate": return i.dueDate || "9999"; case "status": return ["todo", "progress", "done"].indexOf(statusOf(i).cat) + statusOf(i).name;
+    case "assignee": return i.assigneeId ? uname(i.assigneeId) : "~"; case "summary": return i.summary.toLowerCase(); case "type": return TYPES[i.type].label;
+    case "rank": return i.rank; case "storypoints": case "points": return i.storyPoints ?? -1; case "project": return proj(i.projectId).key;
+    default: throw new Error(`Sortierung nach „${f}“ nicht möglich`);
+  }
+}
+function runJql(q) {
+  const { where, order } = parseJql(q);
+  const list = db.issues.filter((i) => evalWhere(i, where));
+  const ord = order.length ? order : [{ f: "updated", dir: "DESC" }];
+  return list.sort((a, b) => { for (const o of ord) { const x = sortVal(a, o.f), y = sortVal(b, o.f); if (x < y) return o.dir === "ASC" ? -1 : 1; if (x > y) return o.dir === "ASC" ? 1 : -1; } return 0; });
+}
+const DEFAULT_FILTERS = [
+  { id: "f-mine", name: "Meine offenen Vorgänge", jql: "assignee = currentUser() AND resolution = Unresolved ORDER BY priority DESC, due ASC" },
+  { id: "f-reported", name: "Von mir gemeldet", jql: "reporter = currentUser() ORDER BY created DESC" },
+  { id: "f-overdue", name: "Überfällig", jql: "due < now() AND resolution = Unresolved ORDER BY due ASC" },
+  { id: "f-week", name: "Diese Woche fällig", jql: "due >= startOfWeek() AND due <= endOfWeek() AND resolution = Unresolved ORDER BY due ASC" },
+  { id: "f-unassigned", name: "Nicht zugewiesen", jql: "assignee IS EMPTY AND resolution = Unresolved AND type != Epic ORDER BY priority DESC" },
+  { id: "f-resolved", name: "Kürzlich erledigt", jql: "resolved >= -7d ORDER BY resolved DESC" },
+  { id: "f-all", name: "Alle Vorgänge", jql: "ORDER BY created DESC" },
+];
+
+/* ---------- Darstellungs-Bausteine ---------- */
+const typeIcon = (t) => `<span class="tico" style="background:${TYPES[t].color}" title="${TYPES[t].label}">${icon(TYPES[t].icon)}</span>`;
+const prioIcon = (p) => `<span class="pico" title="Priorität: ${PRIOS[p].label}" style="color:${PRIOS[p].color};display:inline-flex"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${PRIOS[p].svg}</svg></span>`;
+const lozenge = (i) => { const s = statusOf(i); return `<span class="lozenge cat-${s.cat}">${esc(s.name)}</span>`; };
+const avatar = (id, lg) => { const u = user(id); return u ? `<span class="avatar${lg ? " lg" : ""}" style="background:${u.color}" title="${esc(u.name)}">${esc(initials(u.name))}</span>` : `<span class="avatar none${lg ? " lg" : ""}" title="Nicht zugewiesen">${icon("user")}</span>`; };
+const custAvatar = (c) => `<span class="avatar" style="background:${hashColor(c?.email || c?.name)}" title="${esc(c?.name)}">${esc(initials(c?.name))}</span>`;
+const epicChip = (i) => { const e = issue(i.epicId); return e ? `<span class="chip" style="background:${e.color || "#8f5bd6"}22;color:${e.color || "#8f5bd6"}" title="Epic">${esc(e.summary)}</span>` : ""; };
+const keyLink = (i) => `<a class="key" href="#" data-act="open" data-id="${i.id}">${keyOf(i)}</a>`;
+const dueChip = (i) => { if (!i.dueDate || isDone(i)) return ""; const d = daysBetween(today(), i.dueDate); if (d < 0) return `<span class="chip red" title="Überfällig">${fmtShort(i.dueDate)}</span>`; if (d <= 2) return `<span class="chip yellow" title="Bald fällig">${fmtShort(i.dueDate)}</span>`; return `<span class="chip gray">${fmtShort(i.dueDate)}</span>`; };
+const userOpts = (sel, none = "Nicht zugewiesen") => `<option value="">${none}</option>` + activeUsers().map((u) => `<option value="${u.id}" ${u.id === sel ? "selected" : ""}>${esc(u.name)}</option>`).join("");
+const prioOpts = (sel) => Object.entries(PRIOS).map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${v.label}</option>`).join("");
+const statusOpts = (i) => workflowOf(proj(i.projectId)).map((s) => `<option value="${s.id}" ${s.id === i.status ? "selected" : ""}>${s.name}</option>`).join("");
+const subtaskProgress = (i) => { const ch = children(i); if (!ch.length) return ""; const d = ch.filter(isDone).length; return `<span class="chip gray" title="Teilaufgaben">☑ ${d}/${ch.length}</span>`; };
+
+/* ---------- Diagramme (SVG) ---------- */
+function lineChart({ labels, series, height = 220, yMax, yLabel = "" }) {
+  const W = 640, H = height, L = 36, R = 70, T = 12, B = 26; const iw = W - L - R, ih = H - T - B;
+  const max = yMax ?? Math.max(1, ...series.flatMap((s) => s.values.filter((v) => v != null)));
+  const niceMax = Math.ceil(max / Math.pow(10, Math.floor(Math.log10(max)))) * Math.pow(10, Math.floor(Math.log10(max)));
+  const x = (k) => L + (labels.length === 1 ? iw / 2 : (k / (labels.length - 1)) * iw); const y = (v) => T + ih - (v / niceMax) * ih;
+  let g = "";
+  for (let k = 0; k <= 4; k++) { const v = (niceMax / 4) * k; g += `<line class="gridline" x1="${L}" x2="${L + iw}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v * 10) / 10}</text>`; }
+  const step = Math.ceil(labels.length / 8);
+  labels.forEach((lb, k) => { const last = labels.length - 1; if ((k % step === 0 && last - k >= step / 2) || k === last) g += `<text x="${x(k)}" y="${H - 6}" text-anchor="middle">${esc(lb)}</text>`; });
+  series.forEach((s) => {
+    const pts = s.values.map((v, k) => v == null ? null : [x(k), y(v)]).filter(Boolean);
+    if (!pts.length) return;
+    g += `<polyline fill="none" stroke="${s.color}" stroke-width="2" ${s.dash ? 'stroke-dasharray="5 4"' : ""} stroke-linejoin="round" stroke-linecap="round" points="${pts.map((p) => p.join(",")).join(" ")}"/>`;
+    const last = pts[pts.length - 1]; const lv = s.values.filter((v) => v != null).slice(-1)[0];
+    if (!s.dash) g += `<circle cx="${last[0]}" cy="${last[1]}" r="4" fill="${s.color}" stroke="var(--surface)" stroke-width="2"/>`;
+    g += `<text x="${last[0] + 8}" y="${last[1] + 4}" style="fill:var(--fg-2)">${esc(s.name)} ${Math.round(lv * 10) / 10}</text>`;
+  });
+  labels.forEach((lb, k) => {
+    const tip = `${lb}\n` + series.map((s) => `${s.name}: ${s.values[k] == null ? "–" : Math.round(s.values[k] * 10) / 10}`).join("\n");
+    const w = iw / Math.max(1, labels.length - 1);
+    g += `<g class="col-hit" data-tip="${esc(tip)}"><rect class="hit" x="${x(k) - w / 2}" y="${T}" width="${w}" height="${ih}"/><line class="cross" x1="${x(k)}" x2="${x(k)}" y1="${T}" y2="${T + ih}"/></g>`;
+  });
+  return `<div class="legend">${series.map((s) => `<span><i class="${s.dash ? "dash" : "line"}" style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}${yLabel ? `<span class="muted">· ${esc(yLabel)}</span>` : ""}</div>
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(series.map((s) => s.name).join(", "))}">${g}</svg>`;
+}
+function barChart({ labels, series, height = 220 }) {
+  const W = 640, H = height, L = 36, R = 10, T = 12, B = 26; const iw = W - L - R, ih = H - T - B;
+  const max = Math.max(1, ...series.flatMap((s) => s.values)); const nice = Math.ceil(max / 4) * 4;
+  const y = (v) => T + ih - (v / nice) * ih; const gw = iw / labels.length; const bw = Math.min(28, (gw - 16) / series.length - 2);
+  let g = "";
+  for (let k = 0; k <= 4; k++) { const v = (nice / 4) * k; g += `<line class="gridline" x1="${L}" x2="${L + iw}" y1="${y(v)}" y2="${y(v)}"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${Math.round(v)}</text>`; }
+  labels.forEach((lb, k) => {
+    const cx = L + gw * k + gw / 2; const total = series.length * (bw + 2) - 2; let x0 = cx - total / 2;
+    series.forEach((s) => { const v = s.values[k]; const h = Math.max(0, (v / nice) * ih); const yy = T + ih - h; const r = Math.min(4, h);
+      g += `<path d="M${x0},${T + ih} V${yy + r} Q${x0},${yy} ${x0 + r},${yy} H${x0 + bw - r} Q${x0 + bw},${yy} ${x0 + bw},${yy + r} V${T + ih} Z" fill="${s.color}" data-tip="${esc(`${lb}\n${s.name}: ${v}`)}"/>`;
+      g += `<text x="${x0 + bw / 2}" y="${yy - 4}" text-anchor="middle" style="fill:var(--fg-2)">${v}</text>`; x0 += bw + 2; });
+    g += `<text x="${cx}" y="${H - 6}" text-anchor="middle">${esc(lb)}</text>`;
+  });
+  return `<div class="legend">${series.map((s) => `<span><i style="background:${s.color}"></i>${esc(s.name)}</span>`).join("")}</div><svg class="chart" viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+}
+function hbars(rows, unit = "") {
+  const max = Math.max(1, ...rows.map((r) => r.value));
+  return rows.map((r) => `<div class="hbar" data-tip="${esc(`${r.label}: ${r.value}${unit}${r.extra ? "\n" + r.extra : ""}`)}"><span class="trunc">${esc(r.label)}</span><div class="track"><div class="fill" style="width:${(r.value / max) * 100}%"></div></div><span class="small b" style="text-align:right">${r.value}${unit}</span></div>`).join("") || '<p class="muted">Keine Daten.</p>';
+}
+function statusStack(list) {
+  const cats = ["todo", "progress", "done"]; const n = (c) => list.filter((i) => statusOf(i).cat === c).length; const total = list.length || 1;
+  const colors = { todo: "var(--todo-fg)", progress: "var(--s1)", done: "var(--ok)" };
+  return `<div class="stack">${cats.filter((c) => n(c)).map((c) => `<div style="width:${(n(c) / total) * 100}%;background:${colors[c]}" data-tip="${CAT_LABEL[c]}: ${n(c)}"></div>`).join("")}</div>
+    <div class="legend" style="margin-top:8px">${cats.map((c) => `<span><i style="background:${colors[c]}"></i>${CAT_LABEL[c]} ${n(c)}</span>`).join("")}</div>`;
+}
+
+/* ---------- Routing ---------- */
+function route() {
+  const h = location.hash.replace(/^#\/?/, ""); const [path, qs] = h.split("?");
+  return { parts: path.split("/").filter(Boolean).map(decodeURIComponent), params: new URLSearchParams(qs || "") };
+}
+function go(h) { location.hash = h; }
+
+/* ---------- Rahmen ---------- */
+function renderTop() {
+  const r = route().parts[0] || "your-work";
+  const unread = db.notifications.filter((n) => n.userId === db.currentUserId && !n.read).length;
+  const link = (h, label, keyName) => `<a class="navlink ${r === keyName ? "on" : ""}" href="#/${h}">${label}</a>`;
+  $("#topnav").innerHTML = `
+    <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
+    <a class="logo" href="#/your-work"><span class="mark">${icon("bolt")}</span>GF Tracker</a>
+    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}${link("portal", "Service-Portal", "portal")}
+    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")} Erstellen</button>
+    <div class="search">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen (z. B. DIG-12)" aria-label="Suchen"></div>
+    <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
+    <button class="btn subtle icon" data-act="theme" aria-label="Hell/Dunkel">${icon("sun")}</button>
+    <a class="btn subtle icon" href="#/settings" aria-label="Einstellungen">${icon("gear")}</a>
+    <select id="whoami" aria-label="Angemeldet als" style="width:auto;max-width:150px;height:32px">${activeUsers().map((u) => `<option value="${u.id}" ${u.id === db.currentUserId ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select>`;
+}
+function projectNav(p, view) {
+  const items = p.type === "software" ? [["board", "Board", "board"], ["backlog", "Backlog", "backlog"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
+    : p.type === "business" ? [["board", "Board", "board"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
+    : [["queue", "Warteschlangen", "queue"], ["board", "Board", "board"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]];
+  items.push(["settings", "Projekteinstellungen", "gear"]);
+  $("#psidebar").hidden = false;
+  $("#psidebar").innerHTML = `<div class="phead"><span class="pavatar" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><div class="trunc"><div class="b trunc">${esc(p.name)}</div><div class="small muted">${PROJECT_TYPES[p.type].label}</div></div></div>
+    <div class="label">Planung</div>${items.map(([v, l, ic]) => `<a href="#/p/${p.key}/${v}" class="${view === v ? "on" : ""}">${icon(ic)}${l}</a>`).join("")}
+    ${p.type === "service" ? `<div class="label">Kunden</div><a href="#/portal/${p.key}">${icon("portal")}Kundenportal öffnen</a>` : ""}`;
+  return `<div class="project-tabs">${items.map(([v, l]) => `<a class="toggle ${view === v ? "on" : ""}" href="#/p/${p.key}/${v}">${l}</a>`).join("")}</div>`;
+}
+function render() {
+  renderTop();
+  const { parts, params } = route(); $("#psidebar").hidden = true;
+  let html;
+  try {
+    switch (parts[0] || "your-work") {
+      case "your-work": html = viewYourWork(); break;
+      case "projects": html = viewProjects(); break;
+      case "p": { const p = projByKey(parts[1]); if (!p) { html = `<div class="empty">Projekt nicht gefunden.</div>`; break; }
+        const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
+        html = tabs + ({ board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
+      case "filters": html = viewFilters(params); break;
+      case "dashboard": html = viewDashboard(); break;
+      case "portal": html = viewPortal(parts[1], params); break;
+      case "settings": html = viewSettings(); break;
+      case "issue": { const i = byKey(parts[1]); html = viewYourWork(); if (i) setTimeout(() => openIssue(i.id), 0); break; }
+      default: html = viewYourWork();
+    }
+  } catch (e) { console.error(e); html = `<div class="note err">Fehler beim Anzeigen: ${esc(e.message)}</div>`; }
+  $("#view").innerHTML = html;
+  bindDnD();
+  if (ui.openIssue && $("#modal").classList.contains("open") && ui.modal === "issue") renderIssue();
+}
+
+/* ---------- Ansicht: Ihre Arbeit ---------- */
+function issueRow(i, extra = "") {
+  return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
+    <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
+}
+function viewYourWork() {
+  const mine = db.issues.filter((i) => i.assigneeId === db.currentUserId && !isDone(i) && i.type !== "EPIC").sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9") || PRIOS[b.priority].rank - PRIOS[a.priority].rank);
+  const watched = db.issues.filter((i) => i.watchers.includes(db.currentUserId) && i.assigneeId !== db.currentUserId && !isDone(i));
+  const recent = (db.recent[db.currentUserId] || []).map(issue).filter(Boolean);
+  const overdue = mine.filter(isOverdue).length; const soon = mine.filter((i) => i.dueDate && !isOverdue(i) && daysBetween(today(), i.dueDate) <= 7).length;
+  const tab = ui.yourWork; const list = tab === "assigned" ? mine : tab === "watched" ? watched : recent;
+  const grouped = {}; list.forEach((i) => (grouped[i.projectId] ||= []).push(i));
+  return `<div class="page-head"><div><h1>Ihre Arbeit</h1><p class="muted" style="margin:4px 0 0">Hallo ${esc(me().name.split(" ")[0])} · ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</p></div></div>
+    <div class="grid g4" style="margin-bottom:18px">
+      <div class="card stat"><div class="v">${mine.length}</div><div class="l">Mir zugewiesen (offen)</div></div>
+      <div class="card stat"><div class="v" style="${overdue ? "color:var(--danger)" : ""}">${overdue}</div><div class="l">davon überfällig</div></div>
+      <div class="card stat"><div class="v">${soon}</div><div class="l">in den nächsten 7 Tagen fällig</div></div>
+      <div class="card stat"><div class="v">${db.issues.filter((i) => i.assigneeId === db.currentUserId && i.resolvedAt && Date.now() - new Date(i.resolvedAt) < 7 * 864e5).length}</div><div class="l">erledigt in 7 Tagen</div></div>
+    </div>
+    <div class="tabs"><button class="${tab === "assigned" ? "on" : ""}" data-act="yw-tab" data-v="assigned">Mir zugewiesen (${mine.length})</button><button class="${tab === "watched" ? "on" : ""}" data-act="yw-tab" data-v="watched">Beobachtet (${watched.length})</button><button class="${tab === "recent" ? "on" : ""}" data-act="yw-tab" data-v="recent">Zuletzt angesehen</button></div>
+    ${list.length ? Object.entries(grouped).map(([pid, l]) => `<div class="card pad" style="margin-bottom:14px"><div class="row" style="margin-bottom:6px"><span class="pavatar" style="background:${proj(pid).color};width:24px;height:24px;font-size:9px">${esc(proj(pid).key.slice(0, 3))}</span><a class="b" href="#/p/${proj(pid).key}">${esc(proj(pid).name)}</a></div>
+      <div class="tbl-wrap"><table><tbody>${l.map((i) => issueRow(i, `<td style="width:30px">${avatar(i.assigneeId)}</td>`)).join("")}</tbody></table></div></div>`).join("")
+      : `<div class="empty">${tab === "assigned" ? "Ihnen sind keine offenen Vorgänge zugewiesen. 🎉" : tab === "watched" ? "Sie beobachten keine offenen Vorgänge." : "Noch keine Vorgänge angesehen."}</div>`}`;
+}
+
+/* ---------- Ansicht: Projekte ---------- */
+function viewProjects() {
+  return `<div class="page-head"><h1>Projekte</h1><button class="btn primary" data-act="new-project">${icon("plus")} Projekt erstellen</button></div>
+    <div class="card tbl-wrap"><table><thead><tr><th>Name</th><th>Schlüssel</th><th>Typ</th><th>Leitung</th><th>Offen</th><th>Fortschritt</th></tr></thead><tbody>
+    ${db.projects.map((p) => { const l = projIssues(p).filter((i) => i.type !== "EPIC"); const open = l.filter((i) => !isDone(i)).length; const pct = l.length ? Math.round((l.length - open) / l.length * 100) : 0;
+      return `<tr class="click" data-act="goto" data-href="#/p/${p.key}"><td><div class="row nowrap"><span class="pavatar" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><div><div class="b">${esc(p.name)}</div><div class="small muted trunc" style="max-width:320px">${esc(p.desc || "")}</div></div></div></td>
+        <td>${esc(p.key)}</td><td>${PROJECT_TYPES[p.type].label}</td><td><span class="row nowrap">${avatar(p.leadId)} ${esc(uname(p.leadId))}</span></td><td>${open}</td>
+        <td style="min-width:140px"><div class="progress"><i style="width:${pct}%;background:var(--ok)"></i></div><span class="small muted">${pct}% erledigt</span></td></tr>`; }).join("")}
+    </tbody></table></div>`;
+}
+
+/* ---------- Ansicht: Board ---------- */
+function boardIssues(p) {
+  const b = ui.board; const sp = activeSprint(p);
+  let list = projIssues(p).filter((i) => i.type !== "EPIC");
+  if (p.type === "software") list = sp ? list.filter((i) => i.sprintId === sp.id) : [];
+  else list = list.filter((i) => !(isDone(i) && i.resolvedAt && Date.now() - new Date(i.resolvedAt) > 14 * 864e5));
+  if (b.mine) list = list.filter((i) => i.assigneeId === db.currentUserId);
+  if (b.recent) list = list.filter((i) => Date.now() - new Date(i.updatedAt) < 864e5);
+  if (b.users.length) list = list.filter((i) => b.users.includes(i.assigneeId || "none"));
+  if (b.q) { const q = b.q.toLowerCase(); list = list.filter((i) => `${keyOf(i)} ${i.summary}`.toLowerCase().includes(q)); }
+  return list.sort((a, c) => a.rank - c.rank);
+}
+function boardCard(i) {
+  const sla = slaInfo(i, "resolve");
+  return `<div class="bcard" draggable="true" data-drag="${i.id}" data-act="open" data-id="${i.id}">
+    <div class="sum">${esc(i.summary)}</div>
+    ${i.epicId || i.labels.length || i.customer ? `<div class="row" style="margin-bottom:8px">${epicChip(i)}${i.customer ? `<span class="chip gray">${esc(i.customer.company || i.customer.name)}</span>` : ""}${i.labels.slice(0, 2).map((l) => `<span class="label-chip">${esc(l)}</span>`).join("")}</div>` : ""}
+    <div class="row nowrap">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="sp"></span>${sla && !sla.stopped ? slaChip(sla) : ""}${dueChip(i)}${subtaskProgress(i)}${i.storyPoints != null ? `<span class="pts">${i.storyPoints}</span>` : ""}${prioIcon(i.priority)}${avatar(i.assigneeId)}</div></div>`;
+}
+function viewBoard(p) {
+  const sp = activeSprint(p); const wf = workflowOf(p); const list = boardIssues(p); const b = ui.board;
+  const assignees = [...new Set(projIssues(p).filter((i) => !isDone(i)).map((i) => i.assigneeId || "none"))];
+  const head = `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>${p.type === "software" ? (sp ? esc(sp.name) : "Board") : "Board"}</h1>
+      ${sp ? `<div class="small muted">${fmtDay(sp.start)} – ${fmtDay(sp.end)} · noch ${Math.max(0, daysBetween(today(), sp.end))} Tage${sp.goal ? ` · Ziel: ${esc(sp.goal)}` : ""}</div>` : ""}</div>
+      <div class="row">${sp ? `<button class="btn" data-act="complete-sprint" data-id="${sp.id}">Sprint abschließen</button>` : ""}<button class="btn primary" data-act="create" data-project="${p.id}">${icon("plus")} Vorgang</button></div></div>
+    <div class="board-tools"><input type="search" id="board-q" placeholder="Board durchsuchen" value="${esc(b.q)}">
+      <div class="avatars-filter">${assignees.map((a) => `<button class="${b.users.includes(a) ? "on" : ""}" data-act="board-user" data-v="${a}" aria-label="${esc(a === "none" ? "Nicht zugewiesen" : uname(a))}">${avatar(a === "none" ? null : a)}</button>`).join("")}</div>
+      <button class="toggle ${b.mine ? "on" : ""}" data-act="board-toggle" data-v="mine">Nur meine</button><button class="toggle ${b.recent ? "on" : ""}" data-act="board-toggle" data-v="recent">Kürzlich aktualisiert</button>
+      <span class="sp"></span><label class="small muted row nowrap">Gruppieren nach <select id="board-lane" style="width:auto">${[["none", "Keine"], ["assignee", "Verantwortlich"], ["epic", "Epic"], ["priority", "Priorität"]].map(([v, l]) => `<option value="${v}" ${b.lane === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>`;
+  if (p.type === "software" && !sp) return head + `<div class="empty">Kein aktiver Sprint. Im <a href="#/p/${p.key}/backlog">Backlog</a> einen Sprint planen und starten.</div>`;
+  let lanes = [{ key: "all", title: null, items: list }];
+  if (b.lane === "assignee") lanes = [...new Set(list.map((i) => i.assigneeId || ""))].map((a) => ({ key: a, title: `${avatar(a || null)} ${esc(a ? uname(a) : "Nicht zugewiesen")}`, items: list.filter((i) => (i.assigneeId || "") === a) }));
+  if (b.lane === "epic") lanes = [...new Set(list.map((i) => i.epicId || (i.parentId && issue(i.parentId)?.epicId) || ""))].map((e) => ({ key: e, title: e ? `${typeIcon("EPIC")} ${esc(issue(e)?.summary)}` : "Ohne Epic", items: list.filter((i) => (i.epicId || (i.parentId && issue(i.parentId)?.epicId) || "") === e) }));
+  if (b.lane === "priority") lanes = Object.keys(PRIOS).filter((k) => list.some((i) => i.priority === k)).map((k) => ({ key: k, title: `${prioIcon(k)} ${PRIOS[k].label}`, items: list.filter((i) => i.priority === k) }));
+  return head + lanes.map((ln) => `${ln.title ? `<div class="lane-h">${ln.title} <span class="muted small">${ln.items.length} Vorgänge</span></div>` : ""}
+    <div class="board" style="grid-template-columns:repeat(${wf.length}, minmax(240px,1fr))">${wf.map((s) => { const col = ln.items.filter((i) => i.status === s.id);
+      return `<div class="col" data-drop-status="${s.id}"><div class="col-h">${esc(s.name)} <span>${col.length}</span>${s.cat === "done" ? " ✓" : ""}</div>${col.map(boardCard).join("")}</div>`; }).join("")}</div>`).join("");
+}
+
+/* ---------- Ansicht: Backlog ---------- */
+function backlogRow(i) {
+  return `<div class="brow" draggable="true" data-drag="${i.id}" data-drop-row="${i.id}" data-act="open" data-id="${i.id}">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="trunc" style="flex:1">${esc(i.summary)}</span>
+    <span class="hide-m row nowrap">${epicChip(i)}${lozenge(i)}${dueChip(i)}</span><span class="pts">${i.storyPoints ?? "–"}</span>${prioIcon(i.priority)}${avatar(i.assigneeId)}</div>`;
+}
+function viewBacklog(p) {
+  const sprints = db.sprints.filter((s) => s.projectId === p.id && s.state !== "closed").sort((a, b) => (a.state === "active" ? -1 : 1) - (b.state === "active" ? -1 : 1));
+  const epicFilter = ui.backlogEpic || "";
+  const items = projIssues(p).filter((i) => i.type !== "EPIC" && i.type !== "SUBTASK" && (!epicFilter || i.epicId === epicFilter)).sort((a, b) => a.rank - b.rank);
+  const box = (id, title, sub, list, actions) => { const pts = list.reduce((s, i) => s + (i.storyPoints || 0), 0); const done = list.filter(isDone).reduce((s, i) => s + (i.storyPoints || 0), 0);
+    return `<div class="sprint-box" data-drop-sprint="${id}"><div class="sprint-h"><b>${title}</b><span class="small muted">${sub} · ${list.length} Vorgänge</span><span class="sp"></span>
+      <span class="chip gray" title="Story Points gesamt">${pts} SP</span>${done ? `<span class="chip green" title="erledigt">${done} SP fertig</span>` : ""}${actions}</div>
+      <div class="brows">${list.map(backlogRow).join("") || `<div class="brow muted small" style="justify-content:center;cursor:default">Vorgänge hierher ziehen</div>`}</div>
+      <form class="quick-create" data-quick="${id}"><input type="text" placeholder="+ Vorgang erstellen – Zusammenfassung eingeben und Enter" aria-label="Schnell erstellen"></form></div>`; };
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Backlog</h1></div><div class="row"><button class="btn" data-act="new-sprint" data-project="${p.id}">Sprint erstellen</button><button class="btn primary" data-act="create" data-project="${p.id}">${icon("plus")} Vorgang</button></div></div>
+    <div class="row" style="margin-bottom:12px"><span class="small muted">Epic:</span><button class="toggle ${!epicFilter ? "on" : ""}" data-act="backlog-epic" data-v="">Alle</button>${epicsOf(p).map((e) => `<button class="toggle ${epicFilter === e.id ? "on" : ""}" data-act="backlog-epic" data-v="${e.id}"><span style="color:${e.color}">●</span> ${esc(e.summary)}</button>`).join("")}</div>
+    ${sprints.map((s) => box(s.id, esc(s.name), s.state === "active" ? `<span class="lozenge cat-progress">aktiv</span> ${fmtDay(s.start)} – ${fmtDay(s.end)}` : "geplant",
+      items.filter((i) => i.sprintId === s.id),
+      s.state === "active" ? `<button class="btn sm" data-act="complete-sprint" data-id="${s.id}">Sprint abschließen</button>` : `<button class="btn sm primary" data-act="start-sprint" data-id="${s.id}" ${activeSprint(p) ? "disabled title='Es läuft bereits ein Sprint'" : ""}>${icon("play")} Sprint starten</button><button class="btn sm subtle" data-act="delete-sprint" data-id="${s.id}" aria-label="Sprint löschen">${icon("trash")}</button>`)).join("")}
+    ${box("backlog", "Backlog", "nicht eingeplant", items.filter((i) => !i.sprintId || sprint(i.sprintId)?.state === "closed"), "")}`;
+}
+
+/* ---------- Ansicht: Zeitleiste ---------- */
+function viewTimeline(p) {
+  const start = addDays(today(), -21); const days = 140; const end = addDays(start, days);
+  const pos = (k) => Math.max(0, Math.min(100, (daysBetween(start, k) / days) * 100));
+  const months = []; let m = parseDay(start); m.setDate(1); while (dayKey(m) < end) { const k = dayKey(m); if (k >= start) months.push(k); m.setMonth(m.getMonth() + 1); }
+  const epics = epicsOf(p).sort((a, b) => (a.startDate || a.createdAt).localeCompare(b.startDate || b.createdAt));
+  const rows = epics.map((e) => {
+    const ch = epicChildren(e); const done = ch.filter(isDone).length; const pct = ch.length ? Math.round(done / ch.length * 100) : 0;
+    const s = e.startDate || dayKey(e.createdAt), en = e.dueDate || addDays(s, 30);
+    const left = pos(s), width = Math.max(1.5, pos(en) - left);
+    const open = ui.tlOpen?.includes(e.id);
+    let html = `<div class="tl-name"><button class="btn subtle sm icon" data-act="tl-toggle" data-id="${e.id}" aria-label="Aufklappen" style="width:22px">${open ? "▾" : "▸"}</button>${typeIcon("EPIC")}<a href="#" data-act="open" data-id="${e.id}" class="trunc" style="color:var(--fg)">${esc(e.summary)}</a></div>
+      <div class="tl-track"><div class="tl-bar" data-act="open" data-id="${e.id}" style="left:${left}%;width:${width}%;background:${e.color || "#8f5bd6"}" data-tip="${esc(`${e.summary}\n${fmtDay(s)} – ${fmtDay(en)}\n${done}/${ch.length} erledigt (${pct}%)`)}"><i style="width:${pct}%"></i>${pct}%</div></div>`;
+    if (open) html += ch.map((c) => { const cs = dayKey(c.createdAt) < start ? start : dayKey(c.createdAt); const ce = c.dueDate || (c.resolvedAt ? dayKey(c.resolvedAt) : addDays(cs, 7)); const l = pos(cs);
+      return `<div class="tl-name" style="padding-left:40px">${typeIcon(c.type)}<a href="#" data-act="open" data-id="${c.id}" class="trunc" style="color:var(--fg)">${keyOf(c)} ${esc(c.summary)}</a></div>
+        <div class="tl-track"><div class="tl-bar" data-act="open" data-id="${c.id}" style="left:${l}%;width:${Math.max(1, pos(ce) - l)}%;background:${isDone(c) ? "var(--ok)" : "var(--ref)"};opacity:.85" data-tip="${esc(`${keyOf(c)} ${c.summary}\n${statusOf(c).name}`)}"></div></div>`; }).join("") || `<div class="tl-name small muted" style="padding-left:40px">Keine Vorgänge</div><div class="tl-track"></div>`;
+    return html;
+  }).join("");
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Zeitleiste</h1></div><button class="btn primary" data-act="create" data-project="${p.id}" data-type="EPIC">${icon("plus")} Epic</button></div>
+    ${epics.length ? `<div class="card tl"><div class="tl-grid"><div class="tl-name b" style="height:30px;border-bottom:2px solid var(--border)">Epics</div>
+      <div class="tl-head">${months.map((k) => `<span style="left:${pos(k)}%">${parseDay(k).toLocaleDateString("de-DE", { month: "long", year: "numeric" })}</span>`).join("")}<div class="tl-today" style="left:${pos(today())}%" title="Heute"></div></div>
+      ${rows}</div></div><p class="small muted" style="margin-top:8px">Balken: Start- bis Fälligkeitsdatum des Epics; heller Anteil = erledigte Vorgänge. Oranger Strich = heute.</p>`
+      : `<div class="empty">Noch keine Epics. Epics bündeln größere Vorhaben – <a href="#" data-act="create" data-project="${p.id}" data-type="EPIC">jetzt Epic anlegen</a>.</div>`}`;
+}
+
+/* ---------- Ansicht: Liste & Filter ---------- */
+function resultTable(list, { sortable = false, sortField = null, sortDir = "DESC" } = {}) {
+  if (!list.length) return `<div class="empty">Keine Vorgänge gefunden.</div>`;
+  const th = (f, l) => sortable ? `<th data-sort="${f}">${l}${sortField === f ? (sortDir === "ASC" ? " ↑" : " ↓") : ""}</th>` : `<th>${l}</th>`;
+  return `<div class="card tbl-wrap"><table><thead><tr>${th("type", "Typ")}${th("key", "Schlüssel")}${th("summary", "Zusammenfassung")}${th("assignee", "Verantwortlich")}${th("status", "Status")}${th("priority", "Priorität")}${th("due", "Fällig")}${th("updated", "Aktualisiert")}</tr></thead><tbody>
+    ${list.map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:440px">${esc(i.summary)}</div>${i.customer ? `<div class="small muted">${esc(i.customer.company || i.customer.name)}</div>` : ""}</td>
+      <td><span class="row nowrap">${avatar(i.assigneeId)}<span class="trunc small">${esc(uname(i.assigneeId))}</span></span></td><td>${lozenge(i)}</td><td>${prioIcon(i.priority)}</td><td>${dueChip(i) || (i.dueDate ? `<span class="small muted">${fmtDay(i.dueDate)}</span>` : '<span class="muted">–</span>')}</td><td class="small muted" style="white-space:nowrap">${ago(i.updatedAt)}</td></tr>`).join("")}
+    </tbody></table></div>`;
+}
+function viewList(p) {
+  const jql = `project = ${p.key} ORDER BY created DESC`;
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Liste</h1></div><div class="row"><a class="btn" href="#/filters?jql=${encodeURIComponent(jql)}">${icon("filter")} In Filter öffnen</a><button class="btn primary" data-act="create" data-project="${p.id}">${icon("plus")} Vorgang</button></div></div>
+    <div class="card pad" style="margin-bottom:14px">${statusStack(projIssues(p).filter((i) => i.type !== "EPIC"))}</div>${resultTable(runJql(jql))}`;
+}
+function viewFilters(params) {
+  const all = [...DEFAULT_FILTERS, ...db.filters];
+  const fid = params.get("filter"); const f = all.find((x) => x.id === fid);
+  const jql = params.get("jql") ?? f?.jql ?? DEFAULT_FILTERS[0].jql;
+  let list = [], err = null; try { list = runJql(jql); } catch (e) { err = e.message; }
+  let sortField = null, sortDir = "DESC"; try { const o = parseJql(jql).order[0]; if (o) { sortField = o.f; sortDir = o.dir; } } catch {}
+  ui.lastResults = list;
+  return `<div class="page-head"><h1>Vorgänge suchen</h1><div class="row"><button class="btn" data-act="save-filter">${icon("star")} Filter speichern</button><button class="btn" data-act="export-csv">${icon("download")} CSV / Excel</button></div></div>
+    <div class="grid" style="grid-template-columns:220px minmax(0,1fr);align-items:start" id="filter-layout">
+      <div class="card pad queue-nav"><div class="small b muted" style="margin-bottom:6px">STANDARDFILTER</div>${DEFAULT_FILTERS.map((x) => `<button class="${fid === x.id || (!fid && !params.get("jql") && x.id === "f-mine") ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}">${esc(x.name)}</button>`).join("")}
+        <div class="small b muted" style="margin:12px 0 6px">GESPEICHERT</div>${db.filters.length ? db.filters.map((x) => `<div class="row nowrap"><button class="${fid === x.id ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}" style="flex:1">${esc(x.name)}</button><button class="btn subtle sm icon" data-act="delete-filter" data-id="${x.id}" aria-label="Filter löschen">${icon("x")}</button></div>`).join("") : '<p class="small muted" style="margin:0 10px">Noch keine.</p>'}</div>
+      <div>
+        <form id="jql-form" class="row nowrap" style="margin-bottom:8px;align-items:flex-start"><textarea id="jql" class="jql" rows="2" spellcheck="false" aria-label="JQL-Abfrage">${esc(jql)}</textarea><button class="btn primary" type="submit">${icon("search")} Suchen</button></form>
+        <details style="margin-bottom:10px"><summary class="small muted" style="cursor:pointer">Hilfe zur Abfragesprache (JQL)</summary><div class="small muted" style="padding:8px 0;line-height:1.7">
+          Felder: <code>project, type, status, statusCategory, assignee, reporter, priority, labels, sprint, due, created, updated, resolved, resolution, text, summary, epic, customer, points</code><br>
+          Operatoren: <code>= != ~ !~ &lt; &gt; &lt;= &gt;= IN (…) NOT IN (…) IS EMPTY IS NOT EMPTY</code>, verknüpft mit <code>AND OR NOT ( )</code>, sortiert mit <code>ORDER BY feld ASC|DESC</code><br>
+          Funktionen: <code>currentUser() openSprints() now() startOfWeek() endOfWeek() startOfMonth()</code>, relative Daten <code>-7d 14d 2w</code><br>
+          Beispiel: <code>project = SD AND priority IN (Höchste, Hoch) AND resolution = Unresolved ORDER BY created DESC</code></div></details>
+        ${err ? `<div class="note err" style="margin-bottom:10px">Abfragefehler: ${esc(err)}</div>` : `<p class="small muted" style="margin:0 0 8px">${list.length} Vorgang${list.length === 1 ? "" : "e"}${f ? ` · Filter „${esc(f.name)}“` : ""}</p>`}
+        ${err ? "" : resultTable(list, { sortable: true, sortField, sortDir })}
+      </div></div>`;
+}
+
+/* ---------- Ansicht: Warteschlangen (Service) ---------- */
+const QUEUES = [
+  { id: "open", name: "Alle offenen", fn: (i) => !isDone(i) },
+  { id: "mine", name: "Mir zugewiesen", fn: (i) => !isDone(i) && i.assigneeId === db.currentUserId },
+  { id: "unassigned", name: "Nicht zugewiesen", fn: (i) => !isDone(i) && !i.assigneeId },
+  { id: "risk", name: "SLA gefährdet / verletzt", fn: (i) => !isDone(i) && ["first", "resolve"].some((k) => { const s = slaInfo(i, k); return s && !s.stopped && (s.risk || s.breached); }) },
+  { id: "waiting", name: "Wartet auf Kunde", fn: (i) => i.status === "WAITING" },
+  { id: "incidents", name: "Störungen", fn: (i) => !isDone(i) && i.type === "INCIDENT" },
+  { id: "resolved", name: "Kürzlich gelöst", fn: (i) => isDone(i) && i.resolvedAt && Date.now() - new Date(i.resolvedAt) < 14 * 864e5 },
+];
+function viewQueue(p) {
+  const items = projIssues(p).filter((i) => i.type !== "SUBTASK");
+  const q = QUEUES.find((x) => x.id === ui.queue) || QUEUES[0];
+  const list = items.filter(q.fn).sort((a, b) => { const sa = slaInfo(a, "resolve"), sb = slaInfo(b, "resolve"); return (sa?.stopped ? 1e15 : sa?.remaining ?? 1e15) - (sb?.stopped ? 1e15 : sb?.remaining ?? 1e15); });
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Warteschlangen</h1></div><div class="row"><a class="btn" href="#/portal/${p.key}">${icon("portal")} Kundenportal</a><button class="btn primary" data-act="create" data-project="${p.id}">${icon("plus")} Anfrage</button></div></div>
+    <div class="grid" style="grid-template-columns:210px minmax(0,1fr);align-items:start" id="queue-layout">
+      <div class="card pad queue-nav">${QUEUES.map((x) => { const n = items.filter(x.fn).length; return `<button class="${x.id === q.id ? "on" : ""}" data-act="queue" data-v="${x.id}"><span>${esc(x.name)}</span><span class="${x.id === "risk" && n ? "chip red" : "muted"}">${n}</span></button>`; }).join("")}
+        <p class="small muted" style="margin:12px 10px 0">SLA-Ziele (Kalenderzeit): ${Object.entries(SLA).map(([k, v]) => `${PRIOS[k].label} ${v[0]} h / ${v[1] >= 24 ? v[1] / 24 + " T" : v[1] + " h"}`).join(" · ")}. „Wartet auf Kunde“ pausiert die Lösungszeit.</p></div>
+      <div>${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Typ</th><th>Schlüssel</th><th>Anfrage / Kunde</th><th>Erste Antwort</th><th>Lösung</th><th>Status</th><th>Prio.</th><th></th></tr></thead><tbody>
+        ${list.map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:280px">${esc(i.summary)}</div><div class="small muted trunc" style="max-width:280px">${esc(i.customer?.company || "")}${i.customer?.name ? " · " + esc(i.customer.name) : ""} · ${ago(i.createdAt)}</div></td>
+          <td>${slaChip(slaInfo(i, "first"))}</td><td>${slaChip(slaInfo(i, "resolve"))}</td><td>${lozenge(i)}</td><td>${prioIcon(i.priority)}</td><td>${avatar(i.assigneeId)}</td></tr>`).join("")}
+        </tbody></table></div>` : `<div class="empty">Keine Anfragen in dieser Warteschlange. 🎉</div>`}</div></div>`;
+}
+
+/* ---------- Ansicht: Berichte ---------- */
+function createdResolvedChart(list, days = 30) {
+  const labels = [], created = [], resolved = [];
+  for (let d = days - 1; d >= 0; d--) { const k = addDays(today(), -d); labels.push(fmtShort(k)); created.push(list.filter((i) => dayKey(i.createdAt) === k).length); resolved.push(list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) === k).length); }
+  const cum = (a) => a.reduce((acc, v) => { acc.push((acc.at(-1) || 0) + v); return acc; }, []);
+  return lineChart({ labels, series: [{ name: "Erstellt", color: "var(--s1)", values: cum(created) }, { name: "Erledigt", color: "var(--s2)", values: cum(resolved) }], yLabel: "kumuliert, letzte 30 Tage" });
+}
+function workloadBars(list) {
+  const open = list.filter((i) => !isDone(i) && i.type !== "EPIC");
+  return hbars(activeUsers().map((u) => { const l = open.filter((i) => i.assigneeId === u.id); return { label: u.name, value: l.length, extra: `${l.filter(isOverdue).length} überfällig` }; })
+    .concat([{ label: "Nicht zugewiesen", value: open.filter((i) => !i.assigneeId).length }]).filter((r) => r.value > 0).sort((a, b) => b.value - a.value), "");
+}
+function burndown(p) {
+  const sp = activeSprint(p); if (!sp) return `<p class="muted">Kein aktiver Sprint.</p>`;
+  const list = db.issues.filter((i) => i.sprintId === sp.id && i.type !== "SUBTASK"); const total = list.reduce((s, i) => s + (i.storyPoints || 0), 0);
+  const n = daysBetween(sp.start, sp.end); const labels = [], ideal = [], actual = [];
+  for (let d = 0; d <= n; d++) { const k = addDays(sp.start, d); labels.push(fmtShort(k)); ideal.push(total - (total / n) * d);
+    actual.push(k > today() ? null : total - list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) <= k).reduce((s, i) => s + (i.storyPoints || 0), 0)); }
+  return lineChart({ labels, series: [{ name: "Ideal", color: "var(--ref)", values: ideal, dash: true }, { name: "Verbleibend", color: "var(--s1)", values: actual }], yMax: Math.max(1, total), yLabel: "Story Points" });
+}
+function viewReports(p) {
+  const list = projIssues(p);
+  const closed = db.sprints.filter((s) => s.projectId === p.id && s.state === "closed").slice(-6);
+  const open = list.filter((i) => !isDone(i) && i.type !== "EPIC");
+  let svc = "";
+  if (p.type === "service") {
+    const reqs = list.filter((i) => i.type !== "SUBTASK"); const k = (kind) => { const done = reqs.map((i) => slaInfo(i, kind)).filter((s) => s && s.stopped); return done.length ? Math.round(done.filter((s) => s.met).length / done.length * 100) : null; };
+    const fr = k("first"), rs = k("resolve"); const avgRes = (() => { const r = reqs.filter((i) => i.resolvedAt); return r.length ? fmtDur(r.reduce((s, i) => s + (new Date(i.resolvedAt) - new Date(i.createdAt)), 0) / r.length) : "–"; })();
+    svc = `<div class="grid g4" style="margin-bottom:16px">
+      <div class="card stat"><div class="v">${fr == null ? "–" : fr + " %"}</div><div class="l">SLA erste Antwort eingehalten</div></div>
+      <div class="card stat"><div class="v">${rs == null ? "–" : rs + " %"}</div><div class="l">SLA Lösung eingehalten</div></div>
+      <div class="card stat"><div class="v">${avgRes}</div><div class="l">Ø Lösungszeit</div></div>
+      <div class="card stat"><div class="v">${reqs.filter((i) => !isDone(i)).length}</div><div class="l">offene Anfragen</div></div></div>
+      <div class="card pad" style="margin-bottom:16px"><h3 style="font-size:15px;margin-bottom:10px">Anfragen nach Typ (letzte 30 Tage)</h3>${hbars(["INCIDENT", "MAINT", "SERVICE"].map((t) => ({ label: TYPES[t].label, value: reqs.filter((i) => i.type === t && Date.now() - new Date(i.createdAt) < 30 * 864e5).length })))}</div>`;
+  }
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Berichte</h1></div></div>${svc}
+    <div class="grid g2">
+      ${p.type === "software" ? `<div class="card pad"><h3 style="font-size:15px">Burndown – ${esc(activeSprint(p)?.name || "kein Sprint")}</h3><p class="small muted" style="margin:2px 0 8px">Verbleibende Story Points je Tag gegenüber dem idealen Verlauf</p>${burndown(p)}</div>
+      <div class="card pad"><h3 style="font-size:15px">Velocity</h3><p class="small muted" style="margin:2px 0 8px">Zugesagte und erledigte Story Points je abgeschlossenem Sprint${closed.length ? ` · Ø ${Math.round(closed.reduce((s, x) => s + (x.completed || 0), 0) / closed.length)} SP` : ""}</p>
+        ${closed.length ? barChart({ labels: closed.map((s) => s.name.replace(/^.*?(Sprint)/, "$1")), series: [{ name: "Zugesagt", color: "var(--ref)", values: closed.map((s) => s.committed || 0) }, { name: "Erledigt", color: "var(--s1)", values: closed.map((s) => s.completed || 0) }] }) : '<p class="muted">Noch keine abgeschlossenen Sprints.</p>'}</div>` : ""}
+      <div class="card pad"><h3 style="font-size:15px">Erstellt vs. erledigt</h3><p class="small muted" style="margin:2px 0 8px">Läuft „Erstellt“ davon, wächst der Rückstand.</p>${createdResolvedChart(list)}</div>
+      <div class="card pad"><h3 style="font-size:15px">Arbeitslast</h3><p class="small muted" style="margin:2px 0 8px">Offene Vorgänge je Person</p>${workloadBars(list)}
+        <h3 style="font-size:15px;margin-top:18px">Status der offenen Arbeit</h3><div style="margin-top:8px">${statusStack(list.filter((i) => i.type !== "EPIC"))}</div>
+        <p class="small muted">${open.filter(isOverdue).length} überfällig · ${open.filter((i) => !i.assigneeId).length} nicht zugewiesen</p></div>
+    </div>`;
+}
+
+/* ---------- Ansicht: Projekteinstellungen ---------- */
+function viewProjectSettings(p) {
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Projekteinstellungen</h1></div></div>
+    <div class="grid g2"><div class="card pad"><form id="project-form" data-id="${p.id}" class="grid" style="gap:12px">
+      <label class="f">Name<input type="text" name="name" value="${esc(p.name)}" required></label>
+      <label class="f">Schlüssel<input type="text" value="${esc(p.key)}" disabled></label>
+      <label class="f">Beschreibung<textarea name="desc" rows="3">${esc(p.desc || "")}</textarea></label>
+      <label class="f">Projektleitung<select name="leadId">${userOpts(p.leadId, "–")}</select></label>
+      <label class="f">Farbe<select name="color">${PALETTE.map((c) => `<option value="${c}" ${c === p.color ? "selected" : ""} style="color:${c}">● ${c}</option>`).join("")}</select></label>
+      <div class="row"><button class="btn primary" type="submit">Speichern</button><span class="sp"></span><button type="button" class="btn danger" data-act="delete-project" data-id="${p.id}">Projekt löschen</button></div></form></div>
+      <div class="card pad"><h3 style="font-size:15px;margin-bottom:8px">Workflow</h3><div class="row">${workflowOf(p).map((s, k) => `${k ? "→" : ""}<span class="lozenge cat-${s.cat}">${esc(s.name)}</span>`).join(" ")}</div>
+        <h3 style="font-size:15px;margin:16px 0 8px">Vorgangstypen</h3><div class="row">${PROJECT_TYPES[p.type].types.map((t) => `<span class="row nowrap">${typeIcon(t)} ${TYPES[t].label}</span>`).join("")}</div>
+        ${p.type === "service" ? `<h3 style="font-size:15px;margin:16px 0 8px">SLA-Ziele</h3><table><thead><tr><th>Priorität</th><th>Erste Antwort</th><th>Lösung</th></tr></thead><tbody>${Object.entries(SLA).map(([k, v]) => `<tr><td>${prioIcon(k)} ${PRIOS[k].label}</td><td>${v[0]} h</td><td>${v[1]} h</td></tr>`).join("")}</tbody></table>` : ""}</div></div>`;
+}
+
+/* ---------- Ansicht: Dashboard ---------- */
+function viewDashboard() {
+  const open = db.issues.filter((i) => !isDone(i) && i.type !== "EPIC");
+  const mine = open.filter((i) => i.assigneeId === db.currentUserId).sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9")).slice(0, 8);
+  const overdue = open.filter(isOverdue).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 8);
+  const stream = db.issues.flatMap((i) => i.history.map((h) => ({ ...h, i }))).concat(db.issues.flatMap((i) => i.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, userId: c.userId, field: "Kommentar", to: c.text.slice(0, 80), i, author: c.author }))))
+    .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
+  const risk = open.filter((i) => ["first", "resolve"].some((k) => { const s = slaInfo(i, k); return s && !s.stopped && (s.breached || s.risk); }));
+  return `<div class="page-head"><h1>Dashboard</h1><span class="small muted">Alle Projekte</span></div>
+    <div class="grid g4" style="margin-bottom:16px">
+      <div class="card stat"><div class="v">${open.length}</div><div class="l">offene Vorgänge</div></div>
+      <div class="card stat"><div class="v" style="${overdue.length ? "color:var(--danger)" : ""}">${open.filter(isOverdue).length}</div><div class="l">überfällig</div></div>
+      <div class="card stat"><div class="v">${open.filter((i) => !i.assigneeId).length}</div><div class="l">nicht zugewiesen</div></div>
+      <div class="card stat"><div class="v" style="${risk.length ? "color:var(--danger)" : ""}">${risk.length}</div><div class="l">SLA gefährdet/verletzt</div></div></div>
+    <div class="grid g2">
+      <div class="card pad"><h3 style="font-size:15px;margin-bottom:8px">Mir zugewiesen</h3>${mine.length ? `<table><tbody>${mine.map((i) => issueRow(i)).join("")}</tbody></table>` : '<p class="muted">Nichts offen. 🎉</p>'}</div>
+      <div class="card pad"><h3 style="font-size:15px;margin-bottom:8px">Überfällig</h3>${overdue.length ? `<table><tbody>${overdue.map((i) => issueRow(i, `<td>${avatar(i.assigneeId)}</td>`)).join("")}</tbody></table>` : '<p class="muted">Keine überfälligen Vorgänge.</p>'}</div>
+      <div class="card pad"><h3 style="font-size:15px">Erstellt vs. erledigt</h3><p class="small muted" style="margin:2px 0 8px">Alle Projekte</p>${createdResolvedChart(db.issues)}</div>
+      <div class="card pad"><h3 style="font-size:15px;margin-bottom:8px">Arbeitslast</h3>${workloadBars(db.issues)}
+        <h3 style="font-size:15px;margin:16px 0 8px">Offen je Projekt</h3>${hbars(db.projects.map((p) => ({ label: p.name, value: open.filter((i) => i.projectId === p.id).length })))}</div>
+      <div class="card pad" style="grid-column:1/-1"><h3 style="font-size:15px;margin-bottom:8px">Aktivitäten</h3>
+        ${stream.map((h) => `<div class="row nowrap small" style="padding:6px 0;border-bottom:1px solid var(--border)">${h.userId ? avatar(h.userId) : custAvatar({ name: h.author || "Kunde" })}<span class="trunc" style="flex:1"><b>${esc(h.userId ? uname(h.userId) : h.author || "Kunde")}</b> · ${esc(h.field)}${h.to ? `: ${esc(h.to)}` : ""} · <a href="#" data-act="open" data-id="${h.i.id}">${keyOf(h.i)}</a> ${esc(h.i.summary)}</span><span class="muted">${ago(h.at)}</span></div>`).join("")}</div>
+    </div>`;
+}
+
+/* ---------- Ansicht: Kundenportal ---------- */
+function viewPortal(pkey, params) {
+  const services = db.projects.filter((p) => p.type === "service");
+  const p = projByKey(pkey) || services[0];
+  if (!p) return `<div class="empty">Kein Service-Desk-Projekt vorhanden. <a href="#/projects">Projekt anlegen</a></div>`;
+  const rt = ui.portalType; const email = (ui.portalEmail || "").toLowerCase();
+  const mineReq = email ? projIssues(p).filter((i) => i.customer?.email?.toLowerCase() === email).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) : [];
+  const view = params.get("req") ? byKey(params.get("req")) : null;
+  if (view && view.customer) {
+    return `<div style="max-width:820px;margin:0 auto"><a href="#/portal/${p.key}" data-act="portal-back">← Zurück zum Portal</a>
+      <div class="card pad" style="margin-top:12px"><div class="row"><span class="key">${keyOf(view)}</span>${lozenge(view)}<span class="sp"></span><span class="small muted">gemeldet ${fmtDT(view.createdAt)}</span></div>
+      <h1 style="font-size:20px;margin:6px 0">${esc(view.summary)}</h1><div class="desc-view" style="cursor:default">${esc(view.description)}</div>
+      <h3 style="font-size:15px;margin:16px 0 6px">Verlauf</h3>${view.comments.filter((c) => !c.internal).map((c) => `<div class="comment">${c.userId ? avatar(c.userId) : custAvatar(view.customer)}<div class="body"><div class="small"><b>${esc(c.userId ? uname(c.userId) + " (Service)" : c.author)}</b> · <span class="muted">${fmtDT(c.at)}</span></div><div class="text">${esc(c.text)}</div></div></div>`).join("") || '<p class="muted small">Noch keine Nachrichten.</p>'}
+      ${isDone(view) && view.status === "CLOSED" ? "" : `<form id="portal-reply" data-id="${view.id}" class="grid" style="gap:8px;margin-top:10px"><textarea rows="3" name="text" placeholder="Nachricht an den Service…" required></textarea><div><button class="btn primary" type="submit">${icon("send")} Senden</button></div></form>`}</div></div>`;
+  }
+  return `<div style="max-width:980px;margin:0 auto">
+    <div class="portal-hero"><h1>Service-Portal</h1><p style="margin:6px 0 0;opacity:.9">Störung melden, Wartung anfragen oder den Stand Ihrer Anfragen verfolgen – rund um die Uhr.</p>
+      ${services.length > 1 ? `<select style="width:auto;margin-top:10px" id="portal-project">${services.map((s) => `<option value="${s.key}" ${s.id === p.id ? "selected" : ""}>${esc(s.name)}</option>`).join("")}</select>` : ""}</div>
+    <h2 style="font-size:17px;margin-bottom:10px">Wobei können wir helfen?</h2>
+    <div class="grid g3" style="margin-bottom:18px">${REQUEST_TYPES.map((r) => `<div class="card rtype ${rt === r.id ? "on" : ""}" data-act="portal-type" data-v="${r.id}"><span class="ic" style="background:${r.color}">${icon(r.icon)}</span><div><div class="b">${r.name}</div><div class="small muted">${r.desc}</div></div></div>`).join("")}</div>
+    ${rt ? `<div class="card pad" style="margin-bottom:18px"><h2 style="font-size:17px;margin-bottom:12px">${REQUEST_TYPES.find((r) => r.id === rt).name}</h2>
+      <form id="portal-form" data-project="${p.id}" class="grid g2" style="gap:12px">
+        <label class="f">Ihr Name <span class="req">*</span><input type="text" name="name" required value="${esc(ui.portalName || "")}"></label>
+        <label class="f">Firma <span class="req">*</span><input type="text" name="company" required value="${esc(ui.portalCompany || "")}"></label>
+        <label class="f">E-Mail <span class="req">*</span><input type="email" name="email" required value="${esc(ui.portalEmail || "")}"></label>
+        <label class="f">Telefon (Rückruf)<input type="tel" name="phone"></label>
+        <label class="f" style="grid-column:1/-1">Betreff <span class="req">*</span><input type="text" name="summary" required maxlength="200" placeholder="${rt === "INCIDENT" ? "z. B. Kompressor zeigt Fehler E42" : rt === "MAINT" ? "z. B. Jahreswartung Schraubenkompressor" : "z. B. Angebot Ersatzfilter"}"></label>
+        <label class="f">Anlage / Standort<input type="text" name="asset" placeholder="z. B. GA 37 VSD, Halle B"></label>
+        <label class="f">Dringlichkeit<select name="urgency">${URGENCY.map((u) => `<option value="${u.id}" ${u.id === (rt === "INCIDENT" ? "HIGH" : "MEDIUM") ? "selected" : ""}>${u.name}</option>`).join("")}</select></label>
+        <label class="f" style="grid-column:1/-1">Beschreibung <span class="req">*</span><textarea name="description" rows="4" required placeholder="${rt === "INCIDENT" ? "Was ist passiert? Fehlercode, seit wann, Auswirkungen…" : "Ihre Anfrage…"}"></textarea></label>
+        <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit">${icon("send")} Anfrage senden</button><button type="button" class="btn subtle" data-act="portal-type" data-v="">Abbrechen</button></div></form></div>` : ""}
+    <div class="card pad"><h2 style="font-size:17px;margin-bottom:10px">Meine Anfragen</h2>
+      <form id="portal-lookup" class="row nowrap" style="margin-bottom:12px"><input type="email" name="email" placeholder="Ihre E-Mail-Adresse" value="${esc(ui.portalEmail || "")}" required><button class="btn" type="submit">Anzeigen</button></form>
+      ${email ? (mineReq.length ? `<table><tbody>${mineReq.map((i) => `<tr class="click" data-act="goto" data-href="#/portal/${p.key}?req=${keyOf(i)}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td>${esc(i.summary)}</td><td>${lozenge(i)}</td><td class="small muted">${ago(i.createdAt)}</td></tr>`).join("")}</tbody></table>` : '<p class="muted">Keine Anfragen zu dieser E-Mail-Adresse.</p>') : '<p class="small muted">E-Mail eingeben, um den Stand Ihrer Anfragen zu sehen.</p>'}</div>
+    <p class="small muted" style="margin-top:10px">Hinweis: In dieser eigenständigen Version teilen sich Portal und Service-Team diesen Browser. Im Server-Betrieb erreichen Kunden das Portal über eine eigene Adresse.</p></div>`;
+}
+
+/* ---------- Ansicht: Einstellungen ---------- */
+function viewSettings() {
+  const isAdmin = me().role === "ADMIN";
+  return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
+    <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Personen</h3>
+      ${db.users.map((u) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border);${u.active ? "" : "opacity:.5"}">${avatar(u.id)}<div style="flex:1;min-width:0"><div class="b trunc">${esc(u.name)}</div><div class="small muted trunc">${esc(u.email)}</div></div>
+        <select style="width:auto" data-act="user-role" data-id="${u.id}" ${isAdmin ? "" : "disabled"}>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === u.role ? "selected" : ""}>${v}</option>`).join("")}</select>
+        <label class="small row nowrap"><input type="checkbox" data-act="user-active" data-id="${u.id}" ${u.active ? "checked" : ""} ${isAdmin && u.id !== db.currentUserId ? "" : "disabled"}> aktiv</label></div>`).join("")}
+      ${isAdmin ? `<form id="user-form" class="grid g2" style="gap:8px;margin-top:12px"><input type="text" name="name" placeholder="Name" required><input type="email" name="email" placeholder="E-Mail" required><select name="role">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === "MEMBER" ? "selected" : ""}>${v}</option>`).join("")}</select><button class="btn primary" type="submit">${icon("plus")} Person hinzufügen</button></form>` : '<p class="small muted">Nur Administratoren können Personen verwalten.</p>'}</div>
+    <div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Alle Daten liegen in diesem Browser. Regelmäßig sichern oder auf einen anderen Rechner übertragen.</p>
+      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung speichern</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung laden</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
+      <div class="row" style="margin-top:12px"><button class="btn danger" data-act="reset">Beispieldaten wiederherstellen</button></div>
+      <h3 style="font-size:15px;margin:18px 0 6px">Tastenkürzel</h3><div class="small" style="line-height:2"><span class="kbd">c</span> Vorgang erstellen · <span class="kbd">/</span> Suche · <span class="kbd">Esc</span> Schließen · <span class="kbd">Strg</span>+<span class="kbd">Enter</span> Kommentar senden</div>
+      <h3 style="font-size:15px;margin:18px 0 6px">Benachrichtigungen</h3><p class="small muted" style="margin:0">Glocke oben rechts: Zuweisungen, @Erwähnungen, Kommentare und Statuswechsel beobachteter Vorgänge, Fristen (2 Tage vorher, überfällig) und SLA-Warnungen im Service-Desk.</p></div></div>`;
+}
+
+/* ---------- Vorgang: Detailansicht ---------- */
+function openModal(html, wide = false, kind = "form") { const m = $("#modal"); m.className = "modal open" + (wide ? " wide" : ""); m.innerHTML = html; ui.modal = kind; $("#overlay").classList.add("open"); }
+function closeModal() { $("#modal").className = "modal"; $("#modal").innerHTML = ""; ui.modal = null; ui.openIssue = null; ui.editingDesc = false; $("#overlay").classList.remove("open"); }
+function openIssue(id) { const i = issue(id); if (!i) return toast("Vorgang nicht gefunden."); ui.openIssue = id; ui.editingDesc = false; ui.addingSub = false; ui.addingLink = false; ui.issueTab = ui.issueTab || "comments"; pushRecent(id); openModal("", true, "issue"); renderIssue(); }
+function renderIssue() {
+  const i = issue(ui.openIssue); if (!i) { closeModal(); return; }
+  const p = proj(i.projectId); const s = statusOf(i); const ch = children(i); const isSvc = p.type === "service";
+  const parent = issue(i.parentId), epic = issue(i.epicId);
+  const crumbs = `<a href="#/p/${p.key}" data-act="close">${esc(p.name)}</a>${epic ? ` / <a href="#" data-act="open" data-id="${epic.id}">${keyOf(epic)}</a>` : ""}${parent ? ` / <a href="#" data-act="open" data-id="${parent.id}">${keyOf(parent)}</a>` : ""} / <span class="row nowrap" style="display:inline-flex">${typeIcon(i.type)} ${keyOf(i)}</span>`;
+  const tab = ui.issueTab;
+  const comments = i.comments.map((c) => `<div class="comment ${c.internal ? "internal" : ""}">${c.userId ? avatar(c.userId, true) : custAvatar({ name: c.author, email: i.customer?.email })}
+    <div class="body"><div class="small"><b>${esc(c.userId ? uname(c.userId) : c.author + " (Kunde)")}</b> <span class="muted">${fmtDT(c.at)}</span>${c.internal ? ' <span class="chip yellow">intern</span>' : isSvc && c.userId ? ' <span class="chip gray">für Kunden sichtbar</span>' : ""}</div>
+    <div class="text">${esc(c.text).replace(/@([A-Za-zÄÖÜäöüß]+(?: [A-Za-zÄÖÜäöüß]+)?)/g, (m) => `<span class="mention">${m}</span>`)}</div></div></div>`).join("") || '<p class="muted small">Noch keine Kommentare.</p>';
+  const history = i.history.map((h) => `<div class="hist">${avatar(h.userId)} <b>${esc(uname(h.userId))}</b> hat <b>${esc(h.field)}</b> ${h.from && h.from !== "–" ? `von „${esc(h.from)}“ ` : ""}${h.to === "erstellt" ? "erstellt" : `auf „${esc(h.to)}“ geändert`} <span class="muted small">· ${fmtDT(h.at)}</span></div>`).join("");
+  const timePct = i.estimateH ? Math.min(100, (i.loggedH / i.estimateH) * 100) : 0;
+  const sf = slaInfo(i, "first"), sr = slaInfo(i, "resolve");
+  $("#modal").innerHTML = `
+    <div class="modal-h" style="padding-bottom:0"><div class="small muted" style="flex:1">${crumbs}</div>
+      <button class="btn subtle sm" data-act="watch" title="Beobachten">${icon("eye")} ${i.watchers.includes(db.currentUserId) ? "Beobachtet" : "Beobachten"} (${i.watchers.length})</button>
+      <button class="btn subtle sm icon" data-act="clone" title="Klonen">${icon("copy")}</button>
+      <button class="btn subtle sm icon" data-act="delete-issue" title="Löschen">${icon("trash")}</button>
+      <button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <div class="issue-wrap">
+      <div style="min-width:0">
+        <input class="issue-sum" data-f="summary" value="${esc(i.summary)}" aria-label="Zusammenfassung">
+        <div class="row" style="margin:8px 0 16px">${i.type !== "SUBTASK" && i.type !== "EPIC" ? `<button class="btn sm" data-act="add-subtask">${icon("sub")} Teilaufgabe</button>` : ""}<button class="btn sm" data-act="add-link">${icon("link")} Verknüpfen</button>${i.type === "EPIC" ? `<button class="btn sm" data-act="create" data-project="${p.id}" data-epic="${i.id}">${icon("plus")} Vorgang im Epic</button>` : ""}</div>
+        ${i.customer ? `<div class="note info" style="margin-bottom:14px"><b>${esc(i.customer.name)}</b> · ${esc(i.customer.company || "")} · <a href="mailto:${encodeURIComponent(i.customer.email)}?subject=${encodeURIComponent(`[${keyOf(i)}] ${i.summary}`)}">${esc(i.customer.email)}</a>${i.customer.phone ? ` · ${esc(i.customer.phone)}` : ""}</div>` : ""}
+        <div class="sec-title">Beschreibung</div>
+        ${ui.editingDesc ? `<textarea id="desc-edit" rows="8">${esc(i.description)}</textarea><div class="row" style="margin-top:6px"><button class="btn primary sm" data-act="save-desc">Speichern</button><button class="btn subtle sm" data-act="cancel-desc">Abbrechen</button></div>`
+          : `<div class="desc-view" data-act="edit-desc" title="Klicken zum Bearbeiten">${i.description ? esc(i.description) : '<span class="muted">Beschreibung hinzufügen…</span>'}</div>`}
+        ${i.type === "EPIC" ? `<div class="sec-title" style="margin-top:18px">Vorgänge im Epic <span class="small muted">${epicChildren(i).filter(isDone).length}/${epicChildren(i).length} erledigt</span></div>
+          ${epicChildren(i).length ? `<div class="progress" style="margin-bottom:8px"><i style="width:${epicChildren(i).filter(isDone).length / epicChildren(i).length * 100}%;background:var(--ok)"></i></div>` : ""}
+          <div>${epicChildren(i).map((c) => `<div class="subrow" data-act="open" data-id="${c.id}">${typeIcon(c.type)}<span class="key">${keyOf(c)}</span><span class="trunc" style="flex:1">${esc(c.summary)}</span>${prioIcon(c.priority)}${avatar(c.assigneeId)}${lozenge(c)}</div>`).join("") || '<p class="muted small">Noch keine Vorgänge.</p>'}</div>` : ""}
+        ${ch.length || ui.addingSub ? `<div class="sec-title" style="margin-top:18px">Teilaufgaben <span class="small muted">${ch.filter(isDone).length}/${ch.length}</span></div>
+          ${ch.length ? `<div class="progress" style="margin-bottom:8px"><i style="width:${ch.filter(isDone).length / ch.length * 100}%;background:var(--ok)"></i></div>` : ""}
+          <div>${ch.map((c) => `<div class="subrow" data-act="open" data-id="${c.id}">${typeIcon(c.type)}<span class="key">${keyOf(c)}</span><span class="trunc" style="flex:1">${esc(c.summary)}</span>${avatar(c.assigneeId)}${lozenge(c)}</div>`).join("")}</div>
+          ${ui.addingSub ? `<form id="sub-form" class="row nowrap" style="margin-top:6px"><input type="text" name="summary" placeholder="Was ist zu tun?" required autofocus><select name="assigneeId" style="width:160px">${userOpts(null)}</select><button class="btn primary" type="submit">Erstellen</button></form>` : ""}` : ""}
+        ${i.links.length || ui.addingLink ? `<div class="sec-title" style="margin-top:18px">Verknüpfte Vorgänge</div>
+          <div>${i.links.map((l, k) => { const o = issue(l.issueId); return o ? `<div class="linkrow" data-act="open" data-id="${o.id}"><span class="small muted" style="width:150px">${LINK_LABEL[l.type]}</span>${typeIcon(o.type)}<span class="key">${keyOf(o)}</span><span class="trunc" style="flex:1">${esc(o.summary)}</span>${lozenge(o)}<button class="btn subtle sm icon" data-act="unlink" data-v="${k}" aria-label="Verknüpfung entfernen">${icon("x")}</button></div>` : ""; }).join("")}</div>
+          ${ui.addingLink ? `<form id="link-form" class="row nowrap" style="margin-top:6px"><select name="type" style="width:190px">${Object.entries(LINK_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input type="text" name="key" list="issue-keys" placeholder="Schlüssel, z. B. DIG-3" required><datalist id="issue-keys">${db.issues.filter((x) => x.id !== i.id).map((x) => `<option value="${keyOf(x)}">${esc(x.summary)}</option>`).join("")}</datalist><button class="btn primary" type="submit">Verknüpfen</button></form>` : ""}` : ""}
+        <div class="sec-title" style="margin-top:22px">Aktivität</div>
+        <div class="tabs"><button class="${tab === "comments" ? "on" : ""}" data-act="issue-tab" data-v="comments">Kommentare (${i.comments.length})</button><button class="${tab === "history" ? "on" : ""}" data-act="issue-tab" data-v="history">Verlauf</button></div>
+        ${tab === "comments" ? `<form id="comment-form" class="grid" style="gap:6px;margin-bottom:10px"><textarea name="text" id="comment-text" rows="2" placeholder="Kommentar hinzufügen … (@Name erwähnt Personen)"></textarea>
+          <div class="row"><button class="btn primary sm" type="submit">${isSvc ? "Antwort an Kunden" : "Speichern"}</button>${isSvc ? `<button class="btn sm" type="submit" name="internal" value="1">Interne Notiz</button>` : ""}<span class="small muted">Strg+Enter zum Senden</span></div></form>${comments}` : history}
+      </div>
+      <div>
+        <div class="row" style="margin-bottom:12px"><select class="status-btn cat-${s.cat}" data-f="status" aria-label="Status" style="width:auto">${statusOpts(i)}</select>
+          ${!isDone(i) ? `<button class="btn sm" data-act="quick-done">${icon("check")} Erledigt</button>` : ""}</div>
+        ${isSvc && (sf || sr) ? `<div class="details" style="margin-bottom:12px"><div class="dh">SLA</div><div class="drow"><span>Erste Antwort</span><span>${slaChip(sf)} <span class="small muted">Ziel ${SLA[i.priority][0]} h</span></span></div><div class="drow" style="padding-bottom:10px"><span>Lösung</span><span>${slaChip(sr)} <span class="small muted">Ziel ${SLA[i.priority][1]} h</span></span></div></div>` : ""}
+        <div class="details"><div class="dh">Details</div>
+          <div class="drow"><span>Verantwortlich</span><span><select data-f="assigneeId">${userOpts(i.assigneeId)}</select>${i.assigneeId !== db.currentUserId ? `<a href="#" class="small" data-act="assign-me">Mir zuweisen</a>` : ""}</span></div>
+          <div class="drow"><span>Melder</span><span>${i.reporterId ? `<select data-f="reporterId">${userOpts(i.reporterId, "–")}</select>` : `<span class="row nowrap">${custAvatar(i.customer)} ${esc(i.customer?.name || "–")} <span class="small muted">(Kunde)</span></span>`}</span></div>
+          <div class="drow"><span>Priorität</span><span class="row nowrap">${prioIcon(i.priority)}<select data-f="priority">${prioOpts(i.priority)}</select></span></div>
+          <div class="drow"><span>Vorgangstyp</span><span class="row nowrap">${typeIcon(i.type)}<select data-f="type" ${i.type === "SUBTASK" || i.type === "EPIC" ? "disabled" : ""}>${PROJECT_TYPES[p.type].types.filter((t) => i.type === t || (t !== "SUBTASK" && t !== "EPIC")).map((t) => `<option value="${t}" ${t === i.type ? "selected" : ""}>${TYPES[t].label}</option>`).join("")}</select></span></div>
+          <div class="drow"><span>Labels</span><span><input type="text" data-f="labels" value="${esc(i.labels.join(", "))}" placeholder="Komma-getrennt"></span></div>
+          ${p.type === "software" && i.type !== "EPIC" && i.type !== "SUBTASK" ? `<div class="drow"><span>Sprint</span><span><select data-f="sprintId"><option value="">Backlog</option>${db.sprints.filter((x) => x.projectId === p.id && (x.state !== "closed" || x.id === i.sprintId)).map((x) => `<option value="${x.id}" ${x.id === i.sprintId ? "selected" : ""}>${esc(x.name)}${x.state === "active" ? " (aktiv)" : x.state === "closed" ? " (abgeschlossen)" : ""}</option>`).join("")}</select></span></div>` : ""}
+          ${i.type !== "EPIC" && i.type !== "SUBTASK" && epicsOf(p).length ? `<div class="drow"><span>Epic</span><span><select data-f="epicId"><option value="">–</option>${epicsOf(p).map((e) => `<option value="${e.id}" ${e.id === i.epicId ? "selected" : ""}>${esc(e.summary)}</option>`).join("")}</select></span></div>` : ""}
+          ${p.type === "software" && i.type !== "EPIC" ? `<div class="drow"><span>Story Points</span><span><input type="number" min="0" step="1" data-f="storyPoints" value="${i.storyPoints ?? ""}"></span></div>` : ""}
+          ${i.type === "EPIC" ? `<div class="drow"><span>Startdatum</span><span><input type="date" data-f="startDate" value="${i.startDate || ""}"></span></div>` : ""}
+          <div class="drow"><span>Fällig</span><span><input type="date" data-f="dueDate" value="${i.dueDate || ""}"> ${isOverdue(i) ? '<span class="chip red">überfällig</span>' : ""}</span></div>
+          <div class="drow" style="align-items:start"><span>Zeiterfassung</span><span><div class="progress" style="margin:6px 0 4px"><i style="width:${timePct}%;background:${i.estimateH && i.loggedH > i.estimateH ? "var(--danger)" : "var(--s1)"}"></i></div>
+            <span class="small muted">${i.loggedH || 0} h erfasst${i.estimateH ? ` von ${i.estimateH} h geschätzt` : ""}</span>
+            <form id="time-form" class="row nowrap" style="margin-top:6px"><input type="number" name="h" min="0.25" step="0.25" placeholder="Stunden" style="width:90px" aria-label="Stunden erfassen"><button class="btn sm" type="submit">+ erfassen</button></form>
+            <label class="row nowrap small muted" style="margin-top:6px">Schätzung <input type="number" data-f="estimateH" min="0" step="0.5" value="${i.estimateH ?? ""}" style="width:80px" aria-label="Schätzung in Stunden"> h</label></span></div>
+          <div style="padding:8px 14px 12px" class="small muted">Erstellt ${fmtDT(i.createdAt)}<br>Aktualisiert ${ago(i.updatedAt)}${i.resolvedAt ? `<br>Erledigt ${fmtDT(i.resolvedAt)}` : ""}</div>
+        </div>
+        <p class="small muted" style="margin-top:10px">Teilen: <code>#/issue/${keyOf(i)}</code></p>
+      </div>
+    </div>`;
+}
+
+/* ---------- Formulare ---------- */
+function createForm(prefill = {}) {
+  const pid = prefill.projectId || (route().parts[0] === "p" && projByKey(route().parts[1])?.id) || ui.lastProject || db.projects[0]?.id;
+  if (!pid) return toast("Bitte zuerst ein Projekt anlegen.");
+  const p = proj(pid); const types = PROJECT_TYPES[p.type].types.filter((t) => t !== "SUBTASK");
+  const type = prefill.type && types.includes(prefill.type) ? prefill.type : types[0];
+  openModal(`<div class="modal-h"><h2>Vorgang erstellen</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="create-form"><div class="modal-b">
+      <div class="grid g2" style="gap:12px"><label class="f">Projekt <span class="req">*</span><select name="projectId" id="cf-project">${db.projects.map((x) => `<option value="${x.id}" ${x.id === pid ? "selected" : ""}>${esc(x.name)} (${x.key})</option>`).join("")}</select></label>
+        <label class="f">Vorgangstyp <span class="req">*</span><select name="type">${types.map((t) => `<option value="${t}" ${t === type ? "selected" : ""}>${TYPES[t].label}</option>`).join("")}</select></label></div>
+      <label class="f">Zusammenfassung <span class="req">*</span><input type="text" name="summary" required maxlength="255" autofocus></label>
+      <label class="f">Beschreibung<textarea name="description" rows="4"></textarea></label>
+      <div class="grid g2" style="gap:12px">
+        <label class="f">Verantwortlich<select name="assigneeId">${userOpts(prefill.assigneeId ?? null)}</select></label>
+        <label class="f">Priorität<select name="priority">${prioOpts(prefill.priority || "MEDIUM")}</select></label>
+        <label class="f">Fälligkeitsdatum<input type="date" name="dueDate"></label>
+        <label class="f">Labels<input type="text" name="labels" placeholder="z. B. portal, kunde"></label>
+        ${p.type === "software" ? `<label class="f">Story Points<input type="number" name="storyPoints" min="0" step="1"></label>
+        <label class="f">Sprint<select name="sprintId"><option value="">Backlog</option>${db.sprints.filter((x) => x.projectId === p.id && x.state !== "closed").map((x) => `<option value="${x.id}" ${prefill.sprintId === x.id ? "selected" : ""}>${esc(x.name)}${x.state === "active" ? " (aktiv)" : ""}</option>`).join("")}</select></label>` : ""}
+        ${epicsOf(p).length ? `<label class="f">Epic<select name="epicId"><option value="">–</option>${epicsOf(p).map((e) => `<option value="${e.id}" ${prefill.epicId === e.id ? "selected" : ""}>${esc(e.summary)}</option>`).join("")}</select></label>` : ""}
+        ${p.type === "service" ? `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>` : ""}
+      </div></div>
+      <div class="modal-f"><label class="small row nowrap" style="margin-right:auto"><input type="checkbox" name="another"> Weiteren Vorgang erstellen</label><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Erstellen</button></div></form>`);
+}
+function sprintForm(s) {
+  const t = today();
+  openModal(`<div class="modal-h"><h2>Sprint starten: ${esc(s.name)}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="sprint-form" data-id="${s.id}"><div class="modal-b">
+      <p class="small muted" style="margin:0">${db.issues.filter((i) => i.sprintId === s.id).length} Vorgänge · ${db.issues.filter((i) => i.sprintId === s.id).reduce((a, i) => a + (i.storyPoints || 0), 0)} Story Points werden in diesen Sprint aufgenommen.</p>
+      <label class="f">Name<input type="text" name="name" value="${esc(s.name)}" required></label>
+      <div class="grid g3" style="gap:12px"><label class="f">Dauer<select name="weeks"><option value="1">1 Woche</option><option value="2" selected>2 Wochen</option><option value="3">3 Wochen</option><option value="4">4 Wochen</option></select></label>
+        <label class="f">Start<input type="date" name="start" value="${t}" required></label><label class="f">Ende<input type="date" name="end" value="${addDays(t, 14)}" required></label></div>
+      <label class="f">Sprintziel<textarea name="goal" rows="2">${esc(s.goal || "")}</textarea></label></div>
+      <div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Starten</button></div></form>`);
+}
+function completeSprintForm(s) {
+  const list = db.issues.filter((i) => i.sprintId === s.id && i.type !== "SUBTASK"); const done = list.filter(isDone); const open = list.filter((i) => !isDone(i));
+  const futures = db.sprints.filter((x) => x.projectId === s.projectId && x.state === "future");
+  openModal(`<div class="modal-h"><h2>${esc(s.name)} abschließen</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="complete-form" data-id="${s.id}"><div class="modal-b">
+      <div class="grid g2"><div class="card stat"><div class="v" style="color:var(--ok)">${done.length}</div><div class="l">erledigte Vorgänge (${done.reduce((a, i) => a + (i.storyPoints || 0), 0)} SP)</div></div>
+        <div class="card stat"><div class="v">${open.length}</div><div class="l">offene Vorgänge (${open.reduce((a, i) => a + (i.storyPoints || 0), 0)} SP)</div></div></div>
+      ${open.length ? `<label class="f">Offene Vorgänge verschieben nach<select name="target"><option value="backlog">Backlog</option>${futures.map((f) => `<option value="${f.id}">${esc(f.name)}</option>`).join("")}<option value="new">Neuer Sprint</option></select></label>` : ""}</div>
+      <div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Sprint abschließen</button></div></form>`);
+}
+function projectForm() {
+  openModal(`<div class="modal-h"><h2>Projekt erstellen</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="new-project-form"><div class="modal-b">
+      <label class="f">Name <span class="req">*</span><input type="text" name="name" id="np-name" required autofocus></label>
+      <label class="f">Schlüssel <span class="req">*</span><input type="text" name="key" id="np-key" required maxlength="6" pattern="[A-Za-z][A-Za-z0-9]{1,5}" title="2–6 Zeichen, beginnt mit Buchstabe"></label>
+      <label class="f">Vorlage<select name="type">${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
+      <p class="small muted" style="margin:0"><b>Scrum</b>: Backlog, Sprints, Burndown – für Entwicklungsvorhaben. <b>Kanban</b>: fortlaufender Arbeitsfluss – für Fach- und Verwaltungsaufgaben. <b>Service-Desk</b>: Kundenanfragen mit Portal und SLA.</p>
+      <label class="f">Projektleitung<select name="leadId">${userOpts(db.currentUserId, "–")}</select></label></div>
+      <div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Erstellen</button></div></form>`);
+}
+
+/* ---------- Drag & Drop ---------- */
+let dragId = null;
+function bindDnD() {
+  $$("[data-drag]").forEach((el) => {
+    el.addEventListener("dragstart", (e) => { dragId = el.dataset.drag; e.dataTransfer.setData("text/plain", dragId); el.classList.add("dragging"); });
+    el.addEventListener("dragend", () => { el.classList.remove("dragging"); dragId = null; $$(".drop-on,.drop-before").forEach((x) => x.classList.remove("drop-on", "drop-before")); });
+  });
+  $$("[data-drop-status]").forEach((col) => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drop-on"); });
+    col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("drop-on"); });
+    col.addEventListener("drop", (e) => { e.preventDefault(); col.classList.remove("drop-on"); const i = issue(e.dataTransfer.getData("text/plain"));
+      if (i && i.status !== col.dataset.dropStatus) { updateIssue(i, { status: col.dataset.dropStatus }); render(); toast(`${keyOf(i)} → ${statusOf(i).name}`); } });
+  });
+  $$("[data-drop-sprint]").forEach((box) => {
+    box.addEventListener("dragover", (e) => { e.preventDefault(); box.classList.add("drop-on"); const row = e.target.closest("[data-drop-row]"); $$(".drop-before").forEach((x) => x.classList.remove("drop-before")); if (row && row.dataset.dropRow !== dragId) row.classList.add("drop-before"); });
+    box.addEventListener("dragleave", (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove("drop-on"); });
+    box.addEventListener("drop", (e) => {
+      e.preventDefault(); box.classList.remove("drop-on"); const i = issue(e.dataTransfer.getData("text/plain")); if (!i) return;
+      const target = box.dataset.dropSprint === "backlog" ? null : box.dataset.dropSprint; const row = e.target.closest("[data-drop-row]");
+      if (row && row.dataset.dropRow !== i.id) { const before = issue(row.dataset.dropRow); const prev = db.issues.filter((x) => x.rank < before.rank).sort((a, b) => b.rank - a.rank)[0]; i.rank = prev ? (prev.rank + before.rank) / 2 : before.rank - 1; }
+      if ((i.sprintId || null) !== target) { updateIssue(i, { sprintId: target }); children(i).forEach((c) => (c.sprintId = target)); toast(`${keyOf(i)} → ${target ? sprint(target).name : "Backlog"}`); }
+      save(); render();
+    });
+  });
+}
+
+/* ---------- CSV ---------- */
+function download(name, content, type) { const url = URL.createObjectURL(new Blob([content], { type })); const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000); }
+function exportCsv(list, name) {
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  const rows = [["Schlüssel", "Typ", "Zusammenfassung", "Status", "Priorität", "Verantwortlich", "Melder", "Projekt", "Sprint", "Epic", "Story Points", "Labels", "Fällig", "Erstellt", "Erledigt", "Kunde", "Firma", "Beschreibung"]]
+    .concat(list.map((i) => [keyOf(i), TYPES[i.type].label, i.summary, statusOf(i).name, PRIOS[i.priority].label, i.assigneeId ? uname(i.assigneeId) : "", i.reporterId ? uname(i.reporterId) : i.customer?.name || "", proj(i.projectId).name, sprint(i.sprintId)?.name || "", issue(i.epicId)?.summary || "", i.storyPoints ?? "", i.labels.join(", "), i.dueDate ? fmtDay(i.dueDate) : "", fmtDT(i.createdAt), i.resolvedAt ? fmtDT(i.resolvedAt) : "", i.customer?.name || "", i.customer?.company || "", i.description]));
+  download(name, "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n"), "text/csv;charset=utf-8");
+}
+
+/* ---------- Benachrichtigungen ---------- */
+function renderNotifs() {
+  const list = db.notifications.filter((n) => n.userId === db.currentUserId).slice(0, 50); const unread = list.filter((n) => !n.read).length;
+  const ic = { assign: "user", mention: "user", comment: "send", status: "check", overdue: "alert", due: "clock", sla: "clock", new: "queue" };
+  const tone = { overdue: "red", sla: "red", due: "yellow", mention: "", assign: "", comment: "gray", status: "green", new: "" };
+  $("#notifs").innerHTML = `<div class="row" style="padding:12px 14px;border-bottom:1px solid var(--border)"><b>Benachrichtigungen</b><span class="sp"></span>${unread ? `<button class="btn subtle sm" data-act="read-all">Alle als gelesen markieren</button>` : ""}</div>
+    ${list.length ? list.map((n) => `<div class="notif ${n.read ? "" : "unread"}" data-act="open-notif" data-id="${n.id}"><span class="chip ${tone[n.type] || "gray"}" style="padding:4px;border-radius:50%">${icon(ic[n.type] || "bell")}</span>
+      <div style="flex:1;min-width:0"><div class="${n.read ? "" : "b"}">${esc(n.title)}</div>${n.text ? `<div class="small muted">${esc(n.text)}</div>` : ""}<div class="small muted">${ago(n.at)}</div></div></div>`).join("") : '<p class="muted" style="padding:24px;text-align:center">Keine Benachrichtigungen.</p>'}`;
+}
+
+/* ---------- Ereignisse ---------- */
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-act]");
+  if (!e.target.closest("#notifs, .bell")) $("#notifs").classList.remove("open");
+  if (!el) return;
+  if (el.tagName === "SELECT" || (el.tagName === "INPUT" && el.type !== "checkbox")) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  const cur = issue(ui.openIssue);
+  switch (act) {
+    case "open": if (e.target.closest("button:not([data-act=open]), select, input")) return; e.preventDefault(); openIssue(id); break;
+    case "close": closeModal(); break;
+    case "goto": e.preventDefault(); go(el.dataset.href); break;
+    case "menu": $("#topnav").classList.toggle("menu-open"); break;
+    case "theme": { const c = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = c === "dark" ? "light" : "dark"; try { localStorage.setItem(KEY + "-theme", document.documentElement.dataset.theme); } catch {} break; }
+    case "notifs": { const p = $("#notifs"); p.classList.toggle("open"); if (p.classList.contains("open")) renderNotifs(); break; }
+    case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
+    case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
+    case "create": e.preventDefault(); createForm({ projectId: el.dataset.project, type: el.dataset.type, epicId: el.dataset.epic }); break;
+    case "yw-tab": ui.yourWork = el.dataset.v; render(); break;
+    case "board-toggle": ui.board[el.dataset.v] = !ui.board[el.dataset.v]; render(); break;
+    case "board-user": { const v = el.dataset.v; const a = ui.board.users; ui.board.users = a.includes(v) ? a.filter((x) => x !== v) : [...a, v]; render(); break; }
+    case "backlog-epic": ui.backlogEpic = el.dataset.v; render(); break;
+    case "tl-toggle": { ui.tlOpen ||= []; ui.tlOpen = ui.tlOpen.includes(id) ? ui.tlOpen.filter((x) => x !== id) : [...ui.tlOpen, id]; render(); break; }
+    case "queue": ui.queue = el.dataset.v; render(); break;
+    case "new-project": projectForm(); break;
+    case "new-sprint": { const p = proj(el.dataset.project); const n = db.sprints.filter((s) => s.projectId === p.id).length + 1; db.sprints.push({ id: uid(), projectId: p.id, name: `${p.key} Sprint ${n}`, goal: "", state: "future", start: null, end: null, committed: null, completed: null }); save(); render(); toast("Sprint erstellt"); break; }
+    case "start-sprint": sprintForm(sprint(id)); break;
+    case "complete-sprint": completeSprintForm(sprint(id)); break;
+    case "delete-sprint": { const s = sprint(id); if (confirm(`${s.name} löschen? Vorgänge wandern ins Backlog.`)) { db.issues.forEach((i) => { if (i.sprintId === id) i.sprintId = null; }); db.sprints = db.sprints.filter((x) => x.id !== id); save(); render(); } break; }
+    case "delete-project": { const p = proj(id); if (confirm(`Projekt „${p.name}“ mit ${projIssues(p).length} Vorgängen endgültig löschen?`)) { db.issues = db.issues.filter((i) => i.projectId !== id); db.sprints = db.sprints.filter((s) => s.projectId !== id); db.projects = db.projects.filter((x) => x.id !== id); save(); go("#/projects"); } break; }
+    case "save-filter": { const jql = $("#jql")?.value.trim(); if (!jql) return; try { parseJql(jql); } catch (err) { return toast("Abfrage fehlerhaft: " + err.message); } const name = prompt("Name des Filters:"); if (name?.trim()) { const f = { id: uid(), name: name.trim(), jql, ownerId: db.currentUserId }; db.filters.push(f); save(); go(`#/filters?filter=${f.id}`); toast("Filter gespeichert"); } break; }
+    case "delete-filter": db.filters = db.filters.filter((f) => f.id !== id); save(); go("#/filters"); break;
+    case "export-csv": exportCsv(ui.lastResults || [], `vorgaenge-${today()}.csv`); break;
+    case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
+    case "export-json": download(`gf-tracker-sicherung-${today()}.json`, JSON.stringify(db, null, 2), "application/json"); break;
+    case "import-json": $("#json-file").click(); break;
+    case "reset": if (confirm("Alle Daten durch die Beispieldaten ersetzen?")) { db = seed(); deadlineCheck(); save(); closeModal(); render(); toast("Beispieldaten wiederhergestellt"); } break;
+    case "user-active": { const u = user(id); if (u) { u.active = el.checked; save(); render(); } break; }
+    case "portal-type": ui.portalType = el.dataset.v || null; render(); break;
+    case "portal-back": ui.portalView = null; break;
+    // Vorgang
+    case "issue-tab": ui.issueTab = el.dataset.v; renderIssue(); break;
+    case "edit-desc": ui.editingDesc = true; renderIssue(); $("#desc-edit")?.focus(); break;
+    case "cancel-desc": ui.editingDesc = false; renderIssue(); break;
+    case "save-desc": if (cur) { updateIssue(cur, { description: $("#desc-edit").value }); ui.editingDesc = false; renderIssue(); } break;
+    case "watch": if (cur) { const w = cur.watchers.includes(db.currentUserId); cur.watchers = w ? cur.watchers.filter((x) => x !== db.currentUserId) : [...cur.watchers, db.currentUserId]; save(); renderIssue(); toast(w ? "Beobachtung beendet" : "Sie beobachten diesen Vorgang"); } break;
+    case "assign-me": e.preventDefault(); if (cur) { updateIssue(cur, { assigneeId: db.currentUserId }); render(); renderIssue(); } break;
+    case "quick-done": if (cur) { const wf = workflowOf(proj(cur.projectId)); updateIssue(cur, { status: wf.find((s) => s.cat === "done").id }); render(); renderIssue(); toast(`${keyOf(cur)} erledigt ✓`); } break;
+    case "add-subtask": ui.addingSub = true; renderIssue(); $("#sub-form input")?.focus(); break;
+    case "add-link": ui.addingLink = true; renderIssue(); $("#link-form input")?.focus(); break;
+    case "unlink": if (cur) { const l = cur.links[Number(el.dataset.v)]; const o = issue(l.issueId); cur.links.splice(Number(el.dataset.v), 1); if (o) o.links = o.links.filter((x) => x.issueId !== cur.id); save(); renderIssue(); } break;
+    case "clone": if (cur) { const c = createIssue({ ...cur, summary: `KOPIE – ${cur.summary}`, reporterId: db.currentUserId, customer: cur.customer }); toast(`${keyOf(c)} erstellt`); render(); openIssue(c.id); } break;
+    case "delete-issue": if (cur && confirm(`${keyOf(cur)} ${children(cur).length ? `mit ${children(cur).length} Teilaufgaben ` : ""}endgültig löschen?`)) { deleteIssue(cur); closeModal(); render(); toast("Vorgang gelöscht"); } break;
+  }
+});
+document.addEventListener("change", (e) => {
+  const el = e.target;
+  if (el.id === "whoami") { db.currentUserId = el.value; save(); closeModal(); render(); toast(`Angemeldet als ${me().name}`); return; }
+  if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
+  if (el.id === "portal-project") { go(`#/portal/${el.value}`); return; }
+  if (el.id === "cf-project") { const f = el.form; const data = { summary: f.summary.value, description: f.description.value }; ui.lastProject = el.value; createForm({ projectId: el.value }); $("#create-form").summary.value = data.summary; $("#create-form").description.value = data.description; return; }
+  if (el.id === "json-file" && el.files[0]) { const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(r.result); if (!Array.isArray(d.issues) || !Array.isArray(d.projects)) throw new Error(); if (confirm("Aktuelle Daten durch die Sicherung ersetzen?")) { db = d; save(); render(); toast("Sicherung geladen"); } } catch { toast("Ungültige Sicherungsdatei."); } }; r.readAsText(el.files[0]); el.value = ""; return; }
+  if (el.dataset.act === "user-role") { const u = user(el.dataset.id); if (u) { u.role = el.value; save(); } return; }
+  const cur = issue(ui.openIssue);
+  if (el.dataset.f && cur) {
+    const f = el.dataset.f; let v = el.value;
+    if (f === "summary") { v = v.trim(); if (!v) { el.value = cur.summary; return; } }
+    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId"].includes(f)) v = v || null;
+    if (f === "storyPoints" || f === "estimateH") v = v === "" ? null : Number(v);
+    if (f === "labels") v = v.split(",").map((x) => x.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
+    if (f === "sprintId") children(cur).forEach((c) => (c.sprintId = v));
+    updateIssue(cur, { [f]: v }); render(); renderIssue();
+  }
+});
+document.addEventListener("input", (e) => {
+  if (e.target.id === "board-q") { ui.board.q = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#board-q"); s.focus(); s.setSelectionRange(pos, pos); }
+  if (e.target.id === "np-name") { const k = $("#np-key"); if (!k.dataset.touched) k.value = e.target.value.replace(/[^A-Za-zÄÖÜäöü ]/g, "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 4).toUpperCase().replace(/[ÄÖÜ]/g, (c) => ({ Ä: "A", Ö: "O", Ü: "U" })[c]) || e.target.value.slice(0, 3).toUpperCase(); }
+  if (e.target.id === "np-key") e.target.dataset.touched = "1";
+});
+document.addEventListener("submit", (e) => {
+  const f = e.target; e.preventDefault();
+  const fd = new FormData(f); const cur = issue(ui.openIssue);
+  switch (f.id) {
+    case "create-form": {
+      const labels = String(fd.get("labels") || "").split(",").map((x) => x.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
+      const cname = fd.get("cname"), cemail = fd.get("cemail");
+      const i = createIssue({ projectId: fd.get("projectId"), type: fd.get("type"), summary: fd.get("summary"), description: fd.get("description"), assigneeId: fd.get("assigneeId"), priority: fd.get("priority"),
+        dueDate: fd.get("dueDate") || null, labels, storyPoints: fd.get("storyPoints") ? Number(fd.get("storyPoints")) : null, sprintId: fd.get("sprintId") || null, epicId: fd.get("epicId") || null,
+        customer: cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
+      ui.lastProject = i.projectId; deadlineCheck();
+      if (fd.get("another")) { const pid = i.projectId; createForm({ projectId: pid }); $("#create-form").another.checked = true; render(); toast(`${keyOf(i)} erstellt`); }
+      else { closeModal(); render(); toast(`${keyOf(i)} erstellt`); openIssue(i.id); }
+      break; }
+    case "comment-form": {
+      const text = String(fd.get("text") || "").trim(); if (!text || !cur) return;
+      const internal = e.submitter?.name === "internal";
+      addComment(cur, text, { internal }); render(); renderIssue(); break; }
+    case "sub-form": { if (!cur) return; const c = createIssue({ projectId: cur.projectId, type: "SUBTASK", summary: fd.get("summary"), assigneeId: fd.get("assigneeId"), parentId: cur.id, priority: cur.priority });
+      cur.history.unshift({ at: new Date().toISOString(), userId: db.currentUserId, field: "Teilaufgabe", from: "", to: keyOf(c) }); ui.addingSub = false; save(); render(); renderIssue(); toast(`${keyOf(c)} erstellt`); break; }
+    case "link-form": { if (!cur) return; const o = byKey(fd.get("key")); if (!o) return toast("Vorgang nicht gefunden."); if (o.id === cur.id) return toast("Ein Vorgang kann nicht mit sich selbst verknüpft werden."); linkIssues(cur, fd.get("type"), o); ui.addingLink = false; renderIssue(); break; }
+    case "time-form": { if (!cur) return; const h = Number(fd.get("h")); if (!h || h <= 0) return; cur.loggedH = Math.round(((cur.loggedH || 0) + h) * 100) / 100;
+      cur.history.unshift({ at: new Date().toISOString(), userId: db.currentUserId, field: "Arbeitszeit", from: "", to: `${h} h erfasst` }); touch(cur); save(); renderIssue(); break; }
+    case "jql-form": go(`#/filters?jql=${encodeURIComponent($("#jql").value.trim())}`); break;
+    case "sprint-form": {
+      const s = sprint(f.dataset.id); const p = proj(s.projectId); if (activeSprint(p)) return toast("Es läuft bereits ein Sprint.");
+      Object.assign(s, { name: fd.get("name"), start: fd.get("start"), end: fd.get("end"), goal: fd.get("goal"), state: "active", committed: db.issues.filter((i) => i.sprintId === s.id && i.type !== "SUBTASK").reduce((a, i) => a + (i.storyPoints || 0), 0) });
+      save(); closeModal(); go(`#/p/${p.key}/board`); toast(`${s.name} gestartet`); break; }
+    case "complete-form": {
+      const s = sprint(f.dataset.id); const p = proj(s.projectId); const list = db.issues.filter((i) => i.sprintId === s.id);
+      let target = fd.get("target") || "backlog";
+      if (target === "new") { const ns = { id: uid(), projectId: p.id, name: `${p.key} Sprint ${db.sprints.filter((x) => x.projectId === p.id).length + 1}`, goal: "", state: "future", start: null, end: null, committed: null, completed: null }; db.sprints.push(ns); target = ns.id; }
+      list.filter((i) => !isDone(i)).forEach((i) => { i.sprintId = target === "backlog" ? null : target; });
+      s.completed = list.filter((i) => isDone(i) && i.type !== "SUBTASK").reduce((a, i) => a + (i.storyPoints || 0), 0); s.state = "closed"; s.completedAt = new Date().toISOString(); s.end = s.end && s.end < today() ? s.end : today();
+      save(); closeModal(); go(`#/p/${p.key}/reports`); toast(`${s.name} abgeschlossen: ${s.completed} SP erledigt`); break; }
+    case "new-project-form": {
+      const key = String(fd.get("key")).toUpperCase(); if (projByKey(key)) return toast(`Schlüssel ${key} ist bereits vergeben.`);
+      const p = { id: uid(), key, name: String(fd.get("name")).trim(), type: fd.get("type"), leadId: fd.get("leadId") || db.currentUserId, color: PALETTE[db.projects.length % PALETTE.length], nextNo: 1, desc: "" };
+      db.projects.push(p); if (p.type === "software") db.sprints.push({ id: uid(), projectId: p.id, name: `${key} Sprint 1`, goal: "", state: "future", start: null, end: null, committed: null, completed: null });
+      save(); closeModal(); go(`#/p/${key}`); toast(`Projekt ${p.name} erstellt`); break; }
+    case "project-form": { const p = proj(f.dataset.id); Object.assign(p, { name: fd.get("name"), desc: fd.get("desc"), leadId: fd.get("leadId") || p.leadId, color: fd.get("color") }); save(); render(); toast("Gespeichert"); break; }
+    case "user-form": { const email = String(fd.get("email")).trim().toLowerCase(); if (db.users.some((u) => u.email === email)) return toast("E-Mail bereits vorhanden.");
+      db.users.push({ id: uid(), name: String(fd.get("name")).trim(), email, role: fd.get("role"), active: true, color: hashColor(email) }); save(); render(); toast("Person hinzugefügt"); break; }
+    case "portal-form": {
+      const p = proj(f.dataset.project); ui.portalName = fd.get("name"); ui.portalCompany = fd.get("company"); ui.portalEmail = String(fd.get("email")).trim();
+      const desc = [fd.get("asset") ? `Anlage/Standort: ${fd.get("asset")}` : "", String(fd.get("description"))].filter(Boolean).join("\n\n");
+      const i = createIssue({ projectId: p.id, type: ui.portalType, summary: fd.get("summary"), description: desc, priority: fd.get("urgency"), reporterId: null,
+        customer: { name: fd.get("name"), company: fd.get("company"), email: ui.portalEmail, phone: fd.get("phone") || "" }, labels: ["portal"] });
+      ui.portalType = null; deadlineCheck(); render(); toast(`Danke! Ihre Anfrage ${keyOf(i)} ist eingegangen.`); go(`#/portal/${p.key}?req=${keyOf(i)}`); break; }
+    case "portal-lookup": ui.portalEmail = String(fd.get("email")).trim(); render(); break;
+    case "portal-reply": { const i = issue(f.dataset.id); addComment(i, String(fd.get("text")).trim(), { customerName: i.customer.name }); render(); toast("Nachricht gesendet"); break; }
+  }
+  const q = f.dataset.quick;
+  if (q !== undefined) {
+    const input = f.querySelector("input"); const summary = input.value.trim(); if (!summary) return;
+    const p = projByKey(route().parts[1]); const i = createIssue({ projectId: p.id, type: "STORY", summary, sprintId: q === "backlog" ? null : q, epicId: ui.backlogEpic || null });
+    render(); toast(`${keyOf(i)} erstellt`); setTimeout(() => $(`[data-quick="${q}"] input`)?.focus(), 0);
+  }
+});
+document.addEventListener("keydown", (e) => {
+  const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
+  if (e.key === "Escape") { if ($("#notifs").classList.contains("open")) $("#notifs").classList.remove("open"); else if (ui.modal) closeModal(); }
+  if (e.key === "Enter" && e.target.id === "gsearch") { const q = e.target.value.trim(); if (!q) return; const i = byKey(q); if (i) { openIssue(i.id); e.target.value = ""; } else go(`#/filters?jql=${encodeURIComponent(`text ~ "${q.replace(/"/g, "")}" ORDER BY updated DESC`)}`); }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "comment-text") { e.preventDefault(); $("#comment-form").requestSubmit(); }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "jql") { e.preventDefault(); $("#jql-form").requestSubmit(); }
+  if (!typing && !ui.modal && !e.ctrlKey && !e.metaKey && !e.altKey) {
+    if (e.key === "c") { e.preventDefault(); createForm(); }
+    if (e.key === "/") { e.preventDefault(); $("#gsearch")?.focus(); }
+  }
+});
+document.addEventListener("click", (e) => { const th = e.target.closest("th[data-sort]"); if (!th) return;
+  const cur = $("#jql")?.value || ""; const base = cur.replace(/\s*ORDER\s+BY[\s\S]*$/i, "").trim(); let dir = "ASC";
+  try { const o = parseJql(cur).order[0]; if (o && o.f === th.dataset.sort && o.dir === "ASC") dir = "DESC"; } catch {}
+  go(`#/filters?jql=${encodeURIComponent(`${base}${base ? " " : ""}ORDER BY ${th.dataset.sort} ${dir}`)}`); });
+$("#overlay").addEventListener("click", closeModal);
+// Tooltip für Diagramme
+document.addEventListener("mousemove", (e) => { const t = e.target.closest("[data-tip]"); const tip = $("#tip");
+  if (!t) { tip.style.display = "none"; return; } tip.textContent = t.dataset.tip; tip.style.display = "block";
+  const x = Math.min(window.innerWidth - tip.offsetWidth - 10, e.clientX + 14); tip.style.left = x + "px"; tip.style.top = (e.clientY + 14) + "px"; });
+window.addEventListener("hashchange", () => { $("#topnav").classList.remove("menu-open"); if (ui.modal) closeModal(); render(); window.scrollTo(0, 0); });
+window.addEventListener("storage", (e) => { if (e.key === KEY) { db = load(); render(); } });
+
+/* ---------- Start ---------- */
+try { const th = localStorage.getItem(KEY + "-theme"); if (th) document.documentElement.dataset.theme = th; } catch {}
+deadlineCheck(); render();
+setInterval(() => { deadlineCheck(); renderTop(); }, 60000);
+</script>
+</body>
+</html>
