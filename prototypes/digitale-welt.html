@@ -247,6 +247,55 @@ ul.risks { margin: 0 0 14px; padding-left: 18px; font-size: 12.5px; line-height:
 .databadge { margin-left: 8px; vertical-align: 2px; font: 600 10.5px var(--font-body); color: #92400e; background: #fef3c7; border: 0; border-radius: 999px; padding: 2px 8px; cursor: pointer; }
 .databadge:hover { background: #fde68a; }
 .databadge:focus-visible { outline: 2px solid var(--petrol); }
+/* ════════ Sim-Struktur: Werkzeugleiste, Inspektor, Meldungen, Info-Ansichten ════════ */
+#menuBtn { display: none !important; }
+.tabs { display: none !important; }
+#left { top: auto !important; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); width: 300px; max-height: calc(100% - 84px - 108px) !important; }
+#left:not(.open) { display: none !important; }
+.panelhead { display: flex; align-items: center; justify-content: space-between; padding: 12px 12px 0 16px; flex: none; }
+.panelhead b { font: 700 16px var(--font-title); }
+.panelhead .close { position: static; }
+#toolbar { left: 50%; transform: translateX(-50%); bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: 18px; max-width: calc(100% - 32px - 240px); overflow-x: auto; }
+#toolbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 66px; padding: 7px 6px 6px; border: 0; background: none; border-radius: 12px; cursor: pointer; color: var(--ink-2); font: 600 10.5px var(--font-body); white-space: nowrap; }
+#toolbar svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+#toolbar button:hover { background: var(--paper-2); color: var(--ink); }
+#toolbar button.on { background: var(--petrol); color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,.35); }
+#toolbar button:focus-visible { outline: 2px solid var(--petrol); outline-offset: 1px; }
+#toolbar .tsep { width: 1px; align-self: stretch; margin: 6px 4px; background: var(--line); flex: none; }
+#viewbar { left: 50%; transform: translateX(-50%); bottom: calc(92px + env(safe-area-inset-bottom, 0px)); padding: 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; border-radius: 14px; }
+.ivlegend { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--ink-2); padding: 0 6px 2px; }
+.ivlegend:empty { display: none; }
+.ivlegend i { width: 80px; height: 8px; border-radius: 999px; display: inline-block; }
+.ivlegend .sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 3px; vertical-align: -1px; }
+#floorbar { bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important; }
+body.iv-open #floorbar { bottom: calc(176px + env(safe-area-inset-bottom, 0px)) !important; }
+/* Meldungen als Karten links oben */
+#feed { left: 16px !important; right: auto !important; top: 84px; bottom: auto !important; width: 330px; height: auto !important; background: none !important; border: 0 !important; box-shadow: none !important; padding: 0 !important; pointer-events: none; }
+#feed .h { display: none; }
+#events { gap: 6px !important; }
+#events li { pointer-events: auto; background: rgba(255,255,255,.94); border-radius: 12px; padding: 7px 10px; box-shadow: 0 4px 14px rgba(17,24,39,.1); grid-template-columns: 44px 10px 1fr !important; }
+#events time { font-weight: 600; }
+body.panel-open #feed { display: none; }
+.simclock { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.1; }
+.simclock .clock { display: block !important; font: 700 17px var(--font-data); color: var(--ink); font-variant-numeric: tabular-nums; }
+.dayphase { font-size: 10.5px; color: var(--ink-3); }
+.speed button { min-width: 34px !important; font-size: 10px !important; letter-spacing: -.12em; }
+.lbl.info { font: 700 13px var(--font-title); color: #fff; padding: 4px 10px; border-radius: 999px; box-shadow: 0 3px 10px rgba(17,24,39,.25); pointer-events: none; }
+.lbl.info small { font: 500 10.5px var(--font-body); opacity: .9; margin-left: 4px; }
+@media (max-width: 860px) {
+  #toolbar { max-width: calc(100% - 24px); left: 12px; right: 12px; transform: none; }
+  #toolbar button { min-width: 58px; }
+  #left { left: 12px; right: 12px; width: auto; }
+  #feed { display: none; }
+  #viewbar { left: 12px; right: 12px; transform: none; overflow-x: auto; }
+  .simclock .dayphase { display: none; }
+  #top .kpis, #top .seg:not(.speed), .databadge { display: none !important; }
+  #top .brand-txt b { white-space: nowrap; font-size: 15px !important; }
+  .simclock .clock { font-size: 14px !important; white-space: nowrap; }
+}
+#top { flex-wrap: nowrap !important; }
+#top .brand-txt span { max-width: 300px; }
+@media (max-width: 1280px) { #top .brand-txt span { display: none; } }
 /* KI-Workspace */
 .aibtn { background: #f3efff !important; color: #6d28d9 !important; margin-top: 6px; }
 .lbl.agent { display: flex; align-items: center; gap: 6px; background: #fff; border-radius: 999px; padding: 3px 10px 3px 6px; box-shadow: 0 2px 8px rgba(124,58,237,.22); font-size: 11.5px; color: var(--ink); }
@@ -359,10 +408,17 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
     <button type="button" id="modeNow" aria-pressed="true">Heute</button>
     <button type="button" id="modePlan" class="plan" aria-pressed="false">Mit Geplantem</button>
   </div>
-  <span class="clock" id="clock">--:--:--</span>
+  <div class="simclock"><span class="clock" id="clock">Mo 08:00</span><span class="dayphase" id="dayphase">Arbeitstag</span></div>
+  <div class="seg speed" role="group" aria-label="Simulationstempo">
+    <button type="button" data-sp="0" aria-pressed="false" title="Pause (Leertaste)">❚❚</button>
+    <button type="button" data-sp="1" aria-pressed="true" title="Normal">▶</button>
+    <button type="button" data-sp="2" aria-pressed="false" title="Schneller">▶▶</button>
+    <button type="button" data-sp="3" aria-pressed="false" title="Sehr schnell">▶▶▶</button>
+  </div>
 </header>
 
-<aside id="left" class="hud" aria-label="Übersicht">
+<aside id="left" class="hud" aria-label="Werkzeug">
+  <div class="panelhead"><b id="panelTitle">Standorte</b><button type="button" class="close" id="panelClose" aria-label="Werkzeug schließen">×</button></div>
   <div class="tabs" role="tablist" aria-label="Übersicht">
     <button type="button" role="tab" id="tabLoc" aria-selected="true" aria-controls="paneLoc">Standorte</button>
     <button type="button" role="tab" id="tabTeam" aria-selected="false" aria-controls="paneTeam">Team</button>
@@ -393,6 +449,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
     <p class="sub2">Wähle einen Prozess. Sein Weg durch Standorte und Systeme wird eingeblendet, mit den offenen Vorgängen an jeder Station.</p>
     <ul class="loclist" id="proclist"></ul>
   </section>
+  <section id="paneLayers" hidden>
   <section>
     <p class="h">Ebenen</p>
     <div class="layers">
@@ -416,8 +473,33 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
     </div>
   </section>
   <p class="note"><b>Echt:</b> Gesellschaften, Standorte, Geschäftsführung, Programme, Tätigkeitsgruppen, Prozessschritte und KI-Vorhaben (Bachelorarbeit 2026, Website). <b>Beispiel:</b> Figuren, Mengen, Kunden, Baustellen, Ereignisse, Gebäudeumrisse.</p>
+  </section>
   </div>
 </aside>
+
+<nav id="toolbar" class="hud" aria-label="Werkzeuge">
+  <button type="button" data-tool="loc"><svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span>Standorte</span></button>
+  <button type="button" data-tool="team"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5"/><circle cx="17" cy="9" r="2.5"/><path d="M16.5 14.5c2.4.2 4 1.8 4.5 4.5"/></svg><span>Team</span></button>
+  <button type="button" data-tool="proc"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="2.2"/><circle cx="12" cy="6" r="2.2"/><circle cx="19" cy="12" r="2.2"/><circle cx="12" cy="18" r="2.2"/><path d="M6.7 10.5 10.3 7.5M13.7 7.5l3.6 3M17.3 13.5l-3.6 3M10.3 16.5l-3.6-3"/></svg><span>Prozesse</span></button>
+  <button type="button" data-tool="proj"><svg viewBox="0 0 24 24"><path d="M6 21V4M6 4h11l-2.5 4L17 12H6"/></svg><span>Vorhaben</span></button>
+  <button type="button" data-tool="fleet"><svg viewBox="0 0 24 24"><path d="M3 16V7h11v9M14 10h4l3 3v3h-7"/><circle cx="7" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></svg><span>Fuhrpark</span></button>
+  <button type="button" data-tool="ai"><svg viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="10" rx="3"/><path d="M12 8V5M9.5 12.5h.01M14.5 12.5h.01"/><circle cx="12" cy="4" r="1"/></svg><span>KI-Agenten</span></button>
+  <span class="tsep"></span>
+  <button type="button" data-tool="views"><svg viewBox="0 0 24 24"><path d="M12 4 3 9l9 5 9-5-9-5zM3 14l9 5 9-5"/></svg><span>Info-Ansicht</span></button>
+  <button type="button" data-tool="layers"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="1.8"/><circle cx="15" cy="12" r="1.8"/><circle cx="7" cy="18" r="1.8"/></svg><span>Ebenen</span></button>
+  <button type="button" data-tool="data"><svg viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.6"/><path d="M5 6v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6V6M5 12v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/></svg><span>Datenquellen</span></button>
+  <button type="button" data-tool="company"><svg viewBox="0 0 24 24"><path d="M4 21V8l6-3v16M10 21V3l10 4v14M4 21h16"/></svg><span>Unternehmen</span></button>
+</nav>
+<div id="viewbar" class="hud" hidden>
+  <div class="seg" role="group" aria-label="Info-Ansicht">
+    <button type="button" data-iv="none" aria-pressed="true">Normal</button>
+    <button type="button" data-iv="team" aria-pressed="false">Team vor Ort</button>
+    <button type="button" data-iv="proj" aria-pressed="false">Vorhaben</button>
+    <button type="button" data-iv="risk" aria-pressed="false">Risiken</button>
+    <button type="button" data-iv="conn" aria-pressed="false">Datenanbindung</button>
+  </div>
+  <div class="ivlegend" id="ivLegend"></div>
+</div>
 
 <aside id="detail" class="hud" aria-live="polite" hidden></aside>
 
@@ -433,12 +515,6 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
 
 <div id="minimap" class="hud" aria-label="Übersichtskarte">
   <div class="mmhead"><span>Karte</span>
-    <div class="seg speed" role="group" aria-label="Simulationstempo">
-      <button type="button" data-sp="0" aria-pressed="false" title="Pause (Leertaste)">❚❚</button>
-      <button type="button" data-sp="1" aria-pressed="true" title="Normal">1×</button>
-      <button type="button" data-sp="2" aria-pressed="false" title="Schneller">2×</button>
-      <button type="button" data-sp="3" aria-pressed="false" title="Sehr schnell">3×</button>
-    </div>
   </div>
   <canvas id="mm" width="420" height="300"></canvas>
   <span class="mmhint">Klick: hinfliegen · WASD · Q/E drehen</span>
@@ -446,7 +522,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
 <div id="pops" aria-hidden="true"></div>
 
 <section id="feed" class="hud" aria-label="Live-Ereignisse">
-  <p class="h"><span>Live-Ereignisse</span><span>simuliert</span></p>
+  <p class="h"><span>Meldungen</span><span>simuliert</span></p>
   <ul id="events"></ul>
 </section>
 
@@ -1074,13 +1150,13 @@ const M = {
 };
 function ghostMat(op = 0.22) { return new THREE.MeshBasicMaterial({ color: C.plan, transparent: true, opacity: op, depthWrite: false }); }
 function addLabel(id, cls, html, pos, layer) {
-  const passive = /\b(km|city|zone|hw)\b/.test(cls);
+  const passive = /\b(km|city|zone|hw|info)\b/.test(cls);
   const el = document.createElement(passive ? 'div' : 'button');
   if (!passive) { el.type = 'button'; el.addEventListener('click', e => { e.stopPropagation(); select(id, true); }); }
   el.className = 'lbl ' + cls;
   el.innerHTML = html;
   labelRoot.appendChild(el);
-  const l = { id, el, pos, layer, visible: true, anchorY: /\b(km|city|zone|hw)\b/.test(cls) ? '-50%' : '-100%' };
+  const l = { id, el, pos, layer, visible: true, anchorY: /\b(km|city|zone|hw|info)\b/.test(cls) ? '-50%' : '-100%' };
   labels.push(l);
   return l;
 }
@@ -2070,15 +2146,12 @@ function renderKpis() {
   const warn = SYSTEMS.filter(s => !s.plan && s.status === 'warn');
   const openHand = PROCESSES.reduce((a, pr) => a + pr.steps.filter(s => s.open).length, 0);
   kpis.innerHTML =
-    `<button type="button" class="kpi" data-go="company"><strong>2</strong>Gesellschaften</button>` +
-    `<span class="kpi opt"><strong>${LOCATIONS.filter(l => vis(l) && !l.bau).length}</strong>Standorte</span>` +
     `<button type="button" class="kpi opt" data-go="sources"><strong>${SYSTEMS.filter(x => !x.plan && SOURCES[x.id] && ['live', 'gf'].includes(SOURCES[x.id].conn)).length}/${SYSTEMS.filter(x => !x.plan).length}</strong>angebunden</button>` +
     `<button type="button" class="kpi opt" data-go="roadmap"><strong>${PROJECTS.filter(pr => ['ok', 'warn', 'bad'].includes(pr.status)).length}</strong>Vorhaben</button>` +
     `<button type="button" class="kpi" data-go="aiws"><strong>${AGENTS.length}</strong>KI-Agenten</button>` +
     `<button type="button" class="kpi" data-go="fleet"><strong>${VANS.length}</strong>Fahrzeuge</button>` +
-    `<button type="button" class="kpi opt" data-go="bauall"><strong>${LOCATIONS.filter(l => l.bau).length}</strong>Baustellen</button>` +
     `<button type="button" class="kpi warn" data-go="wartung"><strong>${openHand}</strong>Übergaben</button>`;
-  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { openTab('tabProj'); setProjFilter('bau'); if (narrow()) { leftEl.classList.add('open'); } return; } select(b.dataset.go, !['roadmap', 'company', 'fleet', 'sources'].includes(b.dataset.go)); }));
+  kpis.querySelectorAll('[data-go]').forEach(b => b.addEventListener('click', () => { if (b.dataset.go === 'bauall') { showPanel('proj'); if (openPanel !== 'proj') showPanel('proj'); setProjFilter('bau'); return; } select(b.dataset.go, !['roadmap', 'company', 'fleet', 'sources'].includes(b.dataset.go)); }));
 }
 const loclist = document.getElementById('loclist');
 function renderLocList() {
@@ -2153,6 +2226,32 @@ function openTab(tabId) { TABS.forEach(([t, p]) => { document.getElementById(t).
 TABS.forEach(([t]) => document.getElementById(t).addEventListener('click', () => openTab(t)));
 const leftEl = document.getElementById('left'), menuBtn = document.getElementById('menuBtn');
 menuBtn.addEventListener('click', () => { const o = leftEl.classList.toggle('open'); menuBtn.setAttribute('aria-expanded', o); });
+/* Werkzeugleiste: öffnet Werkzeug-Panels oder springt in Ansichten */
+const PANELS = { loc: ['tabLoc', 'Standorte'], team: ['tabTeam', 'Team'], proc: ['tabProc', 'Prozesse'], proj: ['tabProj', 'Vorhaben'], layers: [null, 'Ebenen und Legende'] };
+let openPanel = null;
+const toolBtns = document.querySelectorAll('[data-tool]');
+function markTools() { toolBtns.forEach(b => b.classList.toggle('on', b.dataset.tool === openPanel || (b.dataset.tool === 'views' && !viewbar.hidden))); }
+function showPanel(name) {
+  if (!name || openPanel === name) { openPanel = null; leftEl.classList.remove('open'); document.body.classList.remove('panel-open'); markTools(); return; }
+  openPanel = name;
+  const [tab, title] = PANELS[name];
+  document.getElementById('paneLayers').hidden = name !== 'layers';
+  if (tab) openTab(tab); else TABS.forEach(([, p]) => { document.getElementById(p).hidden = true; });
+  document.getElementById('panelTitle').textContent = title;
+  leftEl.classList.add('open'); document.body.classList.add('panel-open'); markTools();
+}
+document.getElementById('panelClose').addEventListener('click', () => showPanel(null));
+const viewbar = document.getElementById('viewbar');
+toolBtns.forEach(b => b.addEventListener('click', () => {
+  const t = b.dataset.tool;
+  if (PANELS[t]) return showPanel(t);
+  if (t === 'views') { viewbar.hidden = !viewbar.hidden; document.body.classList.toggle('iv-open', !viewbar.hidden); markTools(); return; }
+  showPanel(null);
+  if (t === 'fleet') select('fleet', true);
+  if (t === 'ai') select('aiws', true);
+  if (t === 'data') select('sources', true);
+  if (t === 'company') select('company', true);
+}));
 const narrow = () => window.matchMedia('(max-width: 860px)').matches;
 
 /* ════════════════ Detailansicht ════════════════ */
@@ -2399,6 +2498,48 @@ detail.addEventListener('click', e => {
   renderDetail(selected);
 });
 
+/* ════════════════ Info-Ansichten (Datenschichten über der Welt) ════════════════ */
+const ivGroup = new THREE.Group(); scene.add(ivGroup);
+let ivLabels = [], infoView = 'none';
+const IV = {
+  team: { name: 'Team vor Ort', unit: 'Personen', of: l => PEOPLE.filter(p => p.at === l.id || p.home === l.id || VANS.some(v => v.id === p.at && v.home === l.id)).length, colors: ['#dbeafe', '#2563eb'] },
+  proj: { name: 'Laufende Vorhaben', unit: 'Vorhaben', of: l => PROJECTS.filter(p => p.at === l.id && p.status !== 'done' && p.status !== 'idea').length, colors: ['#ede9fe', '#7c3aed'] },
+  risk: { name: 'Kritisch oder verzögert', unit: 'Vorhaben', of: l => PROJECTS.filter(p => p.at === l.id && ['bad', 'warn'].includes(p.status)).length, colors: ['#dcfce7', '#dc2626'], zeroGood: true },
+};
+function lerpColor(a, b, t) { return new THREE.Color(a).lerp(new THREE.Color(b), t); }
+function setInfoView(v) {
+  infoView = v;
+  document.querySelectorAll('[data-iv]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.iv === v)));
+  while (ivGroup.children.length) ivGroup.remove(ivGroup.children[0]);
+  ivLabels.forEach(l => { l.el.remove(); labels.splice(labels.indexOf(l), 1); }); ivLabels = [];
+  const lg = document.getElementById('ivLegend');
+  if (v === 'none') { lg.innerHTML = ''; return; }
+  if (v === 'conn') {
+    lg.innerHTML = Object.entries(CONN_TXT).map(([k, t]) => `<span><span class="sw" style="background:${{ live: '#16a34a', gf: '#16a34a', manual: '#94a3b8', open: '#d97706', plan: '#7c3aed' }[k]}"></span>${t}</span>`).join('');
+    SYSTEMS.forEach(x => {
+      const src = SOURCES[x.id]; if (!src || !objects[x.id].group.visible) return;
+      const col = { live: 0x16a34a, gf: 0x16a34a, manual: 0x94a3b8, open: 0xd97706, plan: 0x7c3aed }[src.conn];
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(x.hub ? 2.5 : 1.7, 0.16, 8, 48), new THREE.MeshBasicMaterial({ color: col }));
+      ring.rotation.x = Math.PI / 2; ring.position.copy(objects[x.id].anchor).add(new THREE.Vector3(0, -0.9, 0)); ivGroup.add(ring);
+    });
+    return;
+  }
+  const cfg = IV[v], locs = LOCATIONS.filter(l => mode === 'plan' || !l.plan);
+  const vals = locs.map(l => cfg.of(l)), max = Math.max(1, ...vals);
+  lg.innerHTML = `<span>${cfg.name}</span><span>0</span><i style="background:linear-gradient(90deg,${cfg.colors[0]},${cfg.colors[1]})"></i><span>${max}</span>`;
+  locs.forEach((l, i) => {
+    const t = vals[i] / max, col = lerpColor(cfg.colors[0], cfg.colors[1], t), RR = l.r || SITE_R;
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(RR + 0.7, 0.22 + 0.25 * t, 10, 72), new THREE.MeshBasicMaterial({ color: col }));
+    ring.rotation.x = Math.PI / 2; ring.position.set(l.x, 0.3, l.z); ivGroup.add(ring);
+    const col2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 1, 20), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.85 }));
+    const hgt = 0.6 + 7 * t; col2.scale.y = hgt; col2.position.set(l.x + RR + 0.7, hgt / 2, l.z); ivGroup.add(col2);
+    const lbl = addLabel(null, 'info', `${vals[i]}<small>${cfg.unit}</small>`, new THREE.Vector3(l.x + RR + 0.7, hgt + 0.6, l.z), 'info');
+    lbl.el.style.background = '#' + col.getHexString(); if (t < 0.35) lbl.el.style.color = '#111827';
+    ivLabels.push(lbl);
+  });
+}
+document.querySelectorAll('[data-iv]').forEach(b => b.addEventListener('click', () => setInfoView(b.dataset.iv)));
+
 /* ════════════════ Auswahl & Kamera ════════════════ */
 let fly = null;
 function flyTo(target, camPos, follow) {
@@ -2409,7 +2550,7 @@ function select(id, move) {
   if (!id) clearProcess();
   else if (byId[id].type === 'proc') showProcess(id);
   else if (byId[id].type === 'step') showProcess(byId[id].d.proc.id);
-  if (id && narrow()) { leftEl.classList.remove('open'); menuBtn.setAttribute('aria-expanded', false); }
+  if (id && narrow()) showPanel(null);
   selected = id;
   labels.forEach(l => l.el.classList.toggle('sel', !!id && l.id === id));
   document.querySelectorAll('.loclist button[data-id]').forEach(b => b.classList.toggle('sel', b.dataset.id === id));
@@ -2464,6 +2605,7 @@ function applyVisibility() {
   });
   if (selected && objects[selected] && objects[selected].group && !objects[selected].group.visible && !objects[selected].hidden) select(null);
   renderKpis(); renderLocList(); renderTeam(); renderProcList(); renderProjList();
+  if (typeof infoView !== 'undefined' && infoView !== 'none') setInfoView(infoView);
   if (selected) renderDetail(selected);
 }
 [['lyAgent', 'agent'], ['lyProj', 'proj'], ['lyPeople', 'people'], ['lySys', 'sys'], ['lyIf', 'link'], ['lyVan', 'van'], ['lyCust', 'cust']].forEach(([elId, key]) => {
@@ -2633,6 +2775,7 @@ mmCanvas.addEventListener('click', e => {
 });
 
 /* ════════════════ Live-Ereignisse (simuliert) ════════════════ */
+let simMin = 8 * 60, simDay = 0;
 const pulses = [], pulseMeshes = [];
 const eventsEl = document.getElementById('events');
 const EVENT_POOL = [
@@ -2660,7 +2803,7 @@ const EVENT_POOL = [
 function hhmmss(d) { return d.toTimeString().slice(0, 8); }
 function pushEvent(ev) {
   const li = document.createElement('li');
-  li.innerHTML = `<time>${hhmmss(new Date())}</time><span class="dot ${ev.st}"></span><button type="button">${ev.text}</button>`;
+  li.innerHTML = `<time>${simClockStr()}</time><span class="dot ${ev.st}"></span><button type="button">${ev.text}</button>`;
   li.querySelector('button').addEventListener('click', () => select(ev.go, true));
   eventsEl.prepend(li);
   while (eventsEl.children.length > 4) eventsEl.lastChild.remove();
@@ -2669,9 +2812,23 @@ function pushEvent(ev) {
 let evIdx = 0;
 for (let i = 0; i < 3; i++) pushEvent(EVENT_POOL[evIdx++]);
 let evClock = 0;   // Ereignisse folgen dem Simulationstempo
-const clock = document.getElementById('clock');
-setInterval(() => { clock.textContent = hhmmss(new Date()); }, 1000);
-clock.textContent = hhmmss(new Date());
+/* Simulationsuhr: Arbeitstag 07:00–18:00, 1 Sekunde = 2 Minuten bei Tempo 1 */
+const clock = document.getElementById('clock'), dayphase = document.getElementById('dayphase');
+const WEEKDAYS = ['Mo', 'Di', 'Mi', 'Do', 'Fr'];
+function simClockStr() { const h = Math.floor(simMin / 60), m = Math.floor(simMin % 60); return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`; }
+function advanceClock(sdt) {
+  simMin += sdt * 2;
+  if (simMin >= 18 * 60) { simMin = 7 * 60; simDay = (simDay + 1) % 5; pushEvent({ st: 'ok', text: `Neuer Arbeitstag: ${WEEKDAYS[simDay]}`, go: 'hq' }); }
+  const h = simMin / 60;
+  clock.textContent = `${WEEKDAYS[simDay]} ${simClockStr()}`;
+  const ph = h < 9 ? 'Arbeitsbeginn' : h < 12 ? 'Vormittag' : h < 13 ? 'Mittag' : h < 16 ? 'Nachmittag' : 'Feierabend naht';
+  if (dayphase.textContent !== ph) dayphase.textContent = ph;
+  // Licht: morgens und abends wärmer und tiefer
+  const k = Math.sin(Math.PI * (h - 6) / 13);
+  sun.intensity = 0.55 + 0.35 * k;
+  sun.color.setHSL(0.09, 0.9 - 0.75 * k, 0.6 + 0.3 * k);
+  sun.position.set(-60 * Math.cos(Math.PI * (h - 6) / 13), 25 + 40 * k, 28);
+}
 function pulseMesh() {
   const m = new THREE.Mesh(new THREE.RingGeometry(0.8, 0.95, 40), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, side: THREE.DoubleSide, depthWrite: false }));
   m.rotation.x = -Math.PI / 2; scene.add(m); return m;
@@ -2679,7 +2836,7 @@ function pulseMesh() {
 
 /* ════════════════ Labels projizieren ════════════════ */
 const v3 = new THREE.Vector3();
-const LABEL_PRIO = { agent: 74, van: 75, proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
+const LABEL_PRIO = { info: 95, agent: 74, van: 75, proj: 66, step: 90, loc: 80, plan: 80, sys: 70, plansys: 70, person: 60, cust: 40, zone: 30, map: 20 };
 function placeLabels() {
   const w = window.innerWidth, h = window.innerHeight;
   const cands = [];
@@ -2753,6 +2910,7 @@ function tick() {
   const sdt = dt * simSpeed;
   simT += sdt;
   const speedK = reduceMotion ? 0.3 : 1;
+  advanceClock(sdt);
   evClock += sdt; if (evClock > 4.5) { evClock = 0; pushEvent(EVENT_POOL[evIdx++ % EVENT_POOL.length]); }
   keyCamera(dt);
 
