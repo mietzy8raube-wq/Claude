@@ -14,6 +14,7 @@ import {
   Ticket,
   ChevronDown,
   PartyPopper,
+  Palmtree,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,8 @@ export type DeadlineItem =
       status: TaskStatus;
       assignee: Person | null;
       context: string | null;
+      /** Verantwortlicher ist am Fälligkeitstag abwesend (Factorial). */
+      assigneeAbsence: string | null;
     }
   | {
       kind: "milestone" | "decision";
@@ -60,9 +63,13 @@ export type DeadlineItem =
       href: string;
     };
 
+interface UserOption extends Person {
+  absentToday?: boolean;
+}
+
 interface DeadlinesViewProps {
   items: DeadlineItem[];
-  users: Person[];
+  users: UserOption[];
   currentUserId: string;
   withoutDueDate: number;
 }
@@ -257,7 +264,7 @@ function DeadlineRow({
 }: {
   item: DeadlineItem;
   bucket: DeadlineBucket;
-  users: Person[];
+  users: UserOption[];
   pending: boolean;
   onOpen: () => void;
   onDone: () => void;
@@ -284,6 +291,11 @@ function DeadlineRow({
         {item.context && <span className="truncate">{item.context}</span>}
         {item.kind !== "task" && item.assignee && <span>{item.assignee.name}</span>}
       </div>
+      {item.kind === "task" && item.assigneeAbsence && (
+        <p className="mt-1 flex items-center gap-1 text-xs font-medium text-warning-foreground">
+          <Palmtree className="size-3.5" /> {item.assignee?.name} ist dann nicht da ({item.assigneeAbsence}) – Vertretung zuweisen
+        </p>
+      )}
     </div>
   );
 
@@ -307,7 +319,7 @@ function DeadlineRow({
           <PriorityBadge priority={item.priority} />
           <StatusBadge status={item.status} />
           <Select value={item.assignee?.id ?? UNASSIGNED} onValueChange={onAssign} disabled={pending}>
-            <SelectTrigger size="sm" className="w-40" aria-label="Verantwortlich">
+            <SelectTrigger size="sm" className="w-48" aria-label="Verantwortlich">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -315,6 +327,7 @@ function DeadlineRow({
               {users.map((u) => (
                 <SelectItem key={u.id} value={u.id}>
                   {u.name}
+                  {u.absentToday && " (abwesend)"}
                 </SelectItem>
               ))}
             </SelectContent>

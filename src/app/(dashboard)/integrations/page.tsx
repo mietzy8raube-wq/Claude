@@ -6,7 +6,10 @@ import { MicrosoftConnectionCard } from "@/components/integrations/microsoft-con
 import { OneDriveCard } from "@/components/integrations/onedrive-card";
 import { PermissionsCard } from "@/components/integrations/permissions-card";
 import { ExcelManagementCard } from "@/components/integrations/excel-management-card";
-import { isMicrosoftGraphConfigured } from "@/lib/graph/config";
+import { FactorialCard } from "@/components/integrations/factorial-card";
+import { MailCard } from "@/components/integrations/mail-card";
+import { MAIL_SCOPES, getMailSender, hasScopes, isMicrosoftGraphConfigured, isSystemMailConfigured } from "@/lib/graph/config";
+import { isFactorialConfigured } from "@/lib/factorial/client";
 import type { ConnectionStatus } from "@/types/integration";
 
 export default async function IntegrationsPage() {
@@ -19,6 +22,13 @@ export default async function IntegrationsPage() {
         include: { syncLogs: { orderBy: { createdAt: "desc" }, take: 10 } },
       })
     : null;
+
+  const role = session?.user.role;
+  const [factorialLogs, linkedUsers, upcomingAbsences] = await Promise.all([
+    prisma.factorialSyncLog.findMany({ orderBy: { createdAt: "desc" }, take: 10 }),
+    prisma.user.count({ where: { factorialEmployeeId: { not: null } } }),
+    prisma.absence.count({ where: { OR: [{ finishOn: null }, { finishOn: { gte: new Date() } }] } }),
+  ]);
 
   const initialConnection: ConnectionStatus | null = connection
     ? {
@@ -47,12 +57,36 @@ export default async function IntegrationsPage() {
     <div>
       <PageHeader
         title="Integrationen"
-        description="Microsoft 365 / Outlook, OneDrive & SharePoint sowie Excel-Import und -Export verwalten."
+        description="Microsoft 365 (Outlook-Kalender & Mail), Factorial HR, OneDrive & SharePoint sowie Excel-Import und -Export verwalten."
       />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Suspense>
           <MicrosoftConnectionCard configured={configured} initialConnection={initialConnection} />
         </Suspense>
+        <MailCard
+          status={{
+            graphConfigured: configured,
+            systemSender: isSystemMailConfigured() ? getMailSender() : null,
+            connected: !!connection,
+            hasMailScopes: hasScopes(connection?.scopes, MAIL_SCOPES),
+          }}
+        />
+        <FactorialCard
+          status={{
+            configured: isFactorialConfigured(),
+            isAdmin: role === "ADMINISTRATOR",
+            canSync: role !== "MITARBEITER",
+            linkedUsers,
+            upcomingAbsences,
+            logs: factorialLogs.map((l) => ({
+              id: l.id,
+              status: l.status,
+              message: l.message,
+              createdAt: l.createdAt.toISOString(),
+              unmatched: (l.unmatched as { id: string; name: string; email: string | null }[] | null) ?? null,
+            })),
+          }}
+        />
         <OneDriveCard />
         <PermissionsCard />
         <ExcelManagementCard />

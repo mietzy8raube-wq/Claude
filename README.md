@@ -14,6 +14,8 @@ integrierter Outlook- und Excel-Anbindung.
 6. [Ticketsystem: Zuweisung, Fristen & Benachrichtigungen](#ticketsystem-zuweisung-fristen--benachrichtigungen)
 7. [Entra-ID-App-Registrierung (Outlook-Integration)](#entra-id-app-registrierung-outlook-integration)
 8. [Microsoft-Graph-Berechtigungen](#microsoft-graph-berechtigungen)
+   - [Outlook-Mail: Postfach & E-Mail-Benachrichtigungen](#outlook-mail-postfach--e-mail-benachrichtigungen)
+   - [Factorial HR: Mitarbeiter & Abwesenheiten](#factorial-hr-mitarbeiter--abwesenheiten)
 9. [Umgebungsvariablen](#umgebungsvariablen)
 10. [Token-Konzept & Sicherheit](#token-konzept--sicherheit)
 11. [Synchronisierungsstrategie](#synchronisierungsstrategie)
@@ -259,11 +261,94 @@ Berechtigungen angefordert (Least Privilege, siehe `src/lib/graph/config.ts`):
 | `Calendars.ReadWrite`     | Kalender lesen, Termine erstellen/ändern/löschen |
 | `MailboxSettings.Read`     | Zeitzoneneinstellungen des Postfachs berücksichtigen |
 
-E-Mail-Zugriff (`Mail.Read`/`Mail.Send`) ist **nicht** angefordert, da die
-optionale E-Mail-Funktion (Anzeigen/Verknüpfen/Aufgaben aus E-Mails) im
-aktuellen Funktionsumfang nicht aktiv ist; die entsprechenden Scopes können
-bei Bedarf in `GRAPH_SCOPES` ergänzt werden, sobald diese Funktion umgesetzt
-wird.
+| `Mail.Read`               | Postfach im Ticketsystem anzeigen, Tickets aus E-Mails erstellen |
+| `Mail.Send`               | Auf E-Mails antworten; Benachrichtigungen aus dem eigenen Postfach (Fallback) |
+
+Zusätzlich **optional** für den zentralen Versand von Benachrichtigungen:
+**Anwendungsberechtigung** (nicht delegiert) `Mail.Send` mit Admin-Consent,
+siehe nächster Abschnitt.
+
+> **Bestehende Verbindungen:** Wer sein Microsoft-Konto vor der
+> Mail-Integration verbunden hat, muss unter „Integrationen" einmal
+> *Verbindung trennen* und neu verbinden, damit `Mail.Read`/`Mail.Send`
+> erteilt werden. Postfach und Integrationsseite weisen darauf hin.
+
+### Outlook-Mail: Postfach & E-Mail-Benachrichtigungen
+
+**Postfach** (`/mail`) — zeigt Posteingang und Gesendete Elemente des
+verbundenen Outlook-Kontos (Suche, Nachladen). Pro E-Mail:
+
+- **Als Ticket übernehmen**: Titel aus dem Betreff (ohne „AW:/WG:"),
+  Absender, Eingangszeit und Mailtext landen in der Beschreibung;
+  Verantwortlicher, Priorität (wichtige Mails → „Hoch"), Frist und Projekt
+  sind wählbar. Das Ticket ist mit der Mail verknüpft (Link „In Outlook
+  öffnen" in der Ticketansicht, Ticketnummer als Markierung im Postfach).
+- **Antworten / Allen antworten** direkt aus der App (Verlauf hängt Outlook an).
+- HTML-Mails werden in einem abgeschotteten `iframe` ohne Skripte und mit
+  restriktiver Content-Security-Policy angezeigt.
+
+**E-Mail-Benachrichtigungen** — jede Benachrichtigung aus der Glocke geht
+zusätzlich per E-Mail raus (pro Person abschaltbar unter
+„Einstellungen → Benachrichtigungen", dort auch „Test-E-Mail senden").
+Stehen für eine Person mehrere Benachrichtigungen gleichzeitig an, wird
+**eine Sammelmail** verschickt. Versandweg:
+
+1. **Empfohlen – zentrales Postfach** (z. B. `tickets@ihre-firma.de`):
+   `MICROSOFT_MAIL_SENDER` setzen und in der App-Registrierung unter
+   *API-Berechtigungen → Microsoft Graph → Anwendungsberechtigungen*
+   `Mail.Send` hinzufügen und **Administratorzustimmung erteilen**. Der
+   Versand läuft per Client-Credentials-Flow unabhängig von Benutzerkonten.
+   Tipp: Mit einer *Application Access Policy* in Exchange Online lässt sich
+   die App auf genau dieses Postfach beschränken
+   (`New-ApplicationAccessPolicy -AccessRight RestrictAccess …`).
+2. **Fallback**: Ohne zentrales Postfach erhält jede Person mit verbundenem
+   Microsoft-Konto ihre Benachrichtigungen aus dem eigenen Postfach an sich
+   selbst. Personen ohne Verbindung sehen Benachrichtigungen nur in der App.
+
+Der Versand erfolgt nach Abschluss der jeweiligen Anfrage im Hintergrund und
+zusätzlich bei jeder Fristenprüfung; jede Benachrichtigung wird höchstens
+einmal (und nur innerhalb von 24 h nach Entstehung) gemailt.
+
+### Factorial HR: Mitarbeiter & Abwesenheiten
+
+Anbindung an die Factorial-API (`https://api.factorialhr.com`, Version
+`2026-10-01`, Authentifizierung per Firmen-API-Schlüssel im Header
+`x-api-key`).
+
+1. In Factorial als Admin unter *Einstellungen → API-Schlüssel* einen
+   Schlüssel erzeugen und als `FACTORIAL_API_KEY` in die `.env` eintragen.
+2. Unter „Integrationen → Factorial HR" auf **Jetzt abgleichen** klicken
+   (Geschäftsführung/Administration).
+
+Der Abgleich
+
+- verknüpft aktive Factorial-Mitarbeiter **per E-Mail** (Firmen-, Login- oder
+  Kommunikations-E-Mail) mit GF-Suite-Konten; nicht zuordenbare werden
+  aufgelistet. Administratoren können fehlende **Mitarbeiter-Konten
+  automatisch anlegen** lassen (zufälliges Passwort – Login erst nach
+  Passwortvergabe).
+- übernimmt **Abwesenheiten** (Urlaub, Krankheit, Fortbildung … – genehmigt
+  und beantragt) von 30 Tagen rückwirkend bis 180 Tage im Voraus;
+  gelöschte/abgelehnte werden lokal entfernt.
+
+Genutzt werden die Abwesenheiten in:
+
+- **Team & Auslastung**: „Aktuell abwesend: Urlaub 16.10.–19.10." bzw.
+  „Geplant … (beantragt)", inkl. Anzahl der Tickets, die in die Abwesenheit
+  fallen. Bei der Zuweisung stehen anwesende Personen oben.
+- **Fristen**: Hinweis „… ist dann nicht da – Vertretung zuweisen" am
+  Ticket; Zuweisungsauswahl markiert heute Abwesende.
+- **Benachrichtigung „Vertretung nötig"**: Wird ein Ticket in den nächsten
+  7 Tagen fällig und ist der Verantwortliche an dem Tag (genehmigt)
+  abwesend, wird der Ersteller benachrichtigt (bzw. die Geschäftsführung,
+  wenn der Abwesende das Ticket selbst angelegt hat) – auch per E-Mail.
+
+Automatischer Abgleich, z. B. täglich morgens per Cron:
+
+```bash
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://ihre-domain.tld/api/integrations/factorial/sync
+```
 
 ## Umgebungsvariablen
 
@@ -275,11 +360,17 @@ Vollständige Referenz mit Beispielwerten: `.env.example`.
 | `AUTH_SECRET` | ja | Signierschlüssel für Auth.js-Sessions (`openssl rand -base64 32`) |
 | `NEXTAUTH_URL` | ja | Basis-URL der Anwendung |
 | `TOKEN_ENCRYPTION_KEY` | ja | Base64-kodierter 32-Byte-Schlüssel zur Verschlüsselung gespeicherter Microsoft-Tokens |
-| `CRON_SECRET` | nein | Bearer-Token für den Cron-Aufruf der Fristenprüfung (`/api/notifications/deadline-check`) |
+| `CRON_SECRET` | nein | Bearer-Token für Cron-Aufrufe (Fristenprüfung inkl. Mailversand, Factorial-Abgleich) |
 | `MICROSOFT_TENANT_ID` | nein* | Entra-ID-Verzeichnis-ID |
 | `MICROSOFT_CLIENT_ID` | nein* | Entra-ID-Anwendungs-ID |
 | `MICROSOFT_CLIENT_SECRET` | nein* | Entra-ID-Client-Secret |
 | `MICROSOFT_REDIRECT_URI` | nein* | Muss exakt der in Entra ID hinterlegten Redirect-URI entsprechen |
+| `MICROSOFT_MAIL_SENDER` | nein | Zentrales Absender-Postfach für E-Mail-Benachrichtigungen (benötigt Anwendungsberechtigung `Mail.Send`) |
+| `MICROSOFT_GRAPH_BASE_URL` / `MICROSOFT_LOGIN_HOST` | nein | Nur für nationale Clouds (z. B. `https://graph.microsoft.us/v1.0`, `https://login.microsoftonline.us`) |
+| `APP_URL` | nein | Öffentliche Basis-URL für Links in E-Mails (Standard: `NEXTAUTH_URL`) |
+| `FACTORIAL_API_KEY` | nein | Factorial-Firmen-API-Schlüssel; aktiviert die Factorial-Integration |
+| `FACTORIAL_API_VERSION` | nein | Factorial-API-Version (Standard `2026-10-01`) |
+| `FACTORIAL_BASE_URL` | nein | Abweichende Factorial-API-URL (Standard `https://api.factorialhr.com`) |
 
 \* Ohne diese vier Variablen läuft die Anwendung vollständig, die
 Outlook-Integration zeigt im UI einen klaren Hinweis „nicht konfiguriert" an
@@ -407,15 +498,17 @@ Löschen, Verknüpfung mit Aufgaben) sind unabhängig davon voll nutzbar.
   UI-Platzhalter sind vorbereitet; der tatsächliche Datei-Browser und
   Lese-/Schreibzugriff auf definierte Tabellenbereiche ist noch nicht
   implementiert (siehe „Integrationen" → „In Vorbereitung").
-- **E-Mail-Funktionen** (Anzeigen, Verknüpfen, Aufgaben aus E-Mails
-  erstellen, Versand): im Datenmodell/Scope-Konzept vorgesehen, UI/API noch
-  nicht umgesetzt.
+- **E-Mail-Anhänge**: Beim Erstellen eines Tickets aus einer E-Mail wird
+  der Text übernommen und die Mail verlinkt; Anhänge bleiben in Outlook
+  (über „In Outlook öffnen" erreichbar).
 - **Datei-Uploads**: Anhänge (Aufgaben/Projekte/Meetings) werden als
   Datensatz mit externem Link (z. B. SharePoint/OneDrive-URL) abgelegt; es
   ist keine eigene Objektspeicher-Anbindung (z. B. S3) für binäre
   Datei-Uploads enthalten.
-- **E-Mail-Benachrichtigungen**: Ticket-Benachrichtigungen erscheinen in der
-  App (Glocke); ein Versand per E-Mail/Teams ist noch nicht angebunden.
+- **Teams-Benachrichtigungen**: Benachrichtigungen gehen in die App und per
+  E-Mail, noch nicht als Teams-Nachricht.
+- **Factorial**: Abwesenheiten werden gelesen, nicht zurückgeschrieben;
+  Urlaubsanträge erfolgen weiterhin in Factorial.
 - **Automatischer Sync-Zeitplan**: Die Sync-Logik ist vollständig
   implementiert und über die API auslösbar; ein produktiver, dauerhaft
   laufender Scheduler (Cron) muss je nach Hosting-Umgebung ergänzt werden.

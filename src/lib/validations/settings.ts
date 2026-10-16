@@ -4,6 +4,10 @@ export const updateProfileSchema = z.object({
   name: z.string().min(1, "Name ist erforderlich").max(100),
 });
 
+export const updatePreferencesSchema = z.object({
+  notifyByEmail: z.boolean(),
+});
+
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "Aktuelles Passwort ist erforderlich"),

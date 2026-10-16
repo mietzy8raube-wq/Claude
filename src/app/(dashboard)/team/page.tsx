@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/shared/page-header";
 import { TeamWorkloadView, type TeamMember, type QueueTicket } from "@/components/team/team-workload-view";
+import { absenceCovers, findAbsence, formatAbsence, loadAbsences } from "@/lib/absences";
 import type { Priority } from "@prisma/client";
 
 /** Gewichtung je Priorität für die Auslastungsberechnung. */
@@ -20,7 +21,12 @@ export default async function TeamPage() {
   const thirtyDaysAgo = new Date(todayStart);
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-  const [users, openTasks, completed, unassigned] = await Promise.all([
+  const absenceHorizon = new Date(todayStart);
+  absenceHorizon.setDate(absenceHorizon.getDate() + 60);
+  const in14Days = new Date(todayStart);
+  in14Days.setDate(in14Days.getDate() + 14);
+
+  const [users, openTasks, completed, unassigned, absences] = await Promise.all([
     prisma.user.findMany({
       where: { isActive: true },
       select: { id: true, name: true, email: true, role: true },
@@ -49,6 +55,7 @@ export default async function TeamPage() {
       },
       orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
     }),
+    loadAbsences(todayStart, absenceHorizon),
   ]);
 
   const members: TeamMember[] = users.map((u) => {
@@ -56,9 +63,18 @@ export default async function TeamPage() {
     const done = completed.filter((t) => t.assigneeId === u.id);
     const withDue = done.filter((t) => t.dueDate);
     const onTime = withDue.filter((t) => t.completedAt! <= endOfDay(t.dueDate!)).length;
+    const mineAbsences = absences.filter((a) => a.userId === u.id);
+    const current = mineAbsences.find((a) => a.approved === true && absenceCovers(a, now));
+    const next = mineAbsences.find((a) => a.startOn > now && a.startOn <= in14Days && a.approved !== false);
     return {
       id: u.id,
       name: u.name,
+      absence: current
+        ? { label: formatAbsence(current), current: true, pending: false }
+        : next
+          ? { label: formatAbsence(next), current: false, pending: next.approved !== true }
+          : null,
+      dueDuringAbsence: mine.filter((t) => t.dueDate && findAbsence(mineAbsences, u.id, t.dueDate)).length,
       email: u.email,
       role: u.role,
       open: mine.filter((t) => t.status === "OFFEN").length,

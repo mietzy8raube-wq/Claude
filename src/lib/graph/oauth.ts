@@ -1,4 +1,4 @@
-import { GRAPH_SCOPES, getMicrosoftEnv } from "./config";
+import { GRAPH_SCOPES, getMicrosoftEnv, getGraphBaseUrl, getLoginHost } from "./config";
 
 export interface TokenResponse {
   access_token: string;
@@ -74,4 +74,39 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   }
 
   return res.json();
+}
+
+let appTokenCache: { token: string; expiresAt: number } | null = null;
+
+/**
+ * App-only-Token (Client-Credentials-Flow) für den Systemversand von
+ * Benachrichtigungen. Wird im Speicher bis kurz vor Ablauf zwischengespeichert.
+ */
+export async function getAppOnlyAccessToken(): Promise<string> {
+  if (appTokenCache && appTokenCache.expiresAt - Date.now() > 5 * 60 * 1000) {
+    return appTokenCache.token;
+  }
+  const tenantId = process.env.MICROSOFT_TENANT_ID;
+  const clientId = process.env.MICROSOFT_CLIENT_ID;
+  const clientSecret = process.env.MICROSOFT_CLIENT_SECRET;
+  if (!tenantId || !clientId || !clientSecret) {
+    throw new Error("Microsoft Graph ist nicht konfiguriert (Tenant-ID, Client-ID, Client-Secret).");
+  }
+  const graphResource = new URL(getGraphBaseUrl()).origin;
+  const res = await fetch(`${getLoginHost()}/${tenantId}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: "client_credentials",
+      scope: `${graphResource}/.default`,
+    }),
+  });
+  if (!res.ok) {
+    throw new Error(`App-Token konnte nicht abgerufen werden: ${res.status} ${await res.text()}`);
+  }
+  const body = (await res.json()) as { access_token: string; expires_in: number };
+  appTokenCache = { token: body.access_token, expiresAt: Date.now() + body.expires_in * 1000 };
+  return body.access_token;
 }

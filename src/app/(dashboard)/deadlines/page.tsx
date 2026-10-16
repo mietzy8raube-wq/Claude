@@ -2,6 +2,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { PageHeader } from "@/components/shared/page-header";
 import { DeadlinesView, type DeadlineItem } from "@/components/deadlines/deadlines-view";
+import { absenceCovers, findAbsence, formatAbsence, loadAbsences } from "@/lib/absences";
 
 export default async function DeadlinesPage() {
   const session = await auth();
@@ -35,6 +36,16 @@ export default async function DeadlinesPage() {
     prisma.user.findMany({ where: { isActive: true }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
   ]);
 
+  const now = new Date();
+  const lastDue = tasks.reduce((max, t) => (t.dueDate! > max ? t.dueDate! : max), now);
+  const todayStart = new Date(now);
+  todayStart.setHours(0, 0, 0, 0);
+  const absences = await loadAbsences(todayStart, lastDue);
+  const absenceOn = (userId: string | undefined, date: Date) => {
+    const a = findAbsence(absences, userId, date);
+    return a ? formatAbsence(a) : null;
+  };
+
   const items: DeadlineItem[] = [
     ...tasks.map((t) => ({
       kind: "task" as const,
@@ -46,6 +57,8 @@ export default async function DeadlinesPage() {
       status: t.status,
       assignee: t.assignee,
       context: t.project?.name ?? null,
+      // Nur für noch nicht überfällige Tickets relevant
+      assigneeAbsence: t.dueDate! >= now ? absenceOn(t.assignee?.id, t.dueDate!) : null,
     })),
     ...milestones.map((m) => ({
       kind: "milestone" as const,
@@ -73,7 +86,15 @@ export default async function DeadlinesPage() {
         title="Fristen"
         description="Alle anstehenden und überfälligen Tickets, Meilensteine und Entscheidungen auf einen Blick."
       />
-      <DeadlinesView items={items} users={users} currentUserId={userId} withoutDueDate={withoutDueDate} />
+      <DeadlinesView
+        items={items}
+        users={users.map((u) => ({
+          ...u,
+          absentToday: absences.some((a) => a.userId === u.id && a.approved === true && absenceCovers(a, now)),
+        }))}
+        currentUserId={userId}
+        withoutDueDate={withoutDueDate}
+      />
     </div>
   );
 }

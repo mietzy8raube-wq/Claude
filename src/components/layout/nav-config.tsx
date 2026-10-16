@@ -11,6 +11,7 @@ import {
   Plug,
   Settings,
   AlarmClock,
+  Mail,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { title: "Entscheidungen", href: "/decisions", icon: Scale },
       { title: "Meetings", href: "/meetings", icon: Presentation },
       { title: "Kalender", href: "/calendar", icon: CalendarDays },
+      { title: "Postfach", href: "/mail", icon: Mail },
     ],
   },
   {

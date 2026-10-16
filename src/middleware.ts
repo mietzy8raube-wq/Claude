@@ -7,7 +7,7 @@ const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login"];
 // Prüfen ihre Berechtigung selbst (z. B. Cron per Bearer-Token)
-const SELF_AUTHORIZED_API = ["/api/notifications/deadline-check"];
+const SELF_AUTHORIZED_API = ["/api/notifications/deadline-check", "/api/integrations/factorial/sync"];
 
 export default auth((req) => {
   const { nextUrl } = req;

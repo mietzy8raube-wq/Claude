@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { formatTicketNumber } from "@/lib/ticket";
+import { scheduleNotificationEmails } from "@/lib/mail/notification-mailer";
+import { findAbsence, formatAbsence, loadAbsences } from "@/lib/absences";
 import type { NotificationType, Prisma } from "@prisma/client";
 
 interface NotifyParams {
@@ -32,6 +34,7 @@ export async function notify({ userIds, actorId, type, title, message, taskId, l
         link: link ?? (taskId ? `/tasks/all?ticket=${taskId}` : null),
       })),
     });
+    await scheduleNotificationEmails();
   } catch (error) {
     console.error("Benachrichtigung konnte nicht erstellt werden:", error);
   }
@@ -61,6 +64,8 @@ function berlinStartOfToday(now: number) {
  * - Frist heute oder in den nächsten 48 h → Verantwortlicher
  * - Frist überschritten (ab Folgetag)     → Verantwortlicher + Ersteller (Eskalation)
  * - Erinnerung (reminderAt) fällig → Verantwortlicher bzw. Ersteller
+ * - Verantwortlicher laut Factorial am Fälligkeitstag abwesend (nächste 7 Tage)
+ *   → Ersteller, damit rechtzeitig eine Vertretung bestimmt wird
  *
  * Wird beim Abruf der Benachrichtigungen gedrosselt automatisch ausgeführt und
  * kann zusätzlich per Cron über /api/notifications/deadline-check angestoßen werden.
@@ -89,6 +94,52 @@ export async function runDeadlineCheck({ force = false }: { force?: boolean } = 
   });
 
   const data: Prisma.NotificationCreateManyInput[] = [];
+
+  // Vertretungsbedarf: Tickets der nächsten 7 Tage, deren Verantwortlicher abwesend ist
+  const absenceHorizon = new Date(now + 7 * 24 * HOUR);
+  const upcoming = await prisma.task.findMany({
+    where: { status: { not: "ERLEDIGT" }, assigneeId: { not: null }, dueDate: { gte: new Date(todayStart), lte: absenceHorizon } },
+    select: {
+      id: true,
+      ticketNumber: true,
+      title: true,
+      dueDate: true,
+      assigneeId: true,
+      createdById: true,
+      assignee: { select: { name: true } },
+    },
+  });
+  if (upcoming.length) {
+    const absences = await loadAbsences(new Date(todayStart), absenceHorizon, [
+      ...new Set(upcoming.map((t) => t.assigneeId!)),
+    ]);
+    for (const task of upcoming) {
+      const absence = findAbsence(absences, task.assigneeId, task.dueDate!);
+      if (!absence) continue;
+      const recipients = new Set([task.createdById]);
+      // Hat sich die abwesende Person das Ticket selbst angelegt, alle Geschäftsführer informieren
+      if (task.createdById === task.assigneeId) {
+        const managers = await prisma.user.findMany({
+          where: { role: "GESCHAEFTSFUEHRER", isActive: true, id: { not: task.assigneeId! } },
+          select: { id: true },
+        });
+        managers.forEach((m) => recipients.add(m.id));
+        recipients.delete(task.assigneeId!);
+      }
+      for (const userId of recipients) {
+        data.push({
+          userId,
+          type: "VERTRETUNG_NOETIG",
+          title: `Vertretung nötig: ${ticketLabel(task)}`,
+          message: `${task.assignee?.name} ist am Fälligkeitstag nicht da (${formatAbsence(absence)}). Bitte neu zuweisen oder die Frist anpassen.`,
+          taskId: task.id,
+          link: `/tasks/all?ticket=${task.id}`,
+          dedupeKey: `absence:${task.id}:${userId}:${absence.id}:${task.dueDate!.toISOString()}`,
+        });
+      }
+    }
+  }
+
   for (const task of tasks) {
     const label = ticketLabel(task);
     const link = `/tasks/all?ticket=${task.id}`;
@@ -137,7 +188,8 @@ export async function runDeadlineCheck({ force = false }: { force?: boolean } = 
     }
   }
 
-  if (data.length === 0) return { skipped: false, created: 0 };
-  const result = await prisma.notification.createMany({ data, skipDuplicates: true });
-  return { skipped: false, created: result.count };
+  const created = data.length ? (await prisma.notification.createMany({ data, skipDuplicates: true })).count : 0;
+  // Auch liegengebliebene E-Mails (z. B. aus parallelen Läufen) regelmäßig nachsenden
+  await scheduleNotificationEmails();
+  return { skipped: false, created };
 }

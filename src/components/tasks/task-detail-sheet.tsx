@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Trash2, Plus, Send } from "lucide-react";
+import { Loader2, Pencil, Trash2, Plus, Send, Mail } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -39,6 +39,8 @@ interface DetailData {
   priority: string;
   dueDate: string | null;
   category: string | null;
+  sourceEmailFrom: string | null;
+  sourceEmailLink: string | null;
   assignee: { id: string; name: string } | null;
   createdBy: { id: string; name: string };
   project: { id: string; name: string } | null;
@@ -203,6 +205,23 @@ export function TaskDetailSheet({ taskId, onOpenChange, onEdit, onChanged }: Tas
               </SheetHeader>
 
               <div className="space-y-6 px-4 pb-6">
+                {(task.sourceEmailFrom || task.sourceEmailLink) && (
+                  <div className="flex flex-wrap items-center gap-2 rounded-md bg-muted/60 px-3 py-2 text-sm">
+                    <Mail className="size-4 text-muted-foreground" />
+                    <span>Aus E-Mail{task.sourceEmailFrom ? ` von ${task.sourceEmailFrom}` : ""}</span>
+                    {task.sourceEmailLink && (
+                      <a
+                        href={task.sourceEmailLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-medium underline-offset-4 hover:underline"
+                      >
+                        In Outlook öffnen
+                      </a>
+                    )}
+                  </div>
+                )}
+
                 {task.description && (
                   <p className="whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
                 )}

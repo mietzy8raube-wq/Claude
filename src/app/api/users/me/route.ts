@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireSession, handleApiError } from "@/lib/api-utils";
-import { updateProfileSchema } from "@/lib/validations/settings";
+import { updateProfileSchema, updatePreferencesSchema } from "@/lib/validations/settings";
 import { logAudit } from "@/lib/audit";
 
 export async function PATCH(request: NextRequest) {
   try {
     const session = await requireSession();
     const body = await request.json();
+
+    // Benachrichtigungs-Einstellungen
+    if (body && typeof body === "object" && "notifyByEmail" in body && !("name" in body)) {
+      const prefs = updatePreferencesSchema.parse(body);
+      const updated = await prisma.user.update({ where: { id: session.user.id }, data: prefs });
+      return NextResponse.json({ user: { id: updated.id, notifyByEmail: updated.notifyByEmail } });
+    }
+
     const data = updateProfileSchema.parse(body);
 
     const user = await prisma.user.update({

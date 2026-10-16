@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Inbox, ArrowRight, AlertTriangle, Users } from "lucide-react";
+import { Inbox, ArrowRight, AlertTriangle, Users, Palmtree } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,10 @@ import type { Priority } from "@prisma/client";
 export interface TeamMember {
   id: string;
   name: string;
+  /** Aktuelle oder bevorstehende Abwesenheit (aus Factorial). */
+  absence: { label: string; current: boolean; pending: boolean } | null;
+  /** Offene Tickets, die während einer genehmigten Abwesenheit fällig werden. */
+  dueDuringAbsence: number;
   email: string;
   role: string;
   open: number;
@@ -65,7 +69,10 @@ export function TeamWorkloadView({ members, queue }: { members: TeamMember[]; qu
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-  const byLoad = [...members].sort((a, b) => a.load - b.load);
+  // Anwesende zuerst, danach nach Auslastung
+  const byLoad = [...members].sort(
+    (a, b) => Number(!!a.absence?.current) - Number(!!b.absence?.current) || a.load - b.load
+  );
 
   async function assign(taskId: string, userId: string) {
     setPendingId(taskId);
@@ -131,7 +138,7 @@ export function TeamWorkloadView({ members, queue }: { members: TeamMember[]; qu
                         <SelectContent>
                           {byLoad.map((m) => (
                             <SelectItem key={m.id} value={m.id}>
-                              {m.name} · {loadLevel(m.load).label}
+                              {m.name} · {m.absence?.current ? "abwesend" : loadLevel(m.load).label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -169,6 +176,26 @@ export function TeamWorkloadView({ members, queue }: { members: TeamMember[]; qu
                   )}
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  {m.absence && (
+                    <div
+                      className={cn(
+                        "flex items-start gap-2 rounded-md px-3 py-2 text-sm",
+                        m.absence.current ? "bg-warning/15 text-warning-foreground" : "bg-muted/60 text-muted-foreground"
+                      )}
+                    >
+                      <Palmtree className="mt-0.5 size-4 shrink-0" />
+                      <span>
+                        {m.absence.current ? "Aktuell abwesend: " : "Geplant: "}
+                        {m.absence.label}
+                        {m.absence.pending && " (beantragt)"}
+                        {m.dueDuringAbsence > 0 && (
+                          <span className="block text-xs font-medium text-destructive">
+                            {m.dueDuringAbsence} Ticket{m.dueDuringAbsence === 1 ? "" : "s"} während der Abwesenheit fällig – Vertretung klären
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
                   <div>
                     <div className="mb-1.5 flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Auslastung</span>

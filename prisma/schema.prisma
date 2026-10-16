@@ -130,6 +130,12 @@ enum NotificationType {
   FRIST_BALD
   UEBERFAELLIG
   ERINNERUNG
+  VERTRETUNG_NOETIG
+}
+
+enum AbsenceSource {
+  FACTORIAL
+  LOKAL
 }
 
 enum AuditAction {
@@ -157,6 +163,10 @@ model User {
   role         Role     @default(GESCHAEFTSFUEHRER)
   image        String?
   isActive     Boolean  @default(true)
+  // Ticket-Benachrichtigungen zusätzlich per E-Mail erhalten
+  notifyByEmail       Boolean @default(true)
+  // Verknüpfung mit dem Mitarbeiterdatensatz in Factorial HR
+  factorialEmployeeId String? @unique
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -191,6 +201,7 @@ model User {
   auditLogs     AuditLog[]
   excelOps      ExcelOperationLog[]
   notifications Notification[]
+  absences      Absence[]
 
   @@map("users")
 }
@@ -337,6 +348,11 @@ model Task {
 
   category String?
 
+  // Ticket wurde aus einer Outlook-E-Mail erstellt
+  sourceEmailId   String?
+  sourceEmailLink String? @db.Text
+  sourceEmailFrom String?
+
   isRecurring         Boolean              @default(false)
   recurrenceFrequency RecurrenceFrequency?
   recurrenceInterval  Int?                 @default(1)
@@ -359,6 +375,7 @@ model Task {
   @@index([assigneeId, status])
   @@index([dueDate])
   @@index([projectId])
+  @@index([sourceEmailId])
   @@map("tasks")
 }
 
@@ -760,6 +777,9 @@ model Notification {
 
   isRead Boolean @default(false)
 
+  // Zeitpunkt des E-Mail-Versands (null = noch nicht versendet)
+  emailedAt DateTime?
+
   // Verhindert doppelte automatische Fristen-Benachrichtigungen
   dedupeKey String? @unique
 
@@ -767,6 +787,50 @@ model Notification {
 
   @@index([userId, isRead, createdAt])
   @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Abwesenheiten (Factorial HR)
+// ---------------------------------------------------------------------------
+
+model Absence {
+  id     String        @id @default(cuid())
+  source AbsenceSource @default(FACTORIAL)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  factorialLeaveId    String? @unique
+  factorialEmployeeId String?
+  employeeName        String?
+
+  startOn       DateTime
+  finishOn      DateTime? // inklusive; null = offenes Ende
+  halfDay       String?
+  leaveTypeName String?
+  description   String?
+  approved      Boolean? // true = genehmigt, null = ausstehend
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, startOn])
+  @@map("absences")
+}
+
+model FactorialSyncLog {
+  id               String     @id @default(cuid())
+  status           SyncStatus
+  message          String?    @db.Text
+  employeesMatched Int        @default(0)
+  usersCreated     Int        @default(0)
+  absencesSynced   Int        @default(0)
+  unmatched        Json? // [{id, name, email}]
+  durationMs       Int?
+  createdAt        DateTime   @default(now())
+
+  @@index([createdAt])
+  @@map("factorial_sync_logs")
 }
 
 // ---------------------------------------------------------------------------

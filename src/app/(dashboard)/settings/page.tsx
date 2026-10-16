@@ -5,12 +5,14 @@ import { ProfileForm } from "@/components/settings/profile-form";
 import { PasswordForm } from "@/components/settings/password-form";
 import { SecurityCard } from "@/components/settings/security-card";
 import { UsersTable } from "@/components/settings/users-table";
+import { NotificationPrefsCard } from "@/components/settings/notification-prefs-card";
+import { isNotificationMailAvailable } from "@/lib/mail/notification-mailer";
 
 export default async function SettingsPage() {
   const session = await auth();
   const userId = session!.user.id;
 
-  const [auditEntries, users] = await Promise.all([
+  const [auditEntries, users, me] = await Promise.all([
     prisma.auditLog.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
@@ -23,6 +25,7 @@ export default async function SettingsPage() {
           select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         })
       : Promise.resolve([]),
+    prisma.user.findUnique({ where: { id: userId }, select: { notifyByEmail: true } }),
   ]);
 
   return (
@@ -31,6 +34,11 @@ export default async function SettingsPage() {
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ProfileForm name={session!.user.name} email={session!.user.email} role={session!.user.role} />
         <PasswordForm />
+        <NotificationPrefsCard
+          notifyByEmail={me?.notifyByEmail ?? true}
+          email={session!.user.email}
+          mailAvailable={isNotificationMailAvailable()}
+        />
         <SecurityCard entries={auditEntries} />
         {session!.user.role === "ADMINISTRATOR" && (
           <div className="lg:col-span-2">

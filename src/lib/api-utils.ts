@@ -18,6 +18,22 @@ export async function requireSession() {
   return session;
 }
 
+/** Aufruf durch einen Cron-Job mit `Authorization: Bearer $CRON_SECRET`. */
+export function isCronRequest(request: Request) {
+  const secret = process.env.CRON_SECRET;
+  return !!secret && request.headers.get("authorization") === `Bearer ${secret}`;
+}
+
+/** Erlaubt Cron-Aufrufe oder angemeldete Geschäftsführer/Administratoren. */
+export async function requireCronOrManager(request: Request) {
+  if (isCronRequest(request)) return null;
+  const session = await requireSession();
+  if (session.user.role === "MITARBEITER") {
+    throw new ApiError(403, "Keine Berechtigung.");
+  }
+  return session;
+}
+
 export function handleApiError(error: unknown) {
   if (error instanceof ApiError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
