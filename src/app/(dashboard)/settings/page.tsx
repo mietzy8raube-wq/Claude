@@ -20,7 +20,7 @@ export default async function SettingsPage() {
     session!.user.role === "ADMINISTRATOR"
       ? prisma.user.findMany({
           orderBy: { name: "asc" },
-          select: { id: true, name: true, email: true, role: true, createdAt: true },
+          select: { id: true, name: true, email: true, role: true, isActive: true, createdAt: true },
         })
       : Promise.resolve([]),
   ]);

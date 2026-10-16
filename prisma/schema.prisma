@@ -123,6 +123,15 @@ enum ExcelOperationType {
   EXPORT
 }
 
+enum NotificationType {
+  ZUGEWIESEN
+  KOMMENTAR
+  STATUS_GEAENDERT
+  FRIST_BALD
+  UEBERFAELLIG
+  ERINNERUNG
+}
+
 enum AuditAction {
   CREATE
   UPDATE
@@ -179,8 +188,9 @@ model User {
 
   calendarEvents CalendarEvent[]
 
-  auditLogs AuditLog[]
-  excelOps  ExcelOperationLog[]
+  auditLogs     AuditLog[]
+  excelOps      ExcelOperationLog[]
+  notifications Notification[]
 
   @@map("users")
 }
@@ -290,8 +300,10 @@ model Department {
 }
 
 model Task {
-  id          String  @id @default(cuid())
-  title       String
+  id           String  @id @default(cuid())
+  // Fortlaufende, menschenlesbare Ticketnummer (Anzeige als "T-0042")
+  ticketNumber Int     @unique @default(autoincrement())
+  title        String
   description String? @db.Text
 
   assigneeId String?
@@ -330,9 +342,11 @@ model Task {
   recurrenceInterval  Int?                 @default(1)
   recurrenceEndDate   DateTime?
 
-  reminderAt DateTime?
+  reminderAt  DateTime?
+  completedAt DateTime?
 
   calendarEvent CalendarEvent?
+  notifications Notification[]
 
   checklistItems TaskChecklistItem[]
   comments       TaskComment[]
@@ -726,6 +740,33 @@ model Contact {
   updatedAt DateTime @updatedAt
 
   @@map("contacts")
+}
+
+// ---------------------------------------------------------------------------
+// Benachrichtigungen
+// ---------------------------------------------------------------------------
+
+model Notification {
+  id      String           @id @default(cuid())
+  userId  String
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType
+  title   String
+  message String?          @db.Text
+  link    String?
+
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  isRead Boolean @default(false)
+
+  // Verhindert doppelte automatische Fristen-Benachrichtigungen
+  dedupeKey String? @unique
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
+  @@map("notifications")
 }
 
 // ---------------------------------------------------------------------------

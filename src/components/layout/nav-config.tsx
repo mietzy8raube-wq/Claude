@@ -10,6 +10,8 @@ import {
   FileText,
   Plug,
   Settings,
+  AlarmClock,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -34,6 +36,8 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { title: "Meine Aufgaben", href: "/tasks/mine", icon: ListChecks },
       { title: "Alle Aufgaben", href: "/tasks/all", icon: ClipboardList },
+      { title: "Fristen", href: "/deadlines", icon: AlarmClock },
+      { title: "Team & Auslastung", href: "/team", icon: Users },
       { title: "Projekte", href: "/projects", icon: FolderKanban },
       { title: "Entscheidungen", href: "/decisions", icon: Scale },
       { title: "Meetings", href: "/meetings", icon: Presentation },

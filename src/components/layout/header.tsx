@@ -18,6 +18,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ThemeToggle } from "./theme-toggle";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import { SidebarNav } from "./sidebar-nav";
 import { NAV_ITEMS } from "./nav-config";
 import { initials, cn } from "@/lib/utils";
@@ -69,6 +70,7 @@ export function Header({ user }: HeaderProps) {
         )}
       </div>
 
+      <NotificationBell />
       <ThemeToggle />
 
       <DropdownMenu>

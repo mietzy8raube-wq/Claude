@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { PriorityBadge } from "./badges";
 import { formatDate, initials, cn } from "@/lib/utils";
 import { ClipboardList } from "lucide-react";
+import { formatTicketNumber } from "@/lib/ticket";
 import type { TaskWithRelations } from "@/types/task";
 import type { TaskStatus } from "@prisma/client";
 
@@ -84,7 +85,8 @@ export function TaskKanban({ tasks, onSelect, onChanged }: TaskKanbanProps) {
                     pendingId === task.id && "opacity-50"
                   )}
                 >
-                  <p className="text-sm font-medium leading-snug">{task.title}</p>
+                  <p className="font-mono text-[11px] text-muted-foreground">{formatTicketNumber(task.ticketNumber)}</p>
+                  <p className="-mt-1 text-sm font-medium leading-snug">{task.title}</p>
                   <div className="flex items-center justify-between">
                     <PriorityBadge priority={task.priority} />
                     {task.assignee && (

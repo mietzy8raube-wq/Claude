@@ -15,20 +15,36 @@ import type { SelectOption, SelectUser, TaskWithRelations } from "@/types/task";
 
 interface TasksViewProps {
   scope: "mine" | "all";
+  /** Ticket, das direkt geöffnet werden soll (z. B. aus einer Benachrichtigung). */
+  initialTicketId?: string | null;
+  initialFilters?: Partial<TaskFilters>;
   users: SelectUser[];
   projects: SelectOption[];
   departments: SelectOption[];
   companyAreas: SelectOption[];
 }
 
-export function TasksView({ scope, users, projects, departments, companyAreas }: TasksViewProps) {
+export function TasksView({
+  scope,
+  initialTicketId,
+  initialFilters,
+  users,
+  projects,
+  departments,
+  companyAreas,
+}: TasksViewProps) {
   const [view, setView] = useState<"list" | "kanban">("list");
-  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<TaskFilters>({ ...EMPTY_FILTERS, ...initialFilters });
   const [tasks, setTasks] = useState<TaskWithRelations[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<TaskWithRelations | null>(null);
-  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(initialTicketId ?? null);
+
+  // Beim Öffnen über einen Link (Benachrichtigung) auf neue Ticket-IDs reagieren
+  useEffect(() => {
+    if (initialTicketId) setSelectedTaskId(initialTicketId);
+  }, [initialTicketId]);
   const [reloadToken, setReloadToken] = useState(0);
 
   const loadTasks = useCallback(async () => {

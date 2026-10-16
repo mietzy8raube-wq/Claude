@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { requireSession, handleApiError } from "@/lib/api-utils";
 import { createTaskSchema } from "@/lib/validations/task";
 import { logAudit } from "@/lib/audit";
+import { notify, ticketLabel } from "@/lib/notifications";
+import { parseTicketNumber } from "@/lib/ticket";
 import type { Prisma, TaskStatus, Priority, TaskVisibility } from "@prisma/client";
 
 export async function GET(request: NextRequest) {
@@ -44,14 +46,23 @@ export async function GET(request: NextRequest) {
         ...(dueTo ? { lte: new Date(dueTo) } : {}),
       };
     }
+    const overdue = searchParams.get("overdue");
+    if (overdue === "1") {
+      where.status = { not: "ERLEDIGT" };
+      where.dueDate = { lt: new Date() };
+    }
+    if (searchParams.get("unassigned") === "1") where.assigneeId = null;
     if (q) {
+      const ticketNumber = parseTicketNumber(q);
       where.AND = [
-        {
-          OR: [
-            { title: { contains: q, mode: "insensitive" } },
-            { description: { contains: q, mode: "insensitive" } },
-          ],
-        },
+        ticketNumber !== null
+          ? { ticketNumber }
+          : {
+              OR: [
+                { title: { contains: q, mode: "insensitive" } },
+                { description: { contains: q, mode: "insensitive" } },
+              ],
+            },
       ];
     }
 
@@ -101,6 +112,7 @@ export async function POST(request: NextRequest) {
         recurrenceInterval: data.recurrenceInterval ?? null,
         recurrenceEndDate: data.recurrenceEndDate ?? null,
         reminderAt: data.reminderAt ?? null,
+        completedAt: data.status === "ERLEDIGT" ? new Date() : null,
         participants: data.participantIds?.length
           ? { create: data.participantIds.map((userId) => ({ userId })) }
           : undefined,
@@ -123,6 +135,17 @@ export async function POST(request: NextRequest) {
         assignee: { select: { id: true, name: true, email: true } },
         checklistItems: true,
       },
+    });
+
+    await notify({
+      userIds: [task.assigneeId, ...(data.participantIds ?? [])],
+      actorId: session.user.id,
+      type: "ZUGEWIESEN",
+      title: `Neues Ticket für Sie: ${ticketLabel(task)}`,
+      message: `${session.user.name} hat Ihnen dieses Ticket zugewiesen${
+        task.dueDate ? ` (fällig am ${task.dueDate.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })})` : ""
+      }.`,
+      taskId: task.id,
     });
 
     await logAudit({

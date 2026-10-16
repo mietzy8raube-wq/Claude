@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { formatDate, initials, cn } from "@/lib/utils";
 import { ClipboardList, MessageSquare, Paperclip } from "lucide-react";
 import type { TaskWithRelations } from "@/types/task";
+import { formatTicketNumber } from "@/lib/ticket";
 
 interface TaskTableProps {
   tasks: TaskWithRelations[];
@@ -33,6 +34,7 @@ export function TaskTable({ tasks, onSelect }: TaskTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-24">Ticket</TableHead>
             <TableHead>Titel</TableHead>
             <TableHead>Verantwortlich</TableHead>
             <TableHead>Priorität</TableHead>
@@ -45,6 +47,9 @@ export function TaskTable({ tasks, onSelect }: TaskTableProps) {
         <TableBody>
           {tasks.map((task) => (
             <TableRow key={task.id} className="cursor-pointer" onClick={() => onSelect(task)}>
+              <TableCell className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                {formatTicketNumber(task.ticketNumber)}
+              </TableCell>
               <TableCell className="max-w-xs">
                 <div className="truncate font-medium">{task.title}</div>
                 {task.category && <div className="text-xs text-muted-foreground">{task.category}</div>}

@@ -41,7 +41,18 @@ async function main() {
     },
   });
 
-  console.log("Benutzer angelegt:", anna.email, thomas.email, admin.email);
+  const lisa = await prisma.user.upsert({
+    where: { email: "lisa.schmidt@druckluft-chemnitz.de" },
+    update: {},
+    create: {
+      name: "Lisa Schmidt",
+      email: "lisa.schmidt@druckluft-chemnitz.de",
+      passwordHash,
+      role: "MITARBEITER",
+    },
+  });
+
+  console.log("Benutzer angelegt:", anna.email, thomas.email, admin.email, lisa.email);
 
   const departments = await Promise.all(
     ["Geschäftsführung", "Vertrieb", "Produktion", "Verwaltung", "IT"].map((name) =>
@@ -422,6 +433,78 @@ async function main() {
       recurrenceFrequency: "MONATLICH",
       recurrenceInterval: 1,
     },
+  });
+
+  // Tickets mit Fristen relativ zu heute (für Fristen- und Team-Ansicht)
+  const inDays = (days: number) => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    d.setDate(d.getDate() + days);
+    return d;
+  };
+  await prisma.task.createMany({
+    data: [
+      {
+        title: "Wartungsvertrag Kompressorstation erneuern",
+        assigneeId: lisa.id,
+        createdById: thomas.id,
+        priority: "HOCH",
+        status: "IN_BEARBEITUNG",
+        dueDate: inDays(-2),
+        departmentId: deptProduktion.id,
+        category: "Service",
+      },
+      {
+        title: "Ersatzteilbestellung Schraubenkompressor freigeben",
+        assigneeId: anna.id,
+        createdById: lisa.id,
+        priority: "KRITISCH",
+        status: "ZUR_PRUEFUNG",
+        dueDate: inDays(0),
+        departmentId: deptProduktion.id,
+        category: "Einkauf",
+      },
+      {
+        title: "Kundenreklamation Druckluftaufbereitung beantworten",
+        assigneeId: lisa.id,
+        createdById: anna.id,
+        priority: "MITTEL",
+        status: "OFFEN",
+        dueDate: inDays(1),
+        departmentId: deptVertrieb.id,
+        category: "Service",
+      },
+      {
+        title: "Schulungsplan Q1 für Servicetechniker erstellen",
+        assigneeId: thomas.id,
+        createdById: anna.id,
+        priority: "NIEDRIG",
+        status: "OFFEN",
+        dueDate: inDays(9),
+        departmentId: deptVerwaltung.id,
+        category: "Personal",
+      },
+      {
+        title: "Website: Referenzprojekte aktualisieren",
+        assigneeId: null,
+        createdById: thomas.id,
+        priority: "MITTEL",
+        status: "OFFEN",
+        dueDate: inDays(4),
+        departmentId: deptIT.id,
+        category: "Marketing",
+      },
+      {
+        title: "Angebot Leckageortung für Stadtwerke kalkulieren",
+        assigneeId: null,
+        createdById: anna.id,
+        priority: "HOCH",
+        status: "OFFEN",
+        dueDate: inDays(2),
+        departmentId: deptVertrieb.id,
+        category: "Vertrieb",
+      },
+    ],
   });
 
   console.log("Aufgaben angelegt:", [task1, task2, task3, task4, task5, task6, task7, task8].length);

@@ -8,24 +8,33 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   try {
     const session = await requireSession();
     if (session.user.role !== "ADMINISTRATOR") {
-      throw new ApiError(403, "Nur Administratoren dürfen Rollen ändern.");
+      throw new ApiError(403, "Nur Administratoren dürfen Benutzer verwalten.");
     }
 
     const { id } = await params;
     const body = await request.json();
     const data = updateUserRoleSchema.parse(body);
 
-    const user = await prisma.user.update({ where: { id }, data: { role: data.role } });
+    if (id === session.user.id) {
+      throw new ApiError(400, "Das eigene Konto kann hier nicht geändert werden.");
+    }
+
+    const user = await prisma.user.update({ where: { id }, data });
+
+    const changes = [
+      data.role !== undefined ? `Rolle auf ${data.role}` : null,
+      data.isActive !== undefined ? (data.isActive ? "aktiviert" : "deaktiviert") : null,
+    ].filter(Boolean);
 
     await logAudit({
       userId: session.user.id,
       action: "UPDATE",
       entityType: "User",
       entityId: user.id,
-      description: `Rolle von ${user.name} auf ${data.role} geändert`,
+      description: `Benutzer ${user.name}: ${changes.join(", ")}`,
     });
 
-    return NextResponse.json({ user: { id: user.id, role: user.role } });
+    return NextResponse.json({ user: { id: user.id, role: user.role, isActive: user.isActive } });
   } catch (error) {
     return handleApiError(error);
   }

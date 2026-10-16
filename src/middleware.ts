@@ -6,13 +6,16 @@ import authConfig from "@/lib/auth.config";
 const { auth } = NextAuth(authConfig);
 
 const PUBLIC_PATHS = ["/login"];
+// Prüfen ihre Berechtigung selbst (z. B. Cron per Bearer-Token)
+const SELF_AUTHORIZED_API = ["/api/notifications/deadline-check"];
 
 export default auth((req) => {
   const { nextUrl } = req;
   const isPublic = PUBLIC_PATHS.some((path) => nextUrl.pathname.startsWith(path));
   const isAuthApi = nextUrl.pathname.startsWith("/api/auth");
+  const isSelfAuthorized = SELF_AUTHORIZED_API.includes(nextUrl.pathname);
 
-  if (isPublic || isAuthApi) {
+  if (isPublic || isAuthApi || isSelfAuthorized) {
     return NextResponse.next();
   }
 

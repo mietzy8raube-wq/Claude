@@ -11,15 +11,16 @@ integrierter Outlook- und Excel-Anbindung.
 3. [Ordnerstruktur](#ordnerstruktur)
 4. [Datenmodell](#datenmodell)
 5. [Rollen & Rechte](#rollen--rechte)
-6. [Entra-ID-App-Registrierung (Outlook-Integration)](#entra-id-app-registrierung-outlook-integration)
-7. [Microsoft-Graph-Berechtigungen](#microsoft-graph-berechtigungen)
-8. [Umgebungsvariablen](#umgebungsvariablen)
-9. [Token-Konzept & Sicherheit](#token-konzept--sicherheit)
-10. [Synchronisierungsstrategie](#synchronisierungsstrategie)
-11. [Excel-Import/-Export](#excel-import--export)
-12. [Lokale Testmöglichkeiten](#lokale-testmöglichkeiten)
-13. [Fehler- und Konfliktbehandlung](#fehler--und-konfliktbehandlung)
-14. [Bekannte Einschränkungen](#bekannte-einschränkungen)
+6. [Ticketsystem: Zuweisung, Fristen & Benachrichtigungen](#ticketsystem-zuweisung-fristen--benachrichtigungen)
+7. [Entra-ID-App-Registrierung (Outlook-Integration)](#entra-id-app-registrierung-outlook-integration)
+8. [Microsoft-Graph-Berechtigungen](#microsoft-graph-berechtigungen)
+9. [Umgebungsvariablen](#umgebungsvariablen)
+10. [Token-Konzept & Sicherheit](#token-konzept--sicherheit)
+11. [Synchronisierungsstrategie](#synchronisierungsstrategie)
+12. [Excel-Import/-Export](#excel-import--export)
+13. [Lokale Testmöglichkeiten](#lokale-testmöglichkeiten)
+14. [Fehler- und Konfliktbehandlung](#fehler--und-konfliktbehandlung)
+15. [Bekannte Einschränkungen](#bekannte-einschränkungen)
 
 ## Tech-Stack
 
@@ -149,14 +150,68 @@ Modelle:
 - **Geschäftsführer** — vollständiger Zugriff auf alle Module
 - **Administrator** — zusätzlich Benutzerverwaltung (Rollen ändern) unter
   „Einstellungen"
-- **Mitarbeiter** — im Datenmodell und in der Rollen-Logik bereits
-  vorgesehen, für spätere Erweiterung (aktuell werden nur die beiden
-  Geschäftsführer-Konten und ein Administrator-Konto ausgeliefert)
+- **Mitarbeiter** — Team-Mitglieder, denen Tickets zugewiesen werden.
+  Administratoren legen sie unter „Einstellungen → Benutzerverwaltung" an
+  (Name, E-Mail, Rolle, Start-Passwort) und können Zugänge jederzeit
+  deaktivieren, ohne Ticket-Historie zu verlieren.
 
 Persönliche vs. gemeinsame Inhalte: Aufgaben besitzen ein Sichtbarkeits-Flag
 (`GEMEINSAM`/`PERSOENLICH`). „Alle Aufgaben" zeigt alle gemeinsamen Aufgaben
 plus die eigenen persönlichen; „Meine Aufgaben" zeigt alle einem selbst
 zugewiesenen Aufgaben unabhängig von der Sichtbarkeit.
+
+## Ticketsystem: Zuweisung, Fristen & Benachrichtigungen
+
+Jede Aufgabe ist ein **Ticket** mit fortlaufender Nummer (`T-0042`). Die
+Nummer erscheint in Liste, Kanban und Detailansicht und kann direkt gesucht
+werden (Suchfeld: `T-42`, `t42` oder `#42`).
+
+**Fristen** (`/deadlines`) — alle offenen Tickets, Projekt-Meilensteine und
+Entscheidungsfristen, gruppiert nach *Überfällig · Heute · Morgen · Diese
+Woche · Nächste Woche · Später*, umschaltbar zwischen „Meine" und „Alle".
+Direkt aus der Liste: **Erledigt**, **Verschieben** (+1 Tag … +2 Wochen;
+überfällige Tickets werden ab heute verschoben) und **Neu zuweisen**. Ein
+Hinweis zeigt, wie viele offene Tickets noch keine Frist haben.
+
+**Team & Auslastung** (`/team`) — pro Person: offene/in Arbeit/blockierte
+Tickets, diese Woche fällig, überfällig, hohe/kritische Priorität, eine
+gewichtete Auslastung (Niedrig 1 · Mittel 2 · Hoch 3 · Kritisch 5 Punkte;
+ab 20 Punkten „überlastet") sowie die **Termintreue** der letzten 30 Tage
+(Anteil der vor/an der Frist erledigten Tickets). Oben steht die
+**Warteschlange nicht zugewiesener Tickets**; die Zuweisungsauswahl ist
+nach Auslastung sortiert, sodass die am wenigsten ausgelastete Person zuerst
+erscheint.
+
+**Benachrichtigungen** (Glocke oben rechts, aktualisiert sich jede Minute):
+
+| Ereignis | Empfänger |
+| --- | --- |
+| Ticket erstellt/neu zugewiesen | neuer Verantwortlicher (und Beteiligte bei Erstellung) |
+| Neuer Kommentar | Verantwortlicher, Ersteller, Beteiligte |
+| Statuswechsel (z. B. „Zur Prüfung", „Erledigt") | Ersteller, Verantwortlicher, Beteiligte |
+| Frist geändert | Verantwortlicher |
+| Frist heute oder in den nächsten 48 h | Verantwortlicher (bzw. Ersteller, falls nicht zugewiesen) |
+| Frist überschritten (ab Folgetag) | Verantwortlicher **und** Ersteller (Eskalation) |
+| Erinnerung (`reminderAt`) erreicht | Verantwortlicher |
+
+Der Auslöser einer Aktion wird nie selbst benachrichtigt. Ein Klick auf die
+Benachrichtigung öffnet das Ticket direkt. Fristen-Benachrichtigungen werden
+über einen eindeutigen `dedupeKey` pro Ticket/Empfänger/Frist nur einmal
+erzeugt — auch wenn die Prüfung mehrfach läuft; wird die Frist verschoben,
+greift die Warnung für die neue Frist erneut.
+
+Die Fristenprüfung läuft automatisch (gedrosselt auf alle 5 Minuten), sobald
+ein angemeldeter Benutzer die App nutzt. Damit Warnungen auch nachts oder am
+Wochenende entstehen, empfiehlt sich zusätzlich ein Cron-Job:
+
+```bash
+# z. B. stündlich; CRON_SECRET in .env setzen
+curl -X POST -H "Authorization: Bearer $CRON_SECRET" \
+  https://ihre-domain.tld/api/notifications/deadline-check
+```
+
+Außerdem setzt das System beim Erledigen eines Tickets `completedAt`
+(Grundlage der Termintreue-Auswertung).
 
 ## Entra-ID-App-Registrierung (Outlook-Integration)
 
@@ -220,6 +275,7 @@ Vollständige Referenz mit Beispielwerten: `.env.example`.
 | `AUTH_SECRET` | ja | Signierschlüssel für Auth.js-Sessions (`openssl rand -base64 32`) |
 | `NEXTAUTH_URL` | ja | Basis-URL der Anwendung |
 | `TOKEN_ENCRYPTION_KEY` | ja | Base64-kodierter 32-Byte-Schlüssel zur Verschlüsselung gespeicherter Microsoft-Tokens |
+| `CRON_SECRET` | nein | Bearer-Token für den Cron-Aufruf der Fristenprüfung (`/api/notifications/deadline-check`) |
 | `MICROSOFT_TENANT_ID` | nein* | Entra-ID-Verzeichnis-ID |
 | `MICROSOFT_CLIENT_ID` | nein* | Entra-ID-Anwendungs-ID |
 | `MICROSOFT_CLIENT_SECRET` | nein* | Entra-ID-Client-Secret |
@@ -316,6 +372,7 @@ alle Konten: **`Passwort123!`**):
 | Geschäftsführerin | `anna.mueller@druckluft-chemnitz.de` |
 | Geschäftsführer | `thomas.weber@druckluft-chemnitz.de` |
 | Administrator | `admin@druckluft-chemnitz.de` |
+| Mitarbeiterin | `lisa.schmidt@druckluft-chemnitz.de` |
 
 Die Seed-Daten enthalten realistische Beispiele für alle Module (Aufgaben,
 Projekte mit Meilensteinen/Risiken, Entscheidungen mit Optionen, ein Meeting
@@ -357,6 +414,8 @@ Löschen, Verknüpfung mit Aufgaben) sind unabhängig davon voll nutzbar.
   Datensatz mit externem Link (z. B. SharePoint/OneDrive-URL) abgelegt; es
   ist keine eigene Objektspeicher-Anbindung (z. B. S3) für binäre
   Datei-Uploads enthalten.
+- **E-Mail-Benachrichtigungen**: Ticket-Benachrichtigungen erscheinen in der
+  App (Glocke); ein Versand per E-Mail/Teams ist noch nicht angebunden.
 - **Automatischer Sync-Zeitplan**: Die Sync-Logik ist vollständig
   implementiert und über die API auslösbar; ein produktiver, dauerhaft
   laufender Scheduler (Cron) muss je nach Hosting-Umgebung ergänzt werden.

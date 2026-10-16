@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { PriorityBadge, StatusBadge } from "./badges";
 import { formatDate, formatDateTime, initials } from "@/lib/utils";
+import { formatTicketNumber } from "@/lib/ticket";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   AlertDialog,
@@ -31,6 +32,7 @@ interface TaskDetailSheetProps {
 
 interface DetailData {
   id: string;
+  ticketNumber: number;
   title: string;
   description: string | null;
   status: string;
@@ -173,7 +175,12 @@ export function TaskDetailSheet({ taskId, onOpenChange, onEdit, onChanged }: Tas
             <>
               <SheetHeader>
                 <div className="flex items-start justify-between gap-2">
-                  <SheetTitle className="text-lg">{task.title}</SheetTitle>
+                  <SheetTitle className="text-lg">
+                    <span className="mb-0.5 block font-mono text-xs font-normal text-muted-foreground">
+                      {formatTicketNumber(task.ticketNumber)}
+                    </span>
+                    {task.title}
+                  </SheetTitle>
                   <div className="flex shrink-0 gap-1">
                     <Button variant="ghost" size="icon" onClick={onEdit} aria-label="Bearbeiten">
                       <Pencil className="size-4" />
