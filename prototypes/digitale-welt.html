@@ -992,8 +992,9 @@ controls.minDistance = 7;
 controls.maxDistance = 140;
 controls.update();
 
-scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c2cc, 0.72));
-const sun = new THREE.DirectionalLight(0xfff4e0, 0.82);
+scene.add(new THREE.HemisphereLight(0xeef4ff, 0x7f9a6a, 0.62));
+const sun = new THREE.DirectionalLight(0xfff1dc, 0.9);
+sun.shadow.radius = 4;
 sun.position.set(-35, 60, 28);
 sun.castShadow = true;
 sun.shadow.mapSize.set(4096, 4096);
@@ -1074,6 +1075,24 @@ const VOX = {
   path: [blockMat('dirt'), blockMat('dirt'), blockMat('path'), blockMat('dirt'), blockMat('dirt'), blockMat('dirt')],
   sand: blockMat('sand'),
 };
+/* Geländeplatte im Sim-Stil: Grasdecke mit abgerundeter Kante, Erdsockel, gepflasterter Hof und Gehweg-Ring */
+const PLATE_M = { grass: new THREE.MeshLambertMaterial({ color: 0x6fb64f }), soil: new THREE.MeshLambertMaterial({ color: 0xa88762 }), pave: new THREE.MeshLambertMaterial({ color: 0xe6e1d6 }),
+  curb: new THREE.MeshLambertMaterial({ color: 0xf5f3ee }), sand: new THREE.MeshLambertMaterial({ color: 0xe9d9ae }) };
+function sitePlate(R, opts = {}) {
+  const g = new THREE.Group(), top = PLATE_M[opts.top || 'grass'];
+  const soil = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.05, R - 0.35, B * 0.85, 72), PLATE_M.soil); soil.position.y = B * 0.42; soil.castShadow = true; soil.receiveShadow = true;
+  const turf = new THREE.Mesh(new THREE.CylinderGeometry(R, R, B * 0.2, 72), top); turf.position.y = B * 0.9; turf.receiveShadow = true;
+  const lip = new THREE.Mesh(new THREE.TorusGeometry(R - 0.02, B * 0.1, 8, 72), top); lip.rotation.x = Math.PI / 2; lip.position.y = B * 0.9;
+  g.add(soil, turf, lip);
+  if (opts.yard) {
+    const [yx, yz, yr] = opts.yard;
+    const pave = new THREE.Mesh(new THREE.CylinderGeometry(yr, yr, 0.03, 48), PLATE_M.pave); pave.position.set(yx, B + 0.015, yz); pave.receiveShadow = true;
+    const curb = new THREE.Mesh(new THREE.TorusGeometry(yr, 0.04, 6, 48), PLATE_M.curb); curb.rotation.x = Math.PI / 2; curb.position.set(yx, B + 0.03, yz);
+    g.add(pave, curb);
+  }
+  if (opts.walk) { const w = new THREE.Mesh(new THREE.RingGeometry(R - 0.42, R - 0.12, 72), PLATE_M.pave); w.rotation.x = -Math.PI / 2; w.position.y = B + 0.012; w.receiveShadow = true; g.add(w); }
+  return g;
+}
 function voxelIsland(R, kind) {
   const g = new THREE.Group(), cells = {};
   const n = Math.ceil(R / B);
@@ -1115,7 +1134,7 @@ function signMesh(w, h, title, sub, accent, fadeList) {
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
 }
 const groundTex = blockTex('grassTop', 300 / B);
-const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ color: 0xdcebd2 }));
+const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ color: 0xbfe0a4 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
 
 scene.add(ground);
@@ -1174,8 +1193,9 @@ function polyCentroid(poly) { let x = 0, z = 0; poly.forEach(p => { x += p[0]; z
 function addFacade(loc, b, rec) {
   const glass = new THREE.MeshLambertMaterial({ color: 0x93c5fd, transparent: true, opacity: 1 });
   const trim = new THREE.MeshLambertMaterial({ color: 0x94a3b8, transparent: true, opacity: 1 });
-  const roofM = new THREE.MeshLambertMaterial({ color: 0xe5e9ef, transparent: true, opacity: 1 });
-  rec.fade.push(glass, trim, roofM);
+  const roofM = new THREE.MeshLambertMaterial({ color: 0x6b7280, transparent: true, opacity: 1 });
+  const roofTop = new THREE.MeshLambertMaterial({ color: 0x9aa3ae, transparent: true, opacity: 1 });
+  rec.fade.push(glass, trim, roofM, roofTop);
   const office = /Büro/.test(b.name);
   const c = rec.center;
   const add = (geo, m, x, y, z, ry = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.rotation.y = ry; o.castShadow = true; rec.ext.add(o); return o; };
@@ -1236,6 +1256,9 @@ function addFacade(loc, b, rec) {
     sg.position.set(-4.4, top0 + 0.75, -3.0); rec.ext.add(sg);
     [-1.1, 1.1].forEach(dx => add(new THREE.BoxGeometry(0.06, 0.45, 0.06), trim, -4.4 + dx, top0 + 0.22, -3.02));
   }
+  // Dachfläche in eigener Farbe
+  const roofShape = new THREE.Shape(b.poly.map(q => new THREE.Vector2(q[0], -q[1])));
+  const roof = new THREE.Mesh(new THREE.ShapeGeometry(roofShape), roofTop); roof.rotation.x = -Math.PI / 2; roof.position.y = top + 0.012; roof.receiveShadow = true; rec.ext.add(roof);
   // Dachrand (Attika)
   const shape = new THREE.Shape(b.poly.map(q => new THREE.Vector2(q[0], -q[1])));
   const inner = new THREE.Path(b.poly.map(q => new THREE.Vector2(q[0] + (c[0] - q[0]) * 0.04, -(q[1] + (c[1] - q[1]) * 0.04))));
@@ -1252,6 +1275,8 @@ function yardR(loc) { return Math.min(3.2, (loc.r || SITE_R) * 0.45); }
 function insideBuildings(loc, x, z, margin) {
   return loc.buildings.some(b => { const xs = b.poly.map(q => q[0]), zs = b.poly.map(q => q[1]); return x > Math.min(...xs) - margin && x < Math.max(...xs) + margin && z > Math.min(...zs) - margin && z < Math.max(...zs) + margin; });
 }
+const TREE2 = { trunk: new THREE.CylinderGeometry(0.05, 0.08, 0.7, 10), crown: new THREE.IcosahedronGeometry(1, 2), bark: new THREE.MeshLambertMaterial({ color: 0x8a6a4a }),
+  leaf: [0x3f9a45, 0x4fa84c, 0x2f8a40, 0x5fb457].map(c => new THREE.MeshLambertMaterial({ color: c })) };
 function addTrees(loc, g, seed) {
   const r = rng(seed);
   let placed = 0;
@@ -1263,13 +1288,13 @@ function addTrees(loc, g, seed) {
     if ((loc.flags || []).some(f => Math.hypot(x - f[0], z - f[1]) < 1.0)) continue;
     if (Math.hypot(x - loc.yard[0], z - loc.yard[1]) < yardR(loc) + 0.4) continue;
     if (Object.values(loc.zones).some(zn => !zn.b && Math.hypot(x - zn.x, z - zn.z) < 1.6)) continue;
-    // Blockbaum: Stamm aus Holzblöcken, Krone aus Laubblöcken (auf das Blockraster gesetzt)
-    const tr = new THREE.Group();
-    const hgt = 2 + (r() * 2 | 0);
-    for (let k = 0; k < hgt; k++) { const lg = box(B * 0.6, B, B * 0.6, MC.log); lg.position.y = B / 2 + k * B; tr.add(lg); }
-    const c1 = box(B * 3, B, B * 3, MC.leaves); c1.position.y = hgt * B; const c2 = box(B * 2, B, B * 2, MC.leaves); c2.position.y = (hgt + 1) * B;
-    tr.add(c1, c2);
-    tr.position.set(Math.round(x / B - 0.5) * B + B / 2, PLATE_Y, Math.round(z / B - 0.5) * B + B / 2);
+    // Baum im Sim-Stil: runder Stamm, Krone aus weichen Kugeln in leicht variierenden Grüntönen
+    const tr = new THREE.Group(), sc = 0.8 + r() * 0.5;
+    const trunk = new THREE.Mesh(TREE2.trunk, TREE2.bark); trunk.position.y = 0.35; trunk.castShadow = true; tr.add(trunk);
+    const cm = TREE2.leaf[Math.floor(r() * TREE2.leaf.length)];
+    [[0, 0.95, 0, 0.48], [0.22, 0.78, 0.1, 0.34], [-0.2, 0.8, -0.12, 0.32], [0.02, 1.25, 0, 0.3]].forEach(([dx, dy, dz, rr]) => { const c = new THREE.Mesh(TREE2.crown, cm); c.position.set(dx, dy, dz); c.scale.setScalar(rr); c.castShadow = true; tr.add(c); });
+    tr.scale.setScalar(sc); tr.rotation.y = r() * 6.28;
+    tr.position.set(x, B, z);
     g.add(tr);
     placed++;
   }
@@ -1429,7 +1454,7 @@ LOCATIONS.forEach((loc, li) => {
   g.position.set(loc.x, 0, loc.z);
   const RR = loc.r || SITE_R;
   const plateGeo = new THREE.CylinderGeometry(RR, RR + 0.15, PLATE_Y, 64);
-  const plate = voxelIsland(RR, (x, z) => loc.bau ? 'sand' : Math.hypot(x - loc.yard[0], z - loc.yard[1]) < yardR(loc) ? 'path' : 'grass');
+  const plate = sitePlate(RR, loc.bau ? { top: 'sand' } : { yard: [loc.yard[0], loc.yard[1], yardR(loc)], walk: true });
   plate.children.forEach(m => tag(m, loc.bau ? loc.project : loc.id));
   g.add(plate);
   if (plan) {
@@ -1593,7 +1618,7 @@ CITIES.forEach(c => {
 CUSTOMERS.forEach(c => {
   const g = new THREE.Group();
   g.position.set(c.x, 0, c.z);
-  const pad = voxelIsland(2.7, (x, z) => z > 0.55 ? 'path' : 'grass');
+  const pad = sitePlate(2.7, { yard: [-0.4, 1.0, 1.0] });
   pad.children.forEach(m => tag(m, c.id));
   g.add(pad);
   const Y = PLATE_Y;
@@ -1749,11 +1774,11 @@ const LOOKS = {
   construct: { top: 0xe07a2c, legs: 0x2f3b45, helmet: 0xffffff },
 };
 const G = {
-  leg: rbox(0.14, 0.36, 0.14, 0.05), arm: rbox(0.12, 0.34, 0.12, 0.05), hand: rbox(0.125, 0.09, 0.125, 0.045),
-  torso: rbox(0.3, 0.38, 0.17, 0.07), head: planarUV(rbox(0.28, 0.28, 0.28, 0.07)),
-  hair: rbox(0.3, 0.08, 0.3, 0.035), hairBack: rbox(0.3, 0.2, 0.05, 0.02), cap: rbox(0.31, 0.09, 0.34, 0.04),
-  vest: rbox(0.32, 0.26, 0.19, 0.07), box: rbox(0.26, 0.2, 0.22, 0.04), ring: new THREE.RingGeometry(0.26, 0.34, 32),
-  tool: rbox(0.05, 0.2, 0.05, 0.02), phone: rbox(0.06, 0.11, 0.03, 0.012),
+  leg: new THREE.CapsuleGeometry(0.062, 0.26, 4, 10), arm: new THREE.CapsuleGeometry(0.05, 0.25, 4, 10), hand: new THREE.SphereGeometry(0.055, 12, 10),
+  torso: new THREE.CapsuleGeometry(0.15, 0.2, 6, 14), head: new THREE.SphereGeometry(0.16, 20, 16),
+  hair: new THREE.SphereGeometry(0.168, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hairBack: new THREE.SphereGeometry(0.15, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.5), cap: new THREE.SphereGeometry(0.172, 20, 10, 0, Math.PI * 2, 0, Math.PI * 0.42),
+  vest: new THREE.CapsuleGeometry(0.158, 0.14, 6, 14), box: rbox(0.26, 0.2, 0.22, 0.04), ring: new THREE.RingGeometry(0.26, 0.34, 32),
+  tool: rbox(0.05, 0.2, 0.05, 0.02), phone: rbox(0.06, 0.11, 0.03, 0.012), eye: new THREE.SphereGeometry(0.022, 8, 6),
 };
 // Gesicht als Pixeltextur (8 × 8), je Hautton
 const FACE_SKIN = ['#f0c8a0', '#d9a07a', '#a8704a', '#f3d6b8'];
@@ -1776,12 +1801,11 @@ function makeFigure(p, i) {
   if (look.accent) { const a = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.05, 0.17), mat(look.accent)); a.position.y = 0.66; fig.add(a); }
   const arms = [-0.21, 0.21].map(x => { const pivot = new THREE.Group(); pivot.position.set(x, 0.76, 0); const m = new THREE.Mesh(G.arm, mTop); m.position.y = -0.17; m.castShadow = true; pivot.add(m); const h = new THREE.Mesh(G.hand, skin); h.position.y = -0.3; pivot.add(h); fig.add(pivot); return pivot; });
   const head = new THREE.Group(); head.position.y = 0.92; fig.add(head);
-  const hm = new THREE.Mesh(G.head, skin); hm.castShadow = true; hm.position.y = 0.05; head.add(hm);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.22, 0.22), FACE_MATS[si]); face.position.set(0, 0.05, 0.1405); head.add(face);
+  const hm = new THREE.Mesh(G.head, skin); hm.castShadow = true; hm.position.y = 0.07; head.add(hm);
+  const eyeM = mat(0x1f2937); [-0.055, 0.055].forEach(x => { const e = new THREE.Mesh(G.eye, eyeM); e.position.set(x, 0.09, 0.148); head.add(e); });
   const capped = look.vest || look.accent || look.helmet;
   const hairMat = look.helmet ? mat(look.helmet) : look.accent ? mat(0x0b4f66) : look.vest ? mat(0xf0c419) : mat([0x3b2a20, 0x8a6a45, 0x1d1b1a, 0xb7aa98, 0x6b3f22][i % 5]);
-  const hair = new THREE.Mesh(capped ? G.cap : G.hair, hairMat); hair.position.set(0, 0.2, capped ? 0.02 : 0); head.add(hair);
-  if (!capped) { const hb = new THREE.Mesh(G.hairBack, hairMat); hb.position.set(0, 0.1, -0.13); head.add(hb); }
+  const hair = new THREE.Mesh(capped ? G.cap : G.hair, hairMat); hair.position.set(0, capped ? 0.1 : 0.085, capped ? 0 : -0.012); hair.rotation.x = capped ? 0 : -0.25; head.add(hair);
   const carry = new THREE.Mesh(G.box, MC.crate); carry.position.set(0, 0.62, 0.24); carry.visible = false; carry.castShadow = true; fig.add(carry);
   const tool = new THREE.Mesh(G.tool, MC.iron); tool.position.y = -0.4; arms[1].add(tool); tool.visible = false;
   const phone = new THREE.Mesh(G.phone, mat(0x1f2a30)); phone.position.set(0, -0.34, 0.07); arms[1].add(phone); phone.visible = false;
@@ -2825,7 +2849,7 @@ function advanceClock(sdt) {
   if (dayphase.textContent !== ph) dayphase.textContent = ph;
   // Licht: morgens und abends wärmer und tiefer
   const k = Math.sin(Math.PI * (h - 6) / 13);
-  sun.intensity = 0.55 + 0.35 * k;
+  sun.intensity = 0.6 + 0.35 * k;
   sun.color.setHSL(0.09, 0.9 - 0.75 * k, 0.6 + 0.3 * k);
   sun.position.set(-60 * Math.cos(Math.PI * (h - 6) / 13), 25 + 40 * k, 28);
 }
