@@ -855,7 +855,7 @@ function viewFilters(params) {
   let list = [], err = null; try { list = runJql(jql); } catch (e) { err = e.message; }
   let sortField = null, sortDir = "DESC"; try { const o = parseJql(jql).order[0]; if (o) { sortField = o.f; sortDir = o.dir; } } catch {}
   ui.lastResults = list;
-  return `<div class="page-head"><h1>Vorgänge suchen</h1><div class="row"><button class="btn" data-act="save-filter">${icon("star")} Filter speichern</button><button class="btn" data-act="export-csv">${icon("download")} CSV / Excel</button></div></div>
+  return `<div class="page-head"><h1>Vorgänge suchen</h1><div class="row"><button class="btn" data-act="save-filter">${icon("star")} Filter speichern</button><button class="btn" data-act="export-xlsx">${icon("download")} Excel-Auswertung</button><button class="btn subtle" data-act="export-csv">CSV</button></div></div>
     <div class="side-layout" id="filter-layout">
       <div class="card pad queue-nav"><div class="small b muted" style="margin-bottom:6px">STANDARDFILTER</div>${DEFAULT_FILTERS.map((x) => `<button class="${fid === x.id || (!fid && !params.get("jql") && x.id === "f-mine") ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}">${esc(x.name)}</button>`).join("")}
         <div class="small b muted" style="margin:12px 0 6px">GESPEICHERT</div>${db.filters.length ? db.filters.map((x) => `<div class="row nowrap"><button class="${fid === x.id ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}" style="flex:1">${esc(x.name)}</button><button class="btn subtle sm icon" data-act="delete-filter" data-id="${x.id}" aria-label="Filter löschen">${icon("x")}</button></div>`).join("") : '<p class="small muted" style="margin:0 10px">Noch keine.</p>'}</div>
@@ -964,7 +964,7 @@ function viewReports(p) {
       <div class="card stat"><div class="v">${reqs.filter((i) => !isDone(i)).length}</div><div class="l">offene Anfragen</div></div></div>
       <div class="card pad" style="margin-bottom:16px"><h3 style="font-size:15px;margin-bottom:10px">Anfragen nach Typ (letzte 30 Tage)</h3>${hbars(["INCIDENT", "MAINT", "SERVICE"].map((t) => ({ label: TYPES[t].label, value: reqs.filter((i) => i.type === t && Date.now() - new Date(i.createdAt) < 30 * 864e5).length })))}</div>`;
   }
-  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Berichte</h1></div></div>${svc}
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Berichte</h1></div><button class="btn" data-act="export-project-xlsx" data-project="${p.id}">${icon("download")} Excel-Auswertung</button></div>${svc}
     <div class="grid g2">
       ${p.type === "software" ? `<div class="card pad"><h3 style="font-size:15px">Burndown – ${esc(activeSprint(p)?.name || "kein Sprint")}</h3><p class="small muted" style="margin:2px 0 8px">Verbleibende Story Points je Tag gegenüber dem idealen Verlauf</p>${burndown(p)}</div>
       <div class="card pad"><h3 style="font-size:15px">Velocity</h3><p class="small muted" style="margin:2px 0 8px">Zugesagte und erledigte Story Points je abgeschlossenem Sprint${closed.length ? ` · Ø ${Math.round(closed.reduce((s, x) => s + (x.completed || 0), 0) / closed.length)} SP` : ""}</p>
@@ -999,7 +999,7 @@ function viewDashboard() {
   const stream = db.issues.flatMap((i) => i.history.map((h) => ({ ...h, i }))).concat(db.issues.flatMap((i) => i.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, userId: c.userId, field: "Kommentar", to: c.text.slice(0, 80), i, author: c.author }))))
     .sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12);
   const risk = open.filter((i) => ["first", "resolve"].some((k) => { const s = slaInfo(i, k); return s && !s.stopped && (s.breached || s.risk); }));
-  return `<div class="page-head"><h1>Dashboard</h1><span class="small muted">Alle Projekte</span></div>
+  return `<div class="page-head"><div><h1>Dashboard</h1><span class="small muted">Alle Projekte</span></div><button class="btn" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung</button></div>
     <div class="grid g4" style="margin-bottom:16px">
       <div class="card stat"><div class="v">${open.length}</div><div class="l">offene Vorgänge</div></div>
       <div class="card stat"><div class="v" style="${overdue.length ? "color:var(--danger)" : ""}">${open.filter(isOverdue).length}</div><div class="l">überfällig</div></div>
@@ -1046,12 +1046,12 @@ function viewSettings() {
         <div style="grid-column:1/-1"><button class="btn primary" type="submit">${icon("plus")} Person anlegen</button></div></form>
         <p class="small muted">Rollen: <b>Administrator</b> verwaltet Personen, Projekte und Sicherungen · <b>Mitglied</b> arbeitet in allen Projekten · <b>Service-Mitarbeiter</b> wird zusätzlich über neue Kundenanfragen informiert.</p>` : '<p class="small muted">Personen verwalten nur Administratoren.</p>'}</div>
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
-      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
+      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
       ${sync.mail ? `<button class="btn" data-act="mail-test">Test-E-Mail an mich senden</button>` : ""}
       <h3 style="font-size:15px;margin:18px 0 6px">Kundenportal auf Ihrer Website</h3><p class="small muted" style="margin:0 0 8px">Öffentliche Adresse: <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – als Link/Button „Störung melden“ verwenden oder direkt in eine Seite einbetten:</p>
       <textarea id="embed-code" class="jql" rows="3" readonly>&lt;iframe src="${esc(location.origin)}/portal?embed=1" title="Service-Portal" style="width:100%;min-height:900px;border:0" loading="lazy"&gt;&lt;/iframe&gt;</textarea>
-      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
+      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
     </div>`;
 }
 
@@ -1269,6 +1269,74 @@ function exportCsv(list, name) {
   download(name, "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n"), "text/csv;charset=utf-8");
 }
 
+/* ---------- Excel-Auswertung (.xlsx) ---------- */
+/** Erstellt eine Excel-Mappe mit Übersicht, Vorgängen, Serviceeinsätzen, Personen, Monaten, Verlauf und Kommentaren. */
+function exportXlsx(list, name, title) {
+  list = list.filter(Boolean);
+  const days = (a, b) => (a && b ? Math.round(((new Date(b) - new Date(a)) / 864e5) * 10) / 10 : null);
+  const hrs = (a, b) => (a && b ? Math.round(((new Date(b) - new Date(a)) / 36e5) * 100) / 100 : null);
+  const r2 = (n) => Math.round(n * 100) / 100;
+  const avg = (arr) => (arr.length ? Math.round((arr.reduce((s, x) => s + x, 0) / arr.length) * 10) / 10 : null);
+  const quota = (arr) => (arr.length ? arr.filter((x) => x.met).length / arr.length : null);
+  const slaTxt = (i, kind) => { const x = slaInfo(i, kind); return !x ? "" : x.stopped ? (x.met ? "eingehalten" : "verletzt") : x.breached ? "verletzt (offen)" : "offen"; };
+  const person = (id) => (id ? uname(id) : "");
+  const hoursOf = (i) => Number(i.loggedH) || 0;
+  const svc = list.filter((i) => proj(i.projectId)?.type === "service" && i.type !== "SUBTASK");
+  const reports = svc.filter((i) => i.resolution || i.appointmentAt);
+  const slaDone = (l) => l.map((i) => slaInfo(i, "resolve")).filter((x) => x && x.stopped);
+
+  const vorg = { name: "Vorgänge", columns: [
+    { h: "Schlüssel", w: 10 }, { h: "Projekt", w: 18 }, { h: "Typ", w: 14 }, { h: "Zusammenfassung", w: 46 }, { h: "Status", w: 20 }, { h: "Phase", w: 12 },
+    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Melder", w: 20 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 },
+    { h: "Labels", w: 16 }, { h: "Sprint", w: 14 }, { h: "Epic", w: 22 }, { h: "Story Points", w: 8, t: "n" }, { h: "Schätzung (h)", w: 10, t: "h" }, { h: "Erfasst (h)", w: 10, t: "h" },
+    { h: "Fällig", w: 11, t: "d" }, { h: "Überfällig", w: 9 }, { h: "Termin", w: 16, t: "dt" }, { h: "Erstellt", w: 16, t: "dt" }, { h: "Erledigt", w: 16, t: "dt" },
+    { h: "Durchlaufzeit (Tage)", w: 11, t: "h" }, { h: "SLA Erste Antwort", w: 15 }, { h: "SLA Lösung", w: 15 }, { h: "Kommentare", w: 9, t: "n" }, { h: "Monat erstellt", w: 11 }],
+    rows: list.map((i) => [keyOf(i), proj(i.projectId)?.name, TYPES[i.type]?.label, i.summary, statusOf(i).name, CAT_LABEL[statusOf(i).cat] || statusOf(i).cat,
+      PRIOS[i.priority]?.label, person(i.assigneeId), i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", i.customer?.company, i.customer?.name, i.customer?.email,
+      i.labels.join(", "), sprint(i.sprintId)?.name, issue(i.epicId)?.summary, i.storyPoints ?? null, i.estimateH ?? null, hoursOf(i),
+      i.dueDate, isOverdue(i) ? "ja" : "nein", i.appointmentAt, i.createdAt, i.resolvedAt, days(i.createdAt, i.resolvedAt), slaTxt(i, "first"), slaTxt(i, "resolve"), i.comments.length, i.createdAt.slice(0, 7)]) };
+
+  const eins = { name: "Serviceeinsätze", columns: [
+    { h: "Schlüssel", w: 10 }, { h: "Firma", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Telefon", w: 14 }, { h: "Art", w: 14 }, { h: "Betreff", w: 40 }, { h: "Techniker/in", w: 18 },
+    { h: "Termin", w: 16, t: "dt" }, { h: "Status", w: 20 }, { h: "Ursache", w: 30, wrap: true }, { h: "Durchgeführte Arbeiten", w: 50, wrap: true }, { h: "Material / Ersatzteile", w: 34, wrap: true },
+    { h: "Arbeitszeit (h)", w: 10, t: "h" }, { h: "Bericht am", w: 16, t: "dt" }, { h: "Bericht von", w: 18 }, { h: "Gemeldet", w: 16, t: "dt" }, { h: "Reaktionszeit (h)", w: 10, t: "h" }, { h: "Lösungszeit (h)", w: 10, t: "h" }],
+    rows: reports.map((i) => { const r = i.resolution || {};
+      return [keyOf(i), i.customer?.company, i.customer?.name, i.customer?.phone, TYPES[i.type]?.label, i.summary, person(i.assigneeId), i.appointmentAt, statusOf(i).name,
+        r.cause, r.action, r.parts, typeof r.hours === "number" ? r.hours : null, r.at, person(r.by), i.createdAt, hrs(i.createdAt, i.firstResponseAt), hrs(i.createdAt, i.resolvedAt)]; }) };
+
+  const people = db.users.filter((u) => list.some((i) => i.assigneeId === u.id));
+  const pers = { name: "Personen", columns: [{ h: "Person", w: 20 }, { h: "Rolle", w: 18 }, { h: "Vorgänge gesamt", w: 10, t: "n" }, { h: "Zu erledigen", w: 9, t: "n" }, { h: "In Arbeit", w: 9, t: "n" },
+    { h: "Erledigt", w: 9, t: "n" }, { h: "Überfällig", w: 9, t: "n" }, { h: "Einsätze mit Bericht", w: 11, t: "n" }, { h: "Stunden erfasst", w: 10, t: "h" }, { h: "Ø Durchlaufzeit (Tage)", w: 12, t: "h" }, { h: "SLA eingehalten", w: 10, t: "p" }],
+    rows: people.map((u) => { const l = list.filter((i) => i.assigneeId === u.id);
+      return [u.name, ROLES[u.role] || u.role, l.length, l.filter((i) => statusOf(i).cat === "todo").length, l.filter((i) => statusOf(i).cat === "progress").length, l.filter(isDone).length, l.filter(isOverdue).length,
+        l.filter((i) => i.resolution).length, r2(l.reduce((s, i) => s + hoursOf(i), 0)), avg(l.filter((i) => i.resolvedAt).map((i) => days(i.createdAt, i.resolvedAt))), quota(slaDone(l))]; }) };
+
+  const months = [...new Set(list.flatMap((i) => [i.createdAt.slice(0, 7), i.resolvedAt?.slice(0, 7)]).filter(Boolean))].sort();
+  const mon = { name: "Monate", columns: [{ h: "Monat", w: 10 }, { h: "Erstellt", w: 9, t: "n" }, { h: "Erledigt", w: 9, t: "n" }, { h: "davon Service", w: 10, t: "n" }, { h: "Einsatzstunden", w: 10, t: "h" }, { h: "SLA eingehalten", w: 10, t: "p" }],
+    rows: months.map((m) => { const done = list.filter((i) => i.resolvedAt?.startsWith(m));
+      return [m, list.filter((i) => i.createdAt.startsWith(m)).length, done.length, done.filter((i) => svc.includes(i)).length, r2(done.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0)), quota(slaDone(done))]; }) };
+
+  const byTime = (a, b) => String(a[1]).localeCompare(String(b[1]));
+  const hist = { name: "Statusverlauf", columns: [{ h: "Schlüssel", w: 10 }, { h: "Zeitpunkt", w: 16, t: "dt" }, { h: "Person", w: 18 }, { h: "Feld", w: 16 }, { h: "Von", w: 22 }, { h: "Nach", w: 22 }],
+    rows: list.flatMap((i) => i.history.map((h) => [keyOf(i), h.at, h.userId ? person(h.userId) : "Kunde/System", h.field, h.from, h.to])).sort(byTime) };
+  const comm = { name: "Kommentare", columns: [{ h: "Schlüssel", w: 10 }, { h: "Zeitpunkt", w: 16, t: "dt" }, { h: "Von", w: 22 }, { h: "Sichtbarkeit", w: 16 }, { h: "Text", w: 80, wrap: true }],
+    rows: list.flatMap((i) => i.comments.map((c) => [keyOf(i), c.at, c.userId ? person(c.userId) : `${c.author || "Kunde"} (Kunde)`, c.internal ? "intern" : "für Kunden sichtbar", c.text])).sort(byTime) };
+
+  const open = list.filter((i) => !isDone(i) && i.type !== "EPIC"); const done = list.filter((i) => i.resolvedAt); const slr = slaDone(svc);
+  const info = { name: "Übersicht", columns: [{ h: "Kennzahl", w: 40 }, { h: "Wert", w: 14, t: "h" }, { h: "Hinweis", w: 70 }], rows: [
+    ["Auswertung", null, title], ["Erstellt am", null, fmtDT(new Date().toISOString())], ["Erstellt von", null, uname(db.currentUserId)],
+    ["Vorgänge in dieser Auswertung", list.length, ""], ["davon offen", open.length, ""], ["davon überfällig", open.filter(isOverdue).length, "Fälligkeitsdatum überschritten"],
+    ["davon erledigt", done.length, ""], ["Ø Durchlaufzeit erledigter Vorgänge (Tage)", avg(done.map((i) => days(i.createdAt, i.resolvedAt))), "von Erstellung bis Erledigung"],
+    ["Serviceanfragen", svc.length, ""], ["Serviceeinsätze mit Bericht", svc.filter((i) => i.resolution).length, ""],
+    ["Einsatzstunden laut Servicebericht", r2(svc.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0)), ""],
+    ["SLA Lösung eingehalten (%)", slr.length ? Math.round(quota(slr) * 1000) / 10 : null, "Anteil der gelösten Serviceanfragen innerhalb der Zielzeit"],
+    ["Erfasste Stunden gesamt", r2(list.reduce((s, i) => s + hoursOf(i), 0)), ""],
+    ["Tabellenblätter", null, "Vorgänge · Serviceeinsätze · Personen · Monate · Statusverlauf · Kommentare – mit Filter in der Kopfzeile, direkt für Pivot-Tabellen nutzbar"]] };
+  const sheets = [info, vorg, ...(reports.length ? [eins] : []), pers, mon, hist, comm];
+  download(name, XLSX.build(sheets, { title, author: sync.company || "GF Tracker" }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  toast(`Excel-Datei „${name}“ mit ${list.length} Vorgängen erstellt.`);
+}
+
 /* ---------- Benachrichtigungen ---------- */
 function renderNotifs() {
   const list = db.notifications.filter((n) => n.userId === db.currentUserId).slice(0, 50); const unread = list.filter((n) => !n.read).length;
@@ -1313,6 +1381,9 @@ document.addEventListener("click", (e) => {
     case "save-filter": { const jql = $("#jql")?.value.trim(); if (!jql) return; try { parseJql(jql); } catch (err) { return toast("Abfrage fehlerhaft: " + err.message); } const name = prompt("Name des Filters:"); if (name?.trim()) { const f = { id: uid(), name: name.trim(), jql, ownerId: db.currentUserId }; db.filters.push(f); save(); go(`#/filters?filter=${f.id}`); toast("Filter gespeichert"); } break; }
     case "delete-filter": db.filters = db.filters.filter((f) => f.id !== id); save(); go("#/filters"); break;
     case "export-csv": exportCsv(ui.lastResults || [], `vorgaenge-${today()}.csv`); break;
+    case "export-xlsx": exportXlsx(ui.lastResults || [], `auswertung-filter-${today()}.xlsx`, "Suchergebnis / Filter"); break;
+    case "export-all-xlsx": exportXlsx(db.issues, `auswertung-gesamt-${today()}.xlsx`, "Alle Projekte"); break;
+    case "export-project-xlsx": { const pp = proj(el.dataset.project); if (pp) exportXlsx(projIssues(pp), `auswertung-${pp.key}-${today()}.xlsx`, `Projekt ${pp.name}`); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
     case "export-json": location.href = "/api/admin/export"; break;
     case "import-json": $("#json-file").click(); break;

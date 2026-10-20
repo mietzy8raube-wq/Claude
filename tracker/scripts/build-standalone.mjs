@@ -111,6 +111,9 @@ ${embed("src-portal", portal)}
 ${read("public/shared.js")}
 </script>
 <script>
+${read("public/xlsx.js")}
+</script>
+<script>
 ${read("standalone/backend.js")}
 </script>
 <script>${loader}</script>
