@@ -13,6 +13,7 @@ import { createApiV1 } from "./lib/apiv1.mjs";
 import { createWebhooks, WEBHOOK_EVENTS } from "./lib/webhooks.mjs";
 import { createM365 } from "./lib/m365.mjs";
 import { createFactorial } from "./lib/factorial.mjs";
+import * as ICS from "./lib/ics.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -249,27 +250,42 @@ function portalLink(issueId) {
   if (!row) { const token = randomToken(24); store.db.prepare("INSERT INTO portal_tokens (token_hash, issue_id, token, created_at) VALUES (?, ?, ?, ?)").run(sha256(token), issueId, token, Date.now()); row = { token }; }
   return `${CFG.appUrl}/portal/r/${row.token}`;
 }
+/** Kundenmails: Antworten gehen ans Service-Postfach (→ landen im Vorgang), Kopie in „Gesendete Elemente“. */
+function customerMailOpts(key) { const inbox = m365.settings().inbox; return { replyTo: inbox || undefined, saveToSent: true, headers: { "X-GFT-Issue": key } }; }
+const replyHint = (key) => (m365.settings().inbox && m365.settings().mailIn && mailer.appConfigured ? `Antworten Sie einfach auf diese E-Mail – Ihre Nachricht wird automatisch dem Vorgang ${key} zugeordnet.` : null);
+/** Termin als Kalenderdatei (Outlook: „In Kalender speichern“). */
+function appointmentIcs(i) {
+  const c = i.customerId ? store.get("customers", i.customerId) : null; const tech = userById(i.assigneeId)?.name; const key = issueKey(i);
+  return ICS.calendar([{ uid: `appt-${i.id}@gf-tracker`, sequence: Math.floor(Date.now() / 60000), start: i.appointmentAt, end: new Date(new Date(i.appointmentAt).getTime() + m365.settings().calendarMinutes * 60e3),
+    summary: `Servicetermin ${CFG.company}: ${i.summary}`, description: [`Vorgang ${key}`, tech ? `Techniker/in: ${tech}` : "", i.customer?.name ? `Ansprechpartner: ${i.customer.name}` : ""].filter(Boolean).join("\n"),
+    location: c ? S.customerAddress(c) : "", url: portalLink(i.id), alarmMinutes: 60 }], { name: `${CFG.company} – Servicetermin` });
+}
 function customerMails({ before, after }) {
   const p = projectById(after.projectId); if (!p || p.type !== "service" || !after.customer?.email || !mailer.configured) return;
-  const key = issueKey(after); const link = portalLink(after.id);
+  const key = issueKey(after); const link = portalLink(after.id); const opts = customerMailOpts(key); const hint = replyHint(key);
+  const greeting = `Guten Tag ${after.customer.name || ""},`;
   const known = new Set((before?.comments || []).map((c) => c.id));
   for (const c of after.comments.filter((c) => !known.has(c.id) && c.userId && !c.internal)) {
     const agent = userById(c.userId)?.name || "Service";
-    queueMail(after.customer.email, `[${key}] Neue Antwort zu Ihrer Anfrage`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`, title: after.summary, lines: [`${agent} hat geantwortet:`, c.text], button: { url: link, label: "Anfrage ansehen und antworten" }, footer: `Vorgang ${key}` }));
+    queueMail(after.customer.email, `[${key}] Neue Antwort zu Ihrer Anfrage`, mailTemplate({ company: CFG.company, greeting, title: after.summary, preheader: `${agent}: ${c.text.slice(0, 100)}`, lines: [`${agent} hat geantwortet:`, c.text], button: { url: link, label: "Anfrage ansehen" }, replyHint: hint, footer: `Vorgang ${key}` }), opts);
   }
   if (after.status === "SCHEDULED" && after.appointmentAt && (before?.status !== "SCHEDULED" || before?.appointmentAt !== after.appointmentAt)) {
-    const when = fmtAppt(after.appointmentAt); const tech = userById(after.assigneeId)?.name;
-    queueMail(after.customer.email, `[${key}] ${before?.status === "SCHEDULED" ? "Neuer Termin" : "Terminbestätigung"}: ${when}`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`,
-      title: `${before?.status === "SCHEDULED" ? "Ihr Termin wurde verschoben" : "Wir haben einen Termin für Sie eingeplant"}: ${when}`, lines: [`Anliegen: ${after.summary}`, tech ? `Techniker/in: ${tech}` : "", "Passt der Termin nicht? Antworten Sie einfach über den Link."].filter(Boolean),
-      button: { url: link, label: "Anfrage ansehen" }, footer: `Vorgang ${key}` }));
+    const when = fmtAppt(after.appointmentAt); const tech = userById(after.assigneeId)?.name; const moved = before?.status === "SCHEDULED";
+    queueMail(after.customer.email, `[${key}] ${moved ? "Neuer Termin" : "Terminbestätigung"}: ${when}`, mailTemplate({ company: CFG.company, greeting,
+      title: `${moved ? "Ihr Termin wurde verschoben" : "Wir haben einen Termin für Sie eingeplant"}: ${when}`, preheader: `${when}${tech ? ` · ${tech}` : ""}`,
+      lines: [`Anliegen: ${after.summary}`, tech ? `Techniker/in: ${tech}` : "", "Den Termin können Sie über den Anhang direkt in Ihren Outlook-Kalender übernehmen. Passt er nicht? Antworten Sie einfach."].filter(Boolean),
+      button: { url: link, label: "Anfrage ansehen" }, replyHint: hint, footer: `Vorgang ${key}` }), { ...opts, attachments: [{ name: "Servicetermin.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: appointmentIcs(after) }] });
   }
   if (before && S.statusInfo(p, before.status).cat !== "done" && S.statusInfo(p, after.status).cat === "done") {
-    queueMail(after.customer.email, `[${key}] Ihre Anfrage wurde gelöst`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`, title: `Ihre Anfrage „${after.summary}“ wurde gelöst.`, lines: ["Falls noch etwas offen ist, antworten Sie einfach über den Link – die Anfrage wird dann wieder geöffnet."], button: { url: link, label: "Anfrage ansehen" }, footer: `Vorgang ${key}` }));
+    const r = after.resolution;
+    const report = r ? ["Servicebericht:", r.cause ? `Ursache: ${r.cause}` : "", `Durchgeführte Arbeiten: ${r.action}`, r.parts ? `Material/Ersatzteile: ${r.parts}` : "", r.hours ? `Arbeitszeit: ${String(r.hours).replace(".", ",")} h` : "", r.by ? `Techniker/in: ${userById(r.by)?.name || ""}` : ""].filter(Boolean) : [];
+    queueMail(after.customer.email, `[${key}] Ihre Anfrage wurde gelöst`, mailTemplate({ company: CFG.company, greeting, title: `Ihre Anfrage „${after.summary}“ wurde gelöst.`, preheader: r ? r.action.slice(0, 120) : "Ihre Anfrage wurde gelöst.",
+      lines: [...report, "Falls noch etwas offen ist, antworten Sie einfach – die Anfrage wird dann wieder geöffnet."], button: { url: link, label: "Anfrage und Bericht ansehen" }, replyHint: hint, footer: `Vorgang ${key}` }), opts);
   }
 }
 const fmtAppt = (iso) => new Date(iso).toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: env.TZ || "Europe/Berlin" }) + " Uhr";
 const mailQueue = [];
-function queueMail(to, subject, html) { mailQueue.push({ to, subject, html }); }
+function queueMail(to, subject, html, opts = {}) { mailQueue.push({ to, subject, html, ...opts }); }
 async function flushMailQueue() {
   while (mailQueue.length) { const m = mailQueue.shift(); try { await mailer.send(m); log(`E-Mail gesendet an ${m.to}: ${m.subject}`); } catch (e) { log("E-Mail-Fehler:", e.message); } }
 }
@@ -428,7 +444,8 @@ async function portalCreate(req) {
 function confirmReceipt(issue, email, name) {
   const link = portalLink(issue.id); const key = issueKey(issue);
   if (mailer.configured && email) {
-    queueMail(email, `[${key}] Ihre Anfrage ist eingegangen`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${name || ""},`, title: `Vielen Dank – Ihre Anfrage „${issue.summary}“ ist eingegangen.`, lines: [`Ihre Vorgangsnummer: ${key}`, "Über den folgenden Link sehen Sie jederzeit den Bearbeitungsstand und können uns antworten – oder antworten Sie einfach auf diese E-Mail."], button: { url: link, label: "Anfrage ansehen" }, footer: "Bitte bewahren Sie diese E-Mail auf." }));
+    queueMail(email, `[${key}] Ihre Anfrage ist eingegangen`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${name || ""},`, title: `Vielen Dank – Ihre Anfrage „${issue.summary}“ ist eingegangen.`, preheader: `Vorgangsnummer ${key} – wir melden uns schnellstmöglich.`,
+      lines: [`Ihre Vorgangsnummer: ${key}`, "Über den folgenden Link sehen Sie jederzeit den Bearbeitungsstand."], button: { url: link, label: "Anfrage ansehen" }, replyHint: replyHint(key), footer: "Bitte bewahren Sie diese E-Mail auf." }), customerMailOpts(key));
     flushMailQueue();
   }
   return link;

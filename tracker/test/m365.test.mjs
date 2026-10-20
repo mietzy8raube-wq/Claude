@@ -47,7 +47,7 @@ function startMock() {
         let m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/messages\/([^/]+)$/);
         if (m && req.method === "PATCH") { M.read.add(decodeURIComponent(m[2])); return json(200, {}); }
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/sendMail$/);
-        if (m && req.method === "POST") { M.sent.push({ from: decodeURIComponent(m[1]), ...JSON.parse(body).message }); return json(202); }
+        if (m && req.method === "POST") { const b = JSON.parse(body); M.sent.push({ from: decodeURIComponent(m[1]), ...b.message, saveToSentItems: b.saveToSentItems }); return json(202); }
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/events(?:\/([^/]+))?$/);
         if (m) {
           const who = decodeURIComponent(m[1]); const id = m[2] && decodeURIComponent(m[2]);
@@ -99,6 +99,9 @@ test("Postfach → Vorgang: neue Mail wird Vorgang (Kunde erkannt, Zitat entfern
   const key = `SD-${i1.no}`;
   const conf = await until(() => M.sent.find((s) => s.subject.includes(`[${key}]`)));
   assert.ok(conf, "Bestätigung versendet"); assert.equal(conf.toRecipients[0].emailAddress.address, "p.kunze@kunze-metallbau.de");
+  assert.equal(conf.replyTo[0].emailAddress.address, INBOX, "Antworten gehen ans Service-Postfach"); assert.equal(conf.saveToSentItems, true, "Kopie in Gesendete Elemente");
+  assert.ok(conf.internetMessageHeaders.some((h) => h.name === "X-GFT-Issue" && h.value === key));
+  assert.match(conf.body.content, /v:roundrect/, "Outlook-Schaltfläche (VML)"); assert.match(conf.body.content, /automatisch dem Vorgang/);
   // Antwort des Kunden
   M.messages.push(msg("m4", "p.kunze@kunze-metallbau.de", "Peter Kunze", `AW: [${key}] Ihre Anfrage ist eingegangen`, "Danke, Zugang über Tor 3.\n\nAm 20.10. schrieb Service:\n> zitiert"));
   const i1b = await until(async () => { const x = (await issues()).find((i) => i.id === i1.id); return x.comments.some((c) => c.text.includes("Tor 3")) && x; });
@@ -114,6 +117,9 @@ test("Outlook-Kalender: Einplanen trägt ein, Verschieben ändert, Umplanen auf 
   const sync = (set) => anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: issue.id, op: "patch", patch: { set } }] } });
   await sync({ status: "SCHEDULED", assigneeId: "u5", appointmentAt: at.toISOString() });
   const ev = await until(() => [...M.events.values()].find((e) => e.subject.includes("Druckabfall")));
+  const tmail = await until(() => M.sent.find((x) => x.subject.includes("Terminbestätigung") && x.toRecipients[0].emailAddress.address === "m.lorenz@lorenz-kt.de"));
+  assert.ok(tmail, "Terminbestätigung an Kunden"); const ics = Buffer.from(tmail.attachments[0].contentBytes, "base64").toString();
+  assert.equal(tmail.attachments[0].name, "Servicetermin.ics"); assert.match(ics, /BEGIN:VEVENT/); assert.match(ics, new RegExp(`DTSTART:${at.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")}`)); assert.match(ics, /LOCATION:Am Gewerbepark 3/);
   const berlin = (d, addMin = 0) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d.getTime() + addMin * 60e3)).replace(", ", "T") + ":00";
   assert.ok(ev, "Termin angelegt"); assert.equal(ev.owner, "mehmet.yilmaz@druckluft-chemnitz.de"); assert.equal(ev.start.dateTime, berlin(at)); assert.equal(ev.end.dateTime, berlin(at, 90)); assert.equal(ev.start.timeZone, "Europe/Berlin");
   assert.match(ev.location.displayName, /Neukirchen/); assert.match(ev.body.content, /#\/issue\/SD-/);
