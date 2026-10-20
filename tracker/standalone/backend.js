@@ -9,7 +9,7 @@
 "use strict";
 const S = globalThis.TrackerShared;
 const DB_KEY = "gft-sa-db", SESSION_KEY = "gft-sa-user";
-const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
+const COLLECTIONS = ["users", "teams", "customers", "absences", "projects", "sprints", "issues", "filters", "notifications"];
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const COMPANY = "Druckluft Chemnitz";
 const BASE = location.href.split(/[?#]/)[0];
@@ -88,7 +88,7 @@ function currentUser(d) {
   return u && u.active ? u : null;
 }
 
-function canWrite(user, type, op, cur, data) {
+function canWrite(user, type, op, cur, data, d = load()) {
   const admin = user.role === "ADMIN";
   if (type === "users") {
     if (op === "put") return "Benutzer werden über die Benutzerverwaltung angelegt.";
@@ -100,6 +100,12 @@ function canWrite(user, type, op, cur, data) {
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
   if (type === "projects" && !admin) return "Nur Administratoren dürfen Projekte anlegen, ändern oder löschen.";
+  if (type === "customers" && op === "delete" && !admin) return "Kunden können nur Administratoren löschen.";
+  if (type === "absences" && !admin) {
+    const target = (cur || data)?.userId; const lead = (all(d, "teams")).some((t) => t.leadId === user.id && t.memberIds.includes(target));
+    if (cur?.source === "factorial") return "Abwesenheiten aus Factorial werden dort gepflegt.";
+    if (target !== user.id && !lead) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren.";
+  }
   if (type === "teams" && !admin) {
     if (op !== "patch" || !cur || cur.leadId !== user.id) return "Teams verwalten Administratoren; die Teamleitung kann Mitglieder ändern.";
     const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
@@ -132,6 +138,16 @@ function sanitize(d, type, obj, cur) {
     if (!S.PROJECT_TYPES[obj.type]) throw new HttpError(400, "Unbekannter Projekttyp.");
   }
   if (type === "users" && cur) obj.email = cur.email;
+  if (type === "customers") {
+    obj.name = String(obj.name || "").trim().slice(0, 200); if (!obj.name) throw new HttpError(400, "Kundenname fehlt.");
+    obj.no = String(obj.no ?? "").trim().slice(0, 40);
+    obj.contacts = (Array.isArray(obj.contacts) ? obj.contacts : []).filter((k) => k && ID_RE.test(String(k.id))).slice(0, 200);
+    obj.assets = (Array.isArray(obj.assets) ? obj.assets : []).filter((a) => a && ID_RE.test(String(a.id))).slice(0, 500);
+  }
+  if (type === "absences") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(obj.start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(obj.end || "") || obj.end < obj.start) throw new HttpError(400, "Ungültiger Zeitraum.");
+    obj.type = String(obj.type || "Abwesend").slice(0, 40); obj.source = cur?.source || (obj.source === "factorial" ? "manual" : obj.source || "manual");
+  }
   if (type === "teams") {
     obj.name = String(obj.name || "").trim().slice(0, 80); if (!obj.name) throw new HttpError(400, "Teamname fehlt.");
     obj.memberIds = [...new Set((Array.isArray(obj.memberIds) ? obj.memberIds : []).filter((x) => typeof x === "string" && ID_RE.test(x)))];
@@ -168,6 +184,11 @@ function applyOp(d, user, op) {
   } else throw new HttpError(400, "Unbekannte Operation.");
   next.id = id; next = sanitize(d, type, next, cur);
   put(d, type, next);
+  // Wartungsplan fortschreiben, wenn ein Wartungsvorgang erledigt wurde
+  if (type === "issues" && cur && next.assetId && next.customerId && next.type === "MAINT") {
+    const p = get(d, "projects", next.projectId); const cat = (i) => S.statusInfo(p, i.status).cat;
+    if (p && cat(cur) !== "done" && cat(next) === "done") { const c = get(d, "customers", next.customerId); const upd = c && S.completeMaintenance(c, next.assetId, S.dayKey(next.resolvedAt || new Date())); if (upd) put(d, "customers", upd); }
+  }
   return { type, id, data: type === "users" ? publicUser(next) : next };
 }
 
@@ -195,6 +216,14 @@ function deadlineJob() {
         if (s.breached) createNotification(d, who, "sla", `SLA verletzt (${name}): ${key}`, i.summary, i.id, `slab:${kind}:${i.id}:${i.priority}`);
         else if (s.risk) createNotification(d, who, "sla", `SLA gefährdet (${name}): ${key}`, `${i.summary} – noch ${S.fmtDur(s.remaining)}`, i.id, `slar:${kind}:${i.id}:${i.priority}`);
       }
+    }
+    // Wartungsplan: fällige Wartungen als Vorgang anlegen
+    const mp = all(d, "projects").find((p) => p.type === "service" && p.autoMaint);
+    if (mp) for (const { customer, asset, due } of S.maintenanceDue({ customers: all(d, "customers"), issues: all(d, "issues"), projects: all(d, "projects"), today: t, leadDays: mp.maintLeadDays ?? 21 })) {
+      const i = S.newIssue({ project: mp, no: reserveNumber(d, mp.id), reporterId: null, ...S.maintenanceIssueData(customer, asset, due) }); put(d, "issues", i);
+      const c2 = JSON.parse(JSON.stringify(customer)); c2.assets.find((a) => a.id === asset.id).autoCreatedFor = due; put(d, "customers", c2);
+      const team = i.teamId ? get(d, "teams", i.teamId) : null;
+      for (const u of new Set([...(team?.memberIds || []), mp.leadId].filter(Boolean))) createNotification(d, u, "new", `Wartung fällig: ${issueKey(d, i)}`, `${customer.name} – ${asset.name} bis ${due.split("-").reverse().join(".")}`, i.id);
     }
   });
 }
@@ -229,7 +258,8 @@ function portalCreate(b) {
     const priority = S.URGENCY.some((u) => u.id === b.urgency) ? b.urgency : "MEDIUM";
     const i = S.newIssue({ project: p, no: reserveNumber(d, p.id), type, summary, priority, reporterId: null, labels: ["portal"],
       description: [str(b.asset, 200) ? `Anlage/Standort: ${str(b.asset, 200)}` : "", description].filter(Boolean).join("\n\n"),
-      customer: { name, company, email, phone: str(b.phone, 60) } });
+      customer: { name, company, email, phone: str(b.phone, 60) },
+      customerId: all(d, "customers").find((c) => (c.email || "").toLowerCase() === email || (c.contacts || []).some((k) => (k.email || "").toLowerCase() === email))?.id || null });
     put(d, "issues", i);
     for (const u of all(d, "users").filter((u) => u.active && (u.role === "AGENT" || u.id === p.leadId))) createNotification(d, u.id, "new", `Neue Anfrage: ${p.key}-${i.no}`, `${company} · ${name}: ${summary}`, i.id);
     const link = portalLink(d, i.id);
@@ -267,7 +297,7 @@ function importAll(data, admin) {
     const users = data.users.map((u) => ({ ...publicUser({ notifyEmail: true, active: true, color: S.hashColor(u.email), ...u }), email: String(u.email).toLowerCase() }));
     if (!users.some((u) => u.id === admin.id)) users.push(publicUser(admin));
     for (const u of users) put(d, "users", u);
-    for (const t of ["teams", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) put(d, t, o);
+    for (const t of ["teams", "customers", "absences", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) put(d, t, o);
     d.counters = {};
   });
   return { imported: data.issues.length, usersWithoutPassword: [] };

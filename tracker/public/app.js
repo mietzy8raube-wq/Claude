@@ -5,7 +5,8 @@
    Fachlogik (Workflows, SLA, Patch-Verfahren) steckt in shared.js.
    ====================================================================== */
 const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
-  pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch } = TrackerShared;
+  pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch,
+  nextMaintenance, customerSnapshot, customerAddress, maintenanceIssueData } = TrackerShared;
 
 /* ---------- Symbole ---------- */
 const ICONS = {
@@ -61,8 +62,8 @@ function toast(msg) { const el = document.createElement("div"); el.className = "
    nur die Unterschiede als Patch. Der Server führt Änderungen mehrerer Personen
    feldweise zusammen und meldet per Event, dass es Neues gibt; pull() holt dann
    alle Änderungen seit der eigenen Revision. */
-const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
-let db = { users: [], teams: [], projects: [], sprints: [], issues: [], filters: [], notifications: [], currentUserId: null };
+const COLLECTIONS = ["users", "teams", "customers", "absences", "projects", "sprints", "issues", "filters", "notifications"];
+let db = { users: [], teams: [], customers: [], absences: [], projects: [], sprints: [], issues: [], filters: [], notifications: [], currentUserId: null };
 const sync = { rev: 0, base: {}, pending: [], timer: null, inFlight: false, again: false, pulling: false, pullAgain: false, online: true, retry: 0, mail: false, company: "GF Tracker" };
 COLLECTIONS.forEach((t) => (sync.base[t] = new Map()));
 const LOCAL_KEY = "gft-local";
@@ -226,7 +227,7 @@ function notify(userIds, type, title, text, issueId, key) {
 // Fristen- und SLA-Benachrichtigungen erzeugt der Server (deadlineJob).
 
 /* ---------- Vorgänge ändern ---------- */
-const FIELD_LABEL = { teamId: "Team", appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
+const FIELD_LABEL = { customerId: "Kunde", assetId: "Anlage", customer: "Ansprechpartner", teamId: "Team", appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
   dueDate: "Fälligkeitsdatum", startDate: "Startdatum", storyPoints: "Story Points", estimateH: "Schätzung", epicId: "Epic", sprintId: "Sprint", type: "Vorgangstyp", parentId: "Übergeordnet", color: "Farbe" };
 function fieldText(i, f, v) {
   if (v == null || v === "" || (Array.isArray(v) && !v.length)) return "–";
@@ -234,6 +235,9 @@ function fieldText(i, f, v) {
   if (f === "priority") return PRIOS[v]?.label || v;
   if (f === "assigneeId" || f === "reporterId") return uname(v);
   if (f === "teamId") return team(v)?.name || "–";
+  if (f === "customerId") return customer(v)?.name || "–";
+  if (f === "assetId") return assetOf(customer(i.customerId), v)?.name || "–";
+  if (f === "customer") return [v.name, v.company].filter(Boolean).join(" · ");
   if (f === "epicId" || f === "parentId") { const x = issue(v); return x ? `${keyOf(x)} ${x.summary}` : "–"; }
   if (f === "sprintId") return sprint(v)?.name || "Backlog";
   if (f === "type") return TYPES[v]?.label || v;
@@ -382,7 +386,7 @@ function fieldValues(i, f) {
     case "resolution": return isDone(i) ? ["Done", "Erledigt", "Fertig"] : ["Unresolved", "Ungelöst"];
     case "key": case "issuekey": return [keyOf(i)];
     case "epic": case "parent": { const e = issue(f === "epic" ? i.epicId : i.parentId); return e ? [keyOf(e), e.summary] : []; }
-    case "customer": return i.customer ? [i.customer.name, i.customer.company, i.customer.email] : [];
+    case "customer": { const c = customer(i.customerId); return [...(i.customer ? [i.customer.name, i.customer.company, i.customer.email] : []), ...(c ? [c.name, c.no] : [])]; }
     default: return [];
   }
 }
@@ -552,7 +556,7 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <a class="logo" href="#/your-work"><span class="mark">${icon("bolt")}</span>GF Tracker</a>
-    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
+    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
     <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Erstellen</span></button>
     <div class="search">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen (z. B. DIG-12)" aria-label="Suchen"></div>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
@@ -583,6 +587,7 @@ function render() {
       case "p": { const p = projByKey(parts[1]); if (!p) { html = `<div class="empty">Projekt nicht gefunden.</div>`; break; }
         const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
         html = tabs + ({ dispatch: viewDispatch, board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
+      case "customers": html = parts[1] ? viewCustomer(customer(parts[1])) : viewCustomers(); break;
       case "teams": html = parts[1] ? viewTeam(team(parts[1])) : viewTeams(); break;
       case "filters": html = viewFilters(params); break;
       case "dashboard": html = viewDashboard(); break;
@@ -761,6 +766,99 @@ function issueRow(i, extra = "") {
   return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
     <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
 }
+/* ---------- Ansicht: Kunden & Anlagen ---------- */
+const customer = (id) => (id ? db.customers.find((c) => c.id === id) || null : null);
+const assetOf = (c, id) => (c && id ? (c.assets || []).find((a) => a.id === id) || null : null);
+const custIssues = (c) => db.issues.filter((i) => i.customerId === c.id);
+const custOpts = (sel, none = "– kein Kunde –") => `<option value="">${none}</option>` + [...db.customers].sort((a, b) => a.name.localeCompare(b.name, "de")).map((c) => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}${c.no ? ` (${esc(c.no)})` : ""}</option>`).join("");
+const maintChip = (a) => { const d = nextMaintenance(a); if (!d || a.active === false) return '<span class="muted small">–</span>'; const n = daysBetween(today(), d);
+  return `<span class="chip ${n < 0 ? "red" : n <= 30 ? "yellow" : "gray"}" title="${n < 0 ? `seit ${-n} Tagen überfällig` : `in ${n} Tagen`}">${fmtDay(d)}</span>`; };
+const nextCustMaint = (c) => (c.assets || []).filter((a) => a.active !== false).map(nextMaintenance).filter(Boolean).sort()[0] || null;
+function viewCustomers() {
+  const q = (ui.custQ || "").toLowerCase().trim();
+  const list = [...db.customers].filter((c) => !q || `${c.no} ${c.name} ${c.city} ${(c.contacts || []).map((k) => `${k.name} ${k.email}`).join(" ")} ${(c.assets || []).map((a) => `${a.name} ${a.serial} ${a.model}`).join(" ")}`.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const dueSoon = db.customers.flatMap((c) => (c.assets || []).filter((a) => a.active !== false && nextMaintenance(a) && daysBetween(today(), nextMaintenance(a)) <= 30).map((a) => ({ c, a }))).sort((x, y) => nextMaintenance(x.a).localeCompare(nextMaintenance(y.a)));
+  return `<div class="page-head"><div><h1>Kunden &amp; Anlagen</h1><p class="muted" style="margin:4px 0 0">${db.customers.length} Kunden · ${db.customers.reduce((s, c) => s + (c.assets || []).length, 0)} Anlagen · ${dueSoon.length} Wartungen in den nächsten 30 Tagen</p></div>
+      <div class="row"><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Importieren</button><button class="btn" data-act="export-customers">${icon("download")} Excel</button><button class="btn primary" data-act="customer-new">${icon("plus")} Kunde anlegen</button></div></div>
+    <div class="row" style="margin-bottom:12px"><div class="search" style="width:min(420px,100%)">${icon("search")}<input type="search" id="cust-q" value="${esc(ui.custQ || "")}" placeholder="Suchen: Name, Kundennr., Ort, Ansprechpartner, Seriennummer" aria-label="Kunden suchen"></div></div>
+    ${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Nr.</th><th>Kunde</th><th class="hide-m">Ort</th><th class="hide-m">Ansprechpartner</th><th>Anlagen</th><th>Offen</th><th>Nächste Wartung</th></tr></thead><tbody>
+      ${list.map((c) => { const open = custIssues(c).filter((i) => !isDone(i)).length; const nm = nextCustMaint(c); const k = (c.contacts || [])[0];
+        return `<tr class="click" data-act="goto" data-href="#/customers/${c.id}"><td class="key">${esc(c.no || "–")}</td><td><div class="b">${esc(c.name)}</div>${c.externalId ? `<div class="small muted">ERP: ${esc(c.externalId)}</div>` : ""}</td><td class="hide-m">${esc([c.zip, c.city].filter(Boolean).join(" "))}</td>
+          <td class="hide-m">${k ? `${esc(k.name)}<div class="small muted">${esc(k.email || k.phone || "")}</div>` : '<span class="muted">–</span>'}</td><td>${(c.assets || []).length}</td><td>${open ? `<span class="chip blue">${open}</span>` : '<span class="muted">0</span>'}</td>
+          <td>${nm ? maintChip({ nextMaintenance: nm }) : '<span class="muted small">–</span>'}</td></tr>`; }).join("")}</tbody></table></div>`
+      : `<div class="empty">${q ? "Keine Kunden gefunden." : 'Noch keine Kunden. Legen Sie Kunden an oder übernehmen Sie Ihren Kundenstamm per <a href="#/import">Import</a> (CSV oder Excel aus Ihrer Warenwirtschaft).'}</div>`}`;
+}
+function viewCustomer(c) {
+  if (!c) return `<div class="empty">Kunde nicht gefunden. <a href="#/customers">Zur Kundenliste</a></div>`;
+  const iss = custIssues(c).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); const open = iss.filter((i) => !isDone(i)); const done = iss.filter(isDone);
+  const reports = iss.filter((i) => i.resolution).sort((a, b) => String(b.resolution.at).localeCompare(String(a.resolution.at)));
+  const hours = reports.reduce((s, i) => s + (Number(i.resolution.hours) || 0), 0); const admin = me().role === "ADMIN";
+  const addr = customerAddress(c);
+  return `<div class="page-head"><div><div class="crumbs"><a href="#/customers">Kunden</a></div><h1>${esc(c.name)}</h1>
+      <p class="muted small" style="margin:4px 0 0">${c.no ? `Kundennr. ${esc(c.no)} · ` : ""}${esc(addr || "keine Adresse")}${c.externalId ? ` · ERP-ID ${esc(c.externalId)}` : ""}</p></div>
+    <div class="row"><button class="btn primary" data-act="customer-issue" data-id="${c.id}">${icon("plus")} Vorgang für Kunden</button><button class="btn" data-act="customer-edit" data-id="${c.id}">${icon("gear")} Stammdaten</button>${admin ? `<button class="btn subtle" data-act="customer-delete" data-id="${c.id}" title="Kunde löschen">${icon("trash")}</button>` : ""}</div></div>
+    <div class="grid g4" style="margin-bottom:14px">${[["Offene Vorgänge", open.length], ["Anlagen", (c.assets || []).length], ["Serviceberichte", reports.length], ["Einsatzstunden", String(Math.round(hours * 10) / 10).replace(".", ",")]].map(([l, v]) => `<div class="card stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
+    <div class="cust-grid">
+      <div class="grid" style="gap:14px;align-content:start">
+        <div class="card pad"><h3 class="h3">Kontakt</h3>
+          <div class="kv">${[["Adresse", addr], ["Telefon", c.phone ? `<a href="tel:${esc(c.phone.replace(/\s/g, ""))}">${esc(c.phone)}</a>` : ""], ["E-Mail", c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ""]].map(([k, v]) => `<span>${k}</span><span>${v ? (k === "Adresse" ? esc(v) : v) : '<span class="muted">–</span>'}</span>`).join("")}</div>
+          ${c.notes ? `<div class="note info" style="margin-top:10px;white-space:pre-wrap">${esc(c.notes)}</div>` : ""}</div>
+        <div class="card pad"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">Ansprechpartner</h3><button class="btn sm" data-act="contact-new" data-id="${c.id}">${icon("plus")} Hinzufügen</button></div>
+          ${(c.contacts || []).map((k) => `<div class="row nowrap" style="padding:8px 0;border-bottom:1px solid var(--border)">${custAvatar({ name: k.name, email: k.email })}<div style="flex:1;min-width:0"><div class="b trunc">${esc(k.name)}${k.role ? ` <span class="small muted">· ${esc(k.role)}</span>` : ""}</div>
+            <div class="small muted trunc">${[k.email ? `<a href="mailto:${esc(k.email)}">${esc(k.email)}</a>` : "", k.phone ? `<a href="tel:${esc(k.phone.replace(/\s/g, ""))}">${esc(k.phone)}</a>` : ""].filter(Boolean).join(" · ") || "–"}</div></div>
+            <button class="btn subtle sm" data-act="contact-edit" data-id="${c.id}" data-k="${k.id}">Bearbeiten</button></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Ansprechpartner.</p>'}</div>
+      </div>
+      <div class="grid" style="gap:14px;align-content:start;min-width:0">
+        <div class="card pad"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">Anlagen &amp; Wartungsplan</h3><button class="btn sm" data-act="asset-new" data-id="${c.id}">${icon("plus")} Anlage</button></div>
+          ${(c.assets || []).length ? `<div class="tbl-wrap"><table><thead><tr><th>Anlage</th><th class="hide-m">Seriennr.</th><th class="hide-m">Standort</th><th>Intervall</th><th>Letzte</th><th>Nächste Wartung</th><th></th></tr></thead><tbody>
+            ${(c.assets || []).map((a) => { const openA = iss.filter((i) => i.assetId === a.id && !isDone(i));
+              return `<tr style="${a.active === false ? "opacity:.5" : ""}"><td><div class="b">${esc(a.name)}</div><div class="small muted">${esc([a.manufacturer, a.model, a.year].filter(Boolean).join(" · "))}</div></td><td class="hide-m">${esc(a.serial || "–")}</td><td class="hide-m">${esc(a.location || "–")}</td>
+                <td>${a.intervalMonths ? `${a.intervalMonths} Mon.` : "–"}</td><td class="small">${a.lastMaintenance ? fmtDay(a.lastMaintenance) : "–"}</td><td>${maintChip(a)}${openA.length ? `<div><a href="#" class="small" data-act="open" data-id="${openA[0].id}">${keyOf(openA[0])} offen</a></div>` : ""}</td>
+                <td class="nowrap"><button class="btn subtle sm" data-act="asset-edit" data-id="${c.id}" data-k="${a.id}">Bearbeiten</button>${openA.some((i) => i.type === "MAINT") ? "" : `<button class="btn subtle sm" data-act="asset-maint" data-id="${c.id}" data-k="${a.id}" title="Wartungsvorgang jetzt anlegen">Wartung anlegen</button>`}</td></tr>`; }).join("")}
+            </tbody></table></div>` : '<p class="small muted" style="margin:0">Noch keine Anlagen erfasst. Mit Intervall erfasst, legt das System Wartungen automatisch rechtzeitig an.</p>'}</div>
+        <div class="card pad"><h3 class="h3">Vorgänge <span class="small muted" style="font-weight:400">${open.length} offen · ${done.length} erledigt</span></h3>
+          ${iss.length ? `<div class="wlist">${[...open, ...done.slice(0, 15)].map((i) => workRow(i, i.assetId ? `<span class="chip gray">${esc(assetOf(c, i.assetId)?.name || "Anlage")}</span>` : "")).join("")}</div>` : '<p class="small muted" style="margin:0">Noch keine Vorgänge.</p>'}</div>
+        <div class="card pad"><h3 class="h3">Servicehistorie</h3>
+          ${reports.map((i) => `<div class="hist-item" data-act="open" data-id="${i.id}"><div class="row nowrap small"><b>${fmtDay(dayKey(i.resolution.at))}</b><span class="key">${keyOf(i)}</span><span class="trunc">${esc(i.summary)}</span><span class="sp"></span>${i.resolution.hours ? `<span class="chip gray">${String(i.resolution.hours).replace(".", ",")} h</span>` : ""}${avatar(i.resolution.by)}</div>
+            <div class="small" style="margin-top:3px">${i.resolution.cause ? `<span class="muted">Ursache:</span> ${esc(i.resolution.cause)} · ` : ""}${esc(i.resolution.action)}${i.resolution.parts ? ` <span class="muted">· Material:</span> ${esc(i.resolution.parts)}` : ""}</div></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Serviceberichte.</p>'}</div>
+      </div></div>`;
+}
+function customerForm(c) {
+  const isNew = !c; c = c || { no: String(Math.max(10000, ...db.customers.map((x) => Number(x.no) || 0)) + 1), name: "", street: "", zip: "", city: "", phone: "", email: "", notes: "", externalId: "" };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Kunde anlegen" : "Stammdaten bearbeiten"}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="customer-form" data-id="${isNew ? "" : c.id}"><div class="modal-b">
+      <div class="grid g2" style="gap:12px"><label class="f"><span>Firmenname <span class="req">*</span></span><input type="text" name="name" value="${esc(c.name)}" required maxlength="200" autofocus></label>
+        <label class="f">Kundennummer<input type="text" name="no" value="${esc(c.no || "")}" maxlength="40"></label>
+        <label class="f" style="grid-column:1/-1">Straße<input type="text" name="street" value="${esc(c.street || "")}" maxlength="200"></label>
+        <label class="f">PLZ<input type="text" name="zip" value="${esc(c.zip || "")}" maxlength="10"></label><label class="f">Ort<input type="text" name="city" value="${esc(c.city || "")}" maxlength="100"></label>
+        <label class="f">Telefon<input type="tel" name="phone" value="${esc(c.phone || "")}" maxlength="60"></label><label class="f">E-Mail (allgemein)<input type="email" name="email" value="${esc(c.email || "")}" maxlength="200"></label>
+        <label class="f">ERP-/Fremd-ID<input type="text" name="externalId" value="${esc(c.externalId || "")}" maxlength="80" placeholder="Nummer im Warenwirtschaftssystem"></label></div>
+      <label class="f">Notizen<textarea name="notes" rows="3" placeholder="z. B. Zufahrt, Ansprechzeiten, Besonderheiten">${esc(c.notes || "")}</textarea></label>
+    </div><div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">${isNew ? "Kunde anlegen" : "Speichern"}</button></div></form>`);
+}
+function contactForm(c, k) {
+  const isNew = !k; k = k || { name: "", role: "", email: "", phone: "" };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Ansprechpartner hinzufügen" : "Ansprechpartner bearbeiten"}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="contact-form" data-id="${c.id}" data-k="${isNew ? "" : k.id}"><div class="modal-b"><div class="grid g2" style="gap:12px">
+      <label class="f"><span>Name <span class="req">*</span></span><input type="text" name="name" value="${esc(k.name)}" required maxlength="120" autofocus></label><label class="f">Funktion<input type="text" name="role" value="${esc(k.role || "")}" maxlength="80" placeholder="z. B. Instandhaltung"></label>
+      <label class="f">E-Mail<input type="email" name="email" value="${esc(k.email || "")}" maxlength="200"></label><label class="f">Telefon<input type="tel" name="phone" value="${esc(k.phone || "")}" maxlength="60"></label></div>
+      <p class="small muted" style="margin:0">Anfragen aus dem Portal oder per E-Mail von dieser Adresse werden automatisch diesem Kunden zugeordnet.</p></div>
+    <div class="modal-f">${isNew ? "" : `<button type="button" class="btn danger" data-act="contact-delete" data-id="${c.id}" data-k="${k.id}" style="margin-right:auto">Entfernen</button>`}<button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></div></form>`);
+}
+function assetForm(c, a) {
+  const isNew = !a; a = a || { name: "", manufacturer: "", model: "", serial: "", year: "", location: "", intervalMonths: 12, lastMaintenance: "", nextMaintenance: "", active: true };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Anlage hinzufügen" : "Anlage bearbeiten"}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="asset-form" data-id="${c.id}" data-k="${isNew ? "" : a.id}"><div class="modal-b"><div class="grid g2" style="gap:12px">
+      <label class="f" style="grid-column:1/-1"><span>Bezeichnung <span class="req">*</span></span><input type="text" name="name" value="${esc(a.name)}" required maxlength="120" autofocus placeholder="z. B. Schraubenkompressor GA 37"></label>
+      <label class="f">Hersteller<input type="text" name="manufacturer" value="${esc(a.manufacturer || "")}" maxlength="80"></label><label class="f">Modell<input type="text" name="model" value="${esc(a.model || "")}" maxlength="80"></label>
+      <label class="f">Seriennummer<input type="text" name="serial" value="${esc(a.serial || "")}" maxlength="80"></label><label class="f">Baujahr<input type="number" name="year" value="${esc(a.year || "")}" min="1950" max="2100"></label>
+      <label class="f">Standort beim Kunden<input type="text" name="location" value="${esc(a.location || "")}" maxlength="120" placeholder="z. B. Halle 2"></label><label class="f">Wartungsintervall (Monate)<input type="number" name="intervalMonths" value="${esc(a.intervalMonths ?? "")}" min="0" max="120"></label>
+      <label class="f">Letzte Wartung<input type="date" name="lastMaintenance" value="${esc(a.lastMaintenance || "")}"></label><label class="f">Nächste Wartung (leer = automatisch)<input type="date" name="nextMaintenance" value="${esc(a.nextMaintenance || "")}"></label></div>
+      <label class="row nowrap small"><input type="checkbox" name="active" ${a.active !== false ? "checked" : ""}> Anlage in Betrieb (Wartungen planen)</label></div>
+    <div class="modal-f">${isNew ? "" : `<button type="button" class="btn danger" data-act="asset-delete" data-id="${c.id}" data-k="${a.id}" style="margin-right:auto">Entfernen</button>`}<button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></div></form>`);
+}
+
 /* ---------- Ansicht: Teams ---------- */
 function teamStats(t) {
   const l = teamIssues(t).filter((i) => i.type !== "EPIC"); const open = l.filter((i) => !isDone(i)); const tk = today(); const wk = addDays(tk, -6);
@@ -1215,7 +1313,7 @@ function renderIssue() {
       <div style="min-width:0">
         <input class="issue-sum" data-f="summary" value="${esc(i.summary)}" aria-label="Zusammenfassung">
         <div class="row" style="margin:8px 0 16px">${i.type !== "SUBTASK" && i.type !== "EPIC" ? `<button class="btn sm" data-act="add-subtask">${icon("sub")} Teilaufgabe</button>` : ""}<button class="btn sm" data-act="add-link">${icon("link")} Verknüpfen</button>${i.type === "EPIC" ? `<button class="btn sm" data-act="create" data-project="${p.id}" data-epic="${i.id}">${icon("plus")} Vorgang im Epic</button>` : ""}</div>
-        ${i.customer ? `<div class="note info" style="margin-bottom:14px"><b>${esc(i.customer.name)}</b> · ${esc(i.customer.company || "")} · <a href="mailto:${encodeURIComponent(i.customer.email)}?subject=${encodeURIComponent(`[${keyOf(i)}] ${i.summary}`)}">${esc(i.customer.email)}</a>${i.customer.phone ? ` · ${esc(i.customer.phone)}` : ""}</div>` : ""}
+        ${i.customer ? `<div class="note info" style="margin-bottom:14px">${customer(i.customerId) ? `<a href="#/customers/${i.customerId}" class="b">${esc(customer(i.customerId).name)}</a>${customer(i.customerId).no ? ` <span class="small muted">(${esc(customer(i.customerId).no)})</span>` : ""}${assetOf(customer(i.customerId), i.assetId) ? ` · Anlage <b>${esc(assetOf(customer(i.customerId), i.assetId).name)}</b>${assetOf(customer(i.customerId), i.assetId).serial ? ` (SN ${esc(assetOf(customer(i.customerId), i.assetId).serial)})` : ""}` : ""}${customerAddress(customer(i.customerId)) ? `<div class="small" style="margin:2px 0 4px">${esc(customerAddress(customer(i.customerId)))}</div>` : "<br>"}` : ""}<b>${esc(i.customer.name)}</b> · ${esc(i.customer.company || "")} · <a href="mailto:${encodeURIComponent(i.customer.email)}?subject=${encodeURIComponent(`[${keyOf(i)}] ${i.summary}`)}">${esc(i.customer.email)}</a>${i.customer.phone ? ` · ${esc(i.customer.phone)}` : ""}</div>` : ""}
         ${reportBlock(i)}
         <div class="sec-title">Beschreibung</div>
         ${ui.editingDesc ? `<textarea id="desc-edit" rows="8">${esc(i.description)}</textarea><div class="row" style="margin-top:6px"><button class="btn primary sm" data-act="save-desc">Speichern</button><button class="btn subtle sm" data-act="cancel-desc">Abbrechen</button></div>`
@@ -1241,6 +1339,8 @@ function renderIssue() {
         ${isSvc && (sf || sr) ? `<div class="details" style="margin-bottom:12px"><div class="dh">SLA</div><div class="drow"><span>Erste Antwort</span><span>${slaChip(sf)} <span class="small muted">Ziel ${SLA[i.priority][0]} h</span></span></div><div class="drow" style="padding-bottom:10px"><span>Lösung</span><span>${slaChip(sr)} <span class="small muted">Ziel ${SLA[i.priority][1]} h</span></span></div></div>` : ""}
         <div class="details"><div class="dh">Details</div>
           <div class="drow"><span>Team</span><span><select data-f="teamId">${teamOpts(i.teamId)}</select></span></div>
+          ${isSvc || i.customerId ? `<div class="drow"><span>Kunde</span><span><select data-f="customerId">${custOpts(i.customerId)}</select></span></div>
+          ${customer(i.customerId) ? `<div class="drow"><span>Anlage</span><span><select data-f="assetId"><option value="">–</option>${(customer(i.customerId).assets || []).map((a) => `<option value="${a.id}" ${a.id === i.assetId ? "selected" : ""}>${esc(a.name)}${a.serial ? ` (${esc(a.serial)})` : ""}</option>`).join("")}</select></span></div>` : ""}` : ""}
           <div class="drow"><span>Verantwortlich</span><span><select data-f="assigneeId">${userOpts(i.assigneeId, undefined, i.teamId)}</select>${i.assigneeId !== db.currentUserId ? `<a href="#" class="small" data-act="assign-me">Mir zuweisen</a>` : ""}</span></div>
           <div class="drow"><span>Melder</span><span>${i.reporterId ? `<select data-f="reporterId">${userOpts(i.reporterId, "–")}</select>` : `<span class="row nowrap">${custAvatar(i.customer)} ${esc(i.customer?.name || "–")} <span class="small muted">(Kunde)</span></span>`}</span></div>
           <div class="drow"><span>Priorität</span><span class="row nowrap">${prioIcon(i.priority)}<select data-f="priority">${prioOpts(i.priority)}</select></span></div>
@@ -1292,7 +1392,11 @@ function createForm(prefill = {}) {
         ${p.type === "software" ? `<label class="f">Story Points<input type="number" name="storyPoints" min="0" step="1"></label>
         <label class="f">Sprint<select name="sprintId"><option value="">Backlog</option>${db.sprints.filter((x) => x.projectId === p.id && x.state !== "closed").map((x) => `<option value="${x.id}" ${prefill.sprintId === x.id ? "selected" : ""}>${esc(x.name)}${x.state === "active" ? " (aktiv)" : ""}</option>`).join("")}</select></label>` : ""}
         ${epicsOf(p).length ? `<label class="f">Epic<select name="epicId"><option value="">–</option>${epicsOf(p).map((e) => `<option value="${e.id}" ${prefill.epicId === e.id ? "selected" : ""}>${esc(e.summary)}</option>`).join("")}</select></label>` : ""}
-        ${p.type === "service" ? `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>` : ""}
+        ${p.type === "service" ? (() => { const cu = customer(prefill.customerId);
+          return `<label class="f" style="grid-column:1/-1">Kunde<select name="customerId" id="cf-customer">${custOpts(prefill.customerId, "– Kunde wählen (oder unten neu eintragen) –")}</select></label>
+          ${cu ? `<label class="f">Ansprechpartner<select name="contactId">${(cu.contacts || []).map((k) => `<option value="${k.id}">${esc(k.name)}${k.email ? ` · ${esc(k.email)}` : ""}</option>`).join("") || '<option value="">–</option>'}</select></label>
+            <label class="f">Anlage<select name="assetId"><option value="">– keine bestimmte Anlage –</option>${(cu.assets || []).filter((a) => a.active !== false).map((a) => `<option value="${a.id}" ${a.id === prefill.assetId ? "selected" : ""}>${esc(a.name)}${a.serial ? ` (SN ${esc(a.serial)})` : ""}</option>`).join("")}</select></label>`
+          : `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>`}`; })() : ""}
       </div></div>
       <div class="modal-f"><label class="small row nowrap" style="margin-right:auto"><input type="checkbox" name="another"> Weiteren Vorgang erstellen</label><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Erstellen</button></div></form>`);
 }
@@ -1577,21 +1681,22 @@ function exportXlsx(list, name, title, opts = {}) {
 
   const vorg = { name: "Vorgänge", columns: [
     { h: "Schlüssel", w: 10 }, { h: "Projekt", w: 18 }, { h: "Typ", w: 14 }, { h: "Zusammenfassung", w: 46 }, { h: "Status", w: 20 }, { h: "Phase", w: 12 },
-    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Team", w: 18 }, { h: "Melder", w: 20 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 },
+    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Team", w: 18 }, { h: "Melder", w: 20 }, { h: "Kundennr.", w: 10 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 }, { h: "Anlage", w: 22 },
     { h: "Labels", w: 16 }, { h: "Sprint", w: 14 }, { h: "Epic", w: 22 }, { h: "Story Points", w: 8, t: "n" }, { h: "Schätzung (h)", w: 10, t: "h" }, { h: "Erfasst (h)", w: 10, t: "h" },
     { h: "Fällig", w: 11, t: "d" }, { h: "Überfällig", w: 9 }, { h: "Termin", w: 16, t: "dt" }, { h: "Erstellt", w: 16, t: "dt" }, { h: "Erledigt", w: 16, t: "dt" },
     { h: "Durchlaufzeit (Tage)", w: 11, t: "h" }, { h: "SLA Erste Antwort", w: 15 }, { h: "SLA Lösung", w: 15 }, { h: "Kommentare", w: 9, t: "n" }, { h: "Monat erstellt", w: 11 }],
     rows: list.map((i) => [keyOf(i), proj(i.projectId)?.name, TYPES[i.type]?.label, i.summary, statusOf(i).name, CAT_LABEL[statusOf(i).cat] || statusOf(i).cat,
-      PRIOS[i.priority]?.label, person(i.assigneeId), team(i.teamId)?.name, i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", i.customer?.company, i.customer?.name, i.customer?.email,
+      PRIOS[i.priority]?.label, person(i.assigneeId), team(i.teamId)?.name, i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", customer(i.customerId)?.no, i.customer?.company, i.customer?.name, i.customer?.email, assetOf(customer(i.customerId), i.assetId)?.name,
       i.labels.join(", "), sprint(i.sprintId)?.name, issue(i.epicId)?.summary, i.storyPoints ?? null, i.estimateH ?? null, hoursOf(i),
       i.dueDate, isOverdue(i) ? "ja" : "nein", i.appointmentAt, i.createdAt, i.resolvedAt, days(i.createdAt, i.resolvedAt), slaTxt(i, "first"), slaTxt(i, "resolve"), i.comments.length, i.createdAt.slice(0, 7)]) };
 
   const eins = { name: "Serviceeinsätze", columns: [
-    { h: "Schlüssel", w: 10 }, { h: "Firma", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Telefon", w: 14 }, { h: "Art", w: 14 }, { h: "Betreff", w: 40 }, { h: "Techniker/in", w: 18 },
+    { h: "Schlüssel", w: 10 }, { h: "Kundennr.", w: 10 }, { h: "Firma", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Telefon", w: 14 }, { h: "Anlage", w: 22 }, { h: "Seriennr.", w: 14 }, { h: "Art", w: 14 }, { h: "Betreff", w: 40 }, { h: "Techniker/in", w: 18 },
     { h: "Termin", w: 16, t: "dt" }, { h: "Status", w: 20 }, { h: "Ursache", w: 30, wrap: true }, { h: "Durchgeführte Arbeiten", w: 50, wrap: true }, { h: "Material / Ersatzteile", w: 34, wrap: true },
     { h: "Arbeitszeit (h)", w: 10, t: "h" }, { h: "Bericht am", w: 16, t: "dt" }, { h: "Bericht von", w: 18 }, { h: "Gemeldet", w: 16, t: "dt" }, { h: "Reaktionszeit (h)", w: 10, t: "h" }, { h: "Lösungszeit (h)", w: 10, t: "h" }],
     rows: reports.map((i) => { const r = i.resolution || {};
-      return [keyOf(i), i.customer?.company, i.customer?.name, i.customer?.phone, TYPES[i.type]?.label, i.summary, person(i.assigneeId), i.appointmentAt, statusOf(i).name,
+      const cu = customer(i.customerId); const as = assetOf(cu, i.assetId);
+      return [keyOf(i), cu?.no, i.customer?.company, i.customer?.name, i.customer?.phone, as?.name, as?.serial, TYPES[i.type]?.label, i.summary, person(i.assigneeId), i.appointmentAt, statusOf(i).name,
         r.cause, r.action, r.parts, typeof r.hours === "number" ? r.hours : null, r.at, person(r.by), i.createdAt, hrs(i.createdAt, i.firstResponseAt), hrs(i.createdAt, i.resolvedAt)]; }) };
 
   const people = db.users.filter((u) => list.some((i) => i.assigneeId === u.id));
@@ -1637,6 +1742,21 @@ function exportXlsx(list, name, title, opts = {}) {
   toast(`Excel-Datei „${name}“ mit ${list.length} Vorgängen erstellt.`);
 }
 
+/** Kundenstamm als Excel (gleiches Format wie der Import – zum Pflegen und Wiedereinspielen). */
+function exportCustomersXlsx() {
+  const cs = [...db.customers].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const sheets = [
+    { name: "Kunden", columns: [{ h: "Kundennummer", w: 12 }, { h: "Firma", w: 30 }, { h: "Straße", w: 26 }, { h: "PLZ", w: 8 }, { h: "Ort", w: 18 }, { h: "Telefon", w: 16 }, { h: "E-Mail", w: 26 }, { h: "ERP-ID", w: 12 }, { h: "Notizen", w: 40, wrap: true }, { h: "Anlagen", w: 8, t: "n" }, { h: "Offene Vorgänge", w: 10, t: "n" }, { h: "Nächste Wartung", w: 12, t: "d" }],
+      rows: cs.map((c) => [c.no, c.name, c.street, c.zip, c.city, c.phone, c.email, c.externalId, c.notes, (c.assets || []).length, custIssues(c).filter((i) => !isDone(i)).length, nextCustMaint(c)]) },
+    { name: "Ansprechpartner", columns: [{ h: "Kundennummer", w: 12 }, { h: "Firma", w: 30 }, { h: "Name", w: 22 }, { h: "Funktion", w: 18 }, { h: "E-Mail", w: 28 }, { h: "Telefon", w: 16 }],
+      rows: cs.flatMap((c) => (c.contacts || []).map((k) => [c.no, c.name, k.name, k.role, k.email, k.phone])) },
+    { name: "Anlagen", columns: [{ h: "Kundennummer", w: 12 }, { h: "Firma", w: 28 }, { h: "Bezeichnung", w: 28 }, { h: "Hersteller", w: 14 }, { h: "Modell", w: 14 }, { h: "Seriennummer", w: 16 }, { h: "Baujahr", w: 8, t: "n" }, { h: "Standort", w: 14 }, { h: "Intervall (Monate)", w: 10, t: "n" }, { h: "Letzte Wartung", w: 12, t: "d" }, { h: "Nächste Wartung", w: 12, t: "d" }, { h: "In Betrieb", w: 8 }],
+      rows: cs.flatMap((c) => (c.assets || []).map((a) => [c.no, c.name, a.name, a.manufacturer, a.model, a.serial, a.year ?? null, a.location, a.intervalMonths ?? null, a.lastMaintenance, nextMaintenance(a), a.active === false ? "nein" : "ja"])) },
+  ];
+  download(`kunden-anlagen-${today()}.xlsx`, XLSX.build(sheets, { title: "Kunden und Anlagen", author: sync.company || "GF Tracker" }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  toast(`Excel mit ${cs.length} Kunden erstellt – kann bearbeitet und wieder importiert werden.`);
+}
+
 /* ---------- Benachrichtigungen ---------- */
 function renderNotifs() {
   const list = db.notifications.filter((n) => n.userId === db.currentUserId).slice(0, 50); const unread = list.filter((n) => !n.read).length;
@@ -1666,6 +1786,20 @@ document.addEventListener("click", (e) => {
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
+    case "customer-new": customerForm(); break;
+    case "customer-edit": { const c = customer(id); if (c) customerForm(c); break; }
+    case "customer-delete": { const c = customer(id); if (!c || !confirm(`Kunde „${c.name}“ löschen? Vorgänge bleiben erhalten (mit Kontaktdaten), verlieren aber die Verknüpfung.`)) return;
+      db.customers = db.customers.filter((x) => x.id !== c.id); db.issues.forEach((i) => { if (i.customerId === c.id) { i.customerId = null; i.assetId = null; touch(i); } }); save(); go("#/customers"); toast(`Kunde „${c.name}“ gelöscht`); break; }
+    case "customer-issue": { const sp = db.projects.find((p) => p.type === "service"); createForm({ projectId: sp?.id, customerId: id, type: "INCIDENT" }); break; }
+    case "contact-new": { const c = customer(id); if (c) contactForm(c); break; }
+    case "contact-edit": { const c = customer(id); const k = c?.contacts.find((x) => x.id === el.dataset.k); if (k) contactForm(c, k); break; }
+    case "contact-delete": { const c = customer(id); if (!c) return; c.contacts = c.contacts.filter((x) => x.id !== el.dataset.k); c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); break; }
+    case "asset-new": { const c = customer(id); if (c) assetForm(c); break; }
+    case "asset-edit": { const c = customer(id); const a = assetOf(c, el.dataset.k); if (a) assetForm(c, a); break; }
+    case "asset-delete": { const c = customer(id); if (!c || !confirm("Anlage entfernen? Vorhandene Vorgänge bleiben erhalten.")) return; c.assets = c.assets.filter((x) => x.id !== el.dataset.k); c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); break; }
+    case "asset-maint": { const c = customer(id); const a = assetOf(c, el.dataset.k); const sp = db.projects.find((p) => p.type === "service"); if (!a || !sp) return;
+      createIssue({ projectId: sp.id, ...maintenanceIssueData(c, a, nextMaintenance(a) || today()) }).then((i) => { render(); toast(`${keyOf(i)} angelegt`); openIssue(i.id); }).catch((err) => toast(err.message)); break; }
+    case "export-customers": exportCustomersXlsx(); break;
     case "team-new": teamForm(); break;
     case "team-edit": { const t = team(id); if (t) teamForm(t); break; }
     case "team-delete": { const t = team(id); if (!t || !confirm(`Team „${t.name}“ löschen? Die Vorgänge bleiben erhalten, verlieren aber die Teamzuordnung.`)) return;
@@ -1725,6 +1859,8 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
+  if (el.id === "cf-customer") { const f = el.form; const keep = { summary: f.summary.value, description: f.description.value, priority: f.priority.value }; createForm({ projectId: f.projectId.value, type: f.type.value, customerId: el.value || null, teamId: f.teamId?.value });
+    const nf = $("#create-form"); nf.summary.value = keep.summary; nf.description.value = keep.description; nf.priority.value = keep.priority; return; }
   if (el.id === "dispatch-team") { ui.dispatchTeam = el.value; render(); return; }
   if (el.dataset.act === "team-assign") { const i = issue(el.dataset.id); if (i && el.value) { updateIssue(i, { assigneeId: el.value }); render(); toast(`${keyOf(i)} an ${uname(el.value)} verteilt`); } return; }
   if (el.id === "portal-project") { go(`#/portal/${el.value}`); return; }
@@ -1742,7 +1878,8 @@ document.addEventListener("change", (e) => {
   if (el.dataset.f && cur) {
     const f = el.dataset.f; let v = el.value;
     if (f === "summary") { v = v.trim(); if (!v) { el.value = cur.summary; return; } }
-    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId", "teamId"].includes(f)) v = v || null;
+    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId", "teamId", "assetId"].includes(f)) v = v || null;
+    if (f === "customerId") { const c = customer(v); updateIssue(cur, { customerId: c?.id || null, assetId: null, ...(c ? { customer: customerSnapshot(c) } : {}) }); render(); renderIssue(); return; }
     if (f === "storyPoints" || f === "estimateH") v = v === "" ? null : Number(v);
     if (f === "labels") v = v.split(",").map((x) => x.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
     if (f === "sprintId") children(cur).forEach((c) => (c.sprintId = v));
@@ -1750,6 +1887,7 @@ document.addEventListener("change", (e) => {
   }
 });
 document.addEventListener("input", (e) => {
+  if (e.target.id === "cust-q") { ui.custQ = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#cust-q"); s.focus(); s.setSelectionRange(pos, pos); }
   if (e.target.id === "board-q") { ui.board.q = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#board-q"); s.focus(); s.setSelectionRange(pos, pos); }
   if (e.target.id === "np-name") { const k = $("#np-key"); if (!k.dataset.touched) k.value = e.target.value.replace(/[^A-Za-zÄÖÜäöü ]/g, "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 4).toUpperCase().replace(/[ÄÖÜ]/g, (c) => ({ Ä: "A", Ö: "O", Ü: "U" })[c]) || e.target.value.slice(0, 3).toUpperCase(); }
   if (e.target.id === "np-key") e.target.dataset.touched = "1";
@@ -1769,7 +1907,8 @@ async function handleSubmit(e, f) {
       const cname = fd.get("cname"), cemail = fd.get("cemail");
       const i = await createIssue({ projectId: fd.get("projectId"), type: fd.get("type"), summary: fd.get("summary"), description: fd.get("description"), assigneeId: fd.get("assigneeId"), priority: fd.get("priority"), teamId: fd.get("teamId") || null,
         dueDate: fd.get("dueDate") || null, labels, storyPoints: fd.get("storyPoints") ? Number(fd.get("storyPoints")) : null, sprintId: fd.get("sprintId") || null, epicId: fd.get("epicId") || null,
-        customer: cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
+        customerId: customer(fd.get("customerId"))?.id || null, assetId: fd.get("assetId") || null,
+        customer: customer(fd.get("customerId")) ? customerSnapshot(customer(fd.get("customerId")), fd.get("contactId")) : cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
       ui.lastProject = i.projectId;
       if (fd.get("another")) { const pid = i.projectId; createForm({ projectId: pid }); $("#create-form").another.checked = true; render(); toast(`${keyOf(i)} erstellt`); }
       else { closeModal(); render(); toast(`${keyOf(i)} erstellt`); openIssue(i.id); }
@@ -1811,6 +1950,22 @@ async function handleSubmit(e, f) {
       if (v.startsWith("q:")) { const [, y, q] = v.split(":").map(Number); per = quarterRange(y, q); } else if (v.startsWith("y:")) per = yearRange(Number(v.slice(2)));
       const l = per ? x.scope.filter((i) => activeIn(i, per)) : x.scope;
       closeModal(); exportXlsx(l, `${x.base}${per ? "-" + per.label.toLowerCase().replace(/\s+/g, "-") : ""}-${today()}.xlsx`, per ? `${x.title} · ${per.label}` : x.title, { period: per, scope: x.scope }); break; }
+    case "customer-form": {
+      const data = Object.fromEntries(["name", "no", "street", "zip", "city", "phone", "email", "externalId", "notes"].map((k) => [k, String(fd.get(k) || "").trim()]));
+      if (data.no && db.customers.some((x) => x.no === data.no && x.id !== f.dataset.id)) return toast(`Kundennummer ${data.no} ist bereits vergeben.`);
+      let c = customer(f.dataset.id); const now = new Date().toISOString();
+      if (c) Object.assign(c, data, { updatedAt: now }); else { c = { id: uid(), ...data, contacts: [], assets: [], createdAt: now, updatedAt: now }; db.customers.push(c); }
+      save(); closeModal(); go(`#/customers/${c.id}`); render(); toast(`${c.name} gespeichert`); break; }
+    case "contact-form": {
+      const c = customer(f.dataset.id); if (!c) break; const data = Object.fromEntries(["name", "role", "email", "phone"].map((k) => [k, String(fd.get(k) || "").trim()]));
+      const k = c.contacts.find((x) => x.id === f.dataset.k); if (k) Object.assign(k, data); else c.contacts.push({ id: uid(), ...data });
+      if (!c.email && data.email && c.contacts.length === 1) c.email = data.email; c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); break; }
+    case "asset-form": {
+      const c = customer(f.dataset.id); if (!c) break; const num = (k) => (fd.get(k) === "" || fd.get(k) == null ? null : Number(fd.get(k)));
+      const data = { name: String(fd.get("name")).trim(), manufacturer: String(fd.get("manufacturer") || "").trim(), model: String(fd.get("model") || "").trim(), serial: String(fd.get("serial") || "").trim(), year: num("year"), location: String(fd.get("location") || "").trim(),
+        intervalMonths: num("intervalMonths"), lastMaintenance: fd.get("lastMaintenance") || null, nextMaintenance: fd.get("nextMaintenance") || null, active: fd.get("active") === "on" };
+      const a = assetOf(c, f.dataset.k); if (a) Object.assign(a, data); else c.assets.push({ id: uid(), ...data });
+      c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); toast(`Anlage „${data.name}“ gespeichert`); break; }
     case "team-form": {
       const members = fd.getAll("m"); const t = team(f.dataset.id);
       const fix = (x) => { if (x.leadId && !x.memberIds.includes(x.leadId)) x.memberIds.unshift(x.leadId); return x; };

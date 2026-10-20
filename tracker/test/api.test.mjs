@@ -145,6 +145,21 @@ test("Teams: Admin verwaltet, Teamleitung ändert nur Mitglieder; Kundenanfragen
   assert.equal(r.status, 200); assert.equal(issue.teamId, "tSVC");
 });
 
+test("Kunden & Wartung: fällige Wartungen werden angelegt, Erledigung schreibt den Wartungsplan fort, Portal ordnet Kunden zu", async () => {
+  const st = (await anna.req("/api/state")).data;
+  assert.equal(st.customers.length, 5);
+  const auto = st.issues.filter((i) => i.labels.includes("wartung-auto"));
+  assert.ok(auto.length >= 1, "automatischer Wartungsvorgang");
+  const m = auto[0]; assert.equal(m.type, "MAINT"); assert.ok(m.customerId && m.assetId);
+  const now = new Date().toISOString();
+  const r = await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: m.id, op: "patch", patch: { set: { status: "RESOLVED", resolvedAt: now } } }] } });
+  assert.ok(!r.data.results[0].error);
+  const c = (await anna.req("/api/state")).data.customers.find((x) => x.id === m.customerId); const a = c.assets.find((x) => x.id === m.assetId);
+  assert.equal(a.lastMaintenance, now.slice(0, 10)); assert.ok(a.nextMaintenance > a.lastMaintenance);
+  await new Client().req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "Peter Kunze", company: "Kunze", email: "P.Kunze@kunze-metallbau.de", summary: "Kundenzuordnung", description: "x" } });
+  assert.equal((await anna.req("/api/state")).data.issues.find((i) => i.summary === "Kundenzuordnung").customerId, "c1");
+});
+
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {
   const st = (await lisa.req("/api/state")).data;
   const ctrl = new AbortController();

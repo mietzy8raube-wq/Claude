@@ -121,6 +121,12 @@ function createNotification(userId, type, title, text, issueId, key) {
   return true;
 }
 
+/** Kunde zu einer E-Mail-Adresse (Ansprechpartner oder Firmenadresse). */
+function findCustomerByEmail(email) {
+  const e = String(email || "").trim().toLowerCase(); if (!e) return null;
+  return store.all("customers").find((c) => (c.email || "").toLowerCase() === e || (c.contacts || []).some((k) => (k.email || "").toLowerCase() === e)) || null;
+}
+
 /* ---------- Synchronisierung: Änderungen der Browser anwenden ---------- */
 function canWrite(user, type, op, cur, data) {
   const admin = user.role === "ADMIN";
@@ -134,6 +140,12 @@ function canWrite(user, type, op, cur, data) {
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
   if (type === "projects" && !admin) return "Nur Administratoren dürfen Projekte anlegen, ändern oder löschen.";
+  if (type === "customers" && op === "delete" && !admin) return "Kunden können nur Administratoren löschen.";
+  if (type === "absences" && !admin) {
+    const target = (cur || data)?.userId; const lead = (store.all("teams")).some((t) => t.leadId === user.id && t.memberIds.includes(target));
+    if (cur?.source === "factorial") return "Abwesenheiten aus Factorial werden dort gepflegt.";
+    if (target !== user.id && !lead) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren.";
+  }
   if (type === "teams" && !admin) {
     if (op !== "patch" || !cur || cur.leadId !== user.id) return "Teams verwalten Administratoren; die Teamleitung kann Mitglieder ändern.";
     const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
@@ -166,6 +178,16 @@ function sanitize(type, obj, cur) {
     if (!S.PROJECT_TYPES[obj.type]) throw new HttpError(400, "Unbekannter Projekttyp.");
   }
   if (type === "users" && cur) { obj.email = cur.email; }
+  if (type === "customers") {
+    obj.name = String(obj.name || "").trim().slice(0, 200); if (!obj.name) throw new HttpError(400, "Kundenname fehlt.");
+    obj.no = String(obj.no ?? "").trim().slice(0, 40);
+    obj.contacts = (Array.isArray(obj.contacts) ? obj.contacts : []).filter((k) => k && ID_RE.test(String(k.id))).slice(0, 200);
+    obj.assets = (Array.isArray(obj.assets) ? obj.assets : []).filter((a) => a && ID_RE.test(String(a.id))).slice(0, 500);
+  }
+  if (type === "absences") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(obj.start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(obj.end || "") || obj.end < obj.start) throw new HttpError(400, "Ungültiger Zeitraum.");
+    obj.type = String(obj.type || "Abwesend").slice(0, 40); obj.source = cur?.source || (obj.source === "factorial" ? "manual" : obj.source || "manual");
+  }
   if (type === "teams") {
     obj.name = String(obj.name || "").trim().slice(0, 80); if (!obj.name) throw new HttpError(400, "Teamname fehlt.");
     obj.memberIds = [...new Set((Array.isArray(obj.memberIds) ? obj.memberIds : []).filter((x) => typeof x === "string" && ID_RE.test(x)))];
@@ -265,9 +287,45 @@ function deadlineJob() {
         else if (s.risk) created += createNotification(who, "sla", `SLA gefährdet (${name}): ${key}`, `${i.summary} – noch ${S.fmtDur(s.remaining)}`, i.id, `slar:${kind}:${i.id}:${i.priority}`);
       }
     }
+    created += maintenanceJob(t);
   });
   if (created) broadcast();
 }
+/** Wartungsplan: Anlagen mit fälliger Wartung bekommen automatisch einen Wartungsvorgang im Service-Projekt. */
+function maintenanceJob(t) {
+  const mp = store.all("projects").find((p) => p.type === "service" && p.autoMaint); if (!mp) return 0;
+  let n = 0;
+  for (const { customer, asset, due } of S.maintenanceDue({ customers: store.all("customers"), issues: store.all("issues"), projects: store.all("projects"), today: t, leadDays: mp.maintLeadDays ?? 21 })) {
+    const i = S.newIssue({ project: mp, no: store.reserveNumber(mp.id), reporterId: null, ...S.maintenanceIssueData(customer, asset, due) });
+    store.put("issues", i);
+    const c2 = JSON.parse(JSON.stringify(customer)); c2.assets.find((a) => a.id === asset.id).autoCreatedFor = due; store.put("customers", c2);
+    const team = i.teamId ? store.get("teams", i.teamId) : null;
+    for (const u of new Set([...(team?.memberIds || []), mp.leadId].filter(Boolean))) createNotification(u, "new", `Wartung fällig: ${issueKey(i)}`, `${customer.name} – ${asset.name} bis ${due.split("-").reverse().join(".")}`, i.id);
+    emit("issue.created", i); n++;
+    log(`Wartungsvorgang ${issueKey(i)} angelegt: ${customer.name} / ${asset.name}`);
+  }
+  return n;
+}
+/** Folgen einer Vorgangsänderung: Wartungsplan fortschreiben, Ereignisse für Webhooks/Kalender. */
+function issueEffects({ before, after }) {
+  const p = projectById(after.projectId); if (!p) return;
+  const cat = (i) => (i ? S.statusInfo(p, i.status).cat : null);
+  if (after.assetId && after.customerId && after.type === "MAINT" && before && cat(before) !== "done" && cat(after) === "done") {
+    const c = store.get("customers", after.customerId); const next = c && S.completeMaintenance(c, after.assetId, S.dayKey(after.resolvedAt || new Date()));
+    if (next) store.put("customers", next);
+  }
+  if (!before) emit("issue.created", after);
+  else {
+    if (before.status !== after.status) emit(cat(after) === "done" && cat(before) !== "done" ? "issue.resolved" : "issue.status_changed", after, { from: S.statusInfo(p, before.status).name });
+    if (before.assigneeId !== after.assigneeId && after.assigneeId) emit("issue.assigned", after);
+    const known = new Set((before.comments || []).map((c) => c.id));
+    for (const c of after.comments.filter((c) => !known.has(c.id))) emit("comment.created", after, { comment: { text: c.text, internal: !!c.internal, author: c.userId ? userById(c.userId)?.name : c.author, at: c.at } });
+  }
+}
+/** Ereignis-Verteiler (Webhooks, Kalender) – Empfänger melden sich mit onEvent an. */
+const eventHandlers = [];
+const onEvent = (fn) => eventHandlers.push(fn);
+function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try { fn(type, issue, extra); } catch (e) { log("Ereignis-Fehler:", e.message); } } }
 /** Benachrichtigungen per E-Mail (gebündelt je Person, nur der letzten 24 h). */
 async function notificationMailJob() {
   if (!mailer.configured) return;
@@ -319,10 +377,11 @@ async function portalCreate(req) {
   const priority = S.URGENCY.some((u) => u.id === b.urgency) ? b.urgency : "MEDIUM";
   portalLimiter.hit(ip);
   const issue = store.tx(() => {
+    const known = findCustomerByEmail(email);
     const i = S.newIssue({ project: p, no: store.reserveNumber(p.id), type, summary, priority, reporterId: null, labels: ["portal"],
       description: [str(b.asset, 200) ? `Anlage/Standort: ${str(b.asset, 200)}` : "", description].filter(Boolean).join("\n\n"),
-      customer: { name, company, email, phone: str(b.phone, 60) } });
-    store.put("issues", i);
+      customer: { name, company, email, phone: str(b.phone, 60) }, customerId: known?.id || null });
+    store.put("issues", i); emit("issue.created", i);
     const agents = store.all("users").filter((u) => u.active && (u.role === "AGENT" || u.id === p.leadId));
     for (const u of agents) createNotification(u.id, "new", `Neue Anfrage: ${p.key}-${i.no}`, `${company} · ${name}: ${summary}`, i.id);
     return i;
@@ -376,7 +435,7 @@ function importAll(data, admin) {
     const users = data.users.map((u) => ({ ...publicUser({ notifyEmail: true, active: true, color: S.hashColor(u.email), ...u }), email: String(u.email).toLowerCase() }));
     if (!users.some((u) => u.id === admin.id)) users.push(publicUser(admin));
     for (const u of users) store.put("users", u);
-    for (const t of ["teams", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) store.put(t, o);
+    for (const t of ["teams", "customers", "absences", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) store.put(t, o);
     store.db.exec("DELETE FROM counters");
   });
   broadcast();
@@ -442,6 +501,7 @@ async function handleApi(req, res, url, session) {
     const effects = { issues: [], deactivated: [] }; const results = [];
     store.tx(() => { for (const op of b.ops) { try { results.push(applyOp(user, op, effects)); } catch (e) { if (!(e instanceof HttpError)) throw e; const cur = store.get(op.type, op.id); results.push({ type: op.type, id: op.id, error: e.message, ...(cur ? { data: op.type === "users" ? publicUser(cur) : cur } : { deleted: true }) }); } } });
     effects.deactivated.forEach((id) => sessions.destroyUser(id));
+    store.tx(() => effects.issues.forEach(issueEffects));
     effects.issues.forEach(customerMails); flushMailQueue();
     broadcast();
     return { rev: store.rev(), results };

@@ -154,6 +154,7 @@ function newIssue(d) {
     createdAt: nowIso, updatedAt: nowIso, resolvedAt: null, customer: d.customer || null, firstResponseAt: null, pausedMs: 0, pausedSince: null,
     rank: d.rank ?? Date.now(), color: d.color || null, appointmentAt: d.appointmentAt || null, resolution: null,
     teamId: d.teamId !== undefined ? d.teamId || null : project.teamId || null,
+    customerId: d.customerId || null, assetId: d.assetId || null, externalId: d.externalId || null,
   };
   i.watchers = [...new Set([i.reporterId, i.assigneeId].filter(Boolean))];
   i.history.push({ id: uid(), at: nowIso, userId: i.reporterId, field: "Vorgang", from: "", to: "erstellt" });
@@ -169,6 +170,8 @@ const KEYED = {
   comments: { key: (x) => x.id, sort: (a, b) => String(a.at).localeCompare(String(b.at)) },
   history: { key: (x) => x.id || `${x.at}|${x.field}|${x.to}`, sort: (a, b) => String(b.at).localeCompare(String(a.at)) },
   links: { key: (x) => `${x.type}|${x.issueId}` },
+  contacts: { key: (x) => x.id },
+  assets: { key: (x) => x.id },
 };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function diffEntity(base, next) {
@@ -204,6 +207,44 @@ function applyPatch(obj, patch) {
   return out;
 }
 
+/* ---------- Kunden, Anlagen und Wartung ---------- */
+function addMonths(dk, n) {
+  const [y, m, d] = String(dk).slice(0, 10).split("-").map(Number); const t = new Date(y, m - 1 + Number(n), 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  return dayKey(new Date(t.getFullYear(), t.getMonth(), Math.min(d, last)));
+}
+/** Nächster Wartungstermin einer Anlage: fest eingetragen oder letzte Wartung + Intervall. */
+const nextMaintenance = (a) => a.nextMaintenance || (a.lastMaintenance && a.intervalMonths ? addMonths(a.lastMaintenance, a.intervalMonths) : null);
+/** Kontaktdaten für einen Vorgang (Momentaufnahme – bleibt erhalten, auch wenn sich der Kundenstamm ändert). */
+function customerSnapshot(c, contactId) {
+  const k = (c.contacts || []).find((x) => x.id === contactId) || (c.contacts || [])[0] || {};
+  return { name: k.name || c.name, company: c.name, email: k.email || c.email || "", phone: k.phone || c.phone || "" };
+}
+const customerAddress = (c) => [c.street, [c.zip, c.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+/** Anlagen, für die jetzt ein Wartungsvorgang angelegt werden muss (fällig innerhalb leadDays, noch kein offener Wartungsvorgang). */
+function maintenanceDue({ customers, issues, projects, today: t, leadDays = 21 }) {
+  const open = new Set(issues.filter((i) => i.assetId && i.type === "MAINT" && statusInfo(projects.find((p) => p.id === i.projectId) || { type: "service" }, i.status).cat !== "done").map((i) => i.assetId));
+  const out = [];
+  for (const c of customers) for (const a of c.assets || []) {
+    if (a.active === false || !a.intervalMonths) continue; const due = nextMaintenance(a);
+    if (due && daysBetween(t, due) <= leadDays && !open.has(a.id) && a.autoCreatedFor !== due) out.push({ customer: c, asset: a, due });
+  }
+  return out;
+}
+function maintenanceIssueData(c, a, due) {
+  return { type: "MAINT", summary: `Wartung ${a.name}${a.serial ? ` (SN ${a.serial})` : ""}`, priority: "MEDIUM", dueDate: due, labels: ["wartung-auto"],
+    description: [`Fällige Wartung laut Wartungsplan (Intervall ${a.intervalMonths} Monate).`, `Anlage: ${[a.manufacturer, a.model].filter(Boolean).join(" ") || a.name}${a.serial ? ` · Seriennummer ${a.serial}` : ""}${a.location ? ` · Standort ${a.location}` : ""}`,
+      customerAddress(c) ? `Adresse: ${customerAddress(c)}` : ""].filter(Boolean).join("\n"),
+    customerId: c.id, assetId: a.id, customer: customerSnapshot(c) };
+}
+/** Nach erledigter Wartung: letzte Wartung setzen und nächste berechnen. Gibt den geänderten Kunden zurück (oder null). */
+function completeMaintenance(c, assetId, dk) {
+  const a = (c.assets || []).find((x) => x.id === assetId); if (!a) return null;
+  const next = JSON.parse(JSON.stringify(c)); const b = next.assets.find((x) => x.id === assetId);
+  b.lastMaintenance = dk; b.nextMaintenance = b.intervalMonths ? addMonths(dk, b.intervalMonths) : null; next.updatedAt = new Date().toISOString();
+  return next;
+}
+
 function seed() {
   const now = Date.now(); const H = 36e5, D = 864e5; const t = today();
   const iso = (msAgo) => new Date(now - msAgo).toISOString();
@@ -219,7 +260,7 @@ function seed() {
   const projects = [
     { id: "pDIG", key: "DIG", name: "Digitalisierung", type: "software", leadId: "u2", teamId: "tDIG", color: "#2a78d6", nextNo: 1, desc: "Kundenportal und digitale Auftragsabwicklung" },
     { id: "pGF", key: "GF", name: "Geschäftsführung", type: "business", leadId: "u1", teamId: "tGF", color: "#8f5bd6", nextNo: 1, desc: "Aufgaben und Vorhaben der Geschäftsführung" },
-    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", teamId: "tSVC", color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
+    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", teamId: "tSVC", autoMaint: true, maintLeadDays: 21, color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
   ];
   // Teams: wer gehört zusammen und stimmt sich ab (eine Person kann in mehreren Teams sein)
   const teams = [
@@ -317,10 +358,34 @@ function seed() {
   // Beispiele für den Team-Eingang (dem Team zugeordnet, aber noch niemandem zugewiesen)
   add("pGF", { type: "TASK", summary: "Angebot Druckluftanlage Müller Maschinenbau nachfassen", status: "TODO", priority: "HIGH", teamId: "tBUE", reporterId: "u1", createdAgo: 5 * H, dueDate: addDays(t, 2) });
   add("pGF", { type: "TASK", summary: "Ersatzteilbestand Filterelemente prüfen und nachbestellen", status: "TODO", priority: "MEDIUM", teamId: "tSVC", reporterId: "u2", createdAgo: 20 * H, dueDate: addDays(t, 4) });
-  return { users, teams, projects, sprints, issues, filters: [], notifications: [] };
+  // Kundenstamm mit Ansprechpartnern und Anlagen; Vorgänge werden über die Firma verknüpft
+  const c = (id, no, name, street, zip, city, phone, contacts, assets) => ({ id, no, name, street, zip, city, phone, email: contacts[0]?.email || "", notes: "", externalId: null,
+    contacts: contacts.map((k, n) => ({ id: `${id}k${n + 1}`, role: n ? "" : "Hauptansprechpartner", phone: "", ...k })),
+    assets: assets.map((a, n) => ({ id: `${id}a${n + 1}`, active: true, location: "", year: null, ...a })), createdAt: iso(90 * D), updatedAt: iso(5 * D) });
+  const customers = [
+    c("c1", "10001", "Kunze Metallbau GmbH", "Industriestraße 12", "09117", "Chemnitz", "0371 456780", [{ name: "Peter Kunze", email: "p.kunze@kunze-metallbau.de", phone: "0371 456781" }],
+      [{ name: "Schraubenkompressor GA 37 VSD", manufacturer: "Atlas Copco", model: "GA 37 VSD+", serial: "API123456", year: 2019, location: "Halle 2", intervalMonths: 12, lastMaintenance: addDays(t, -300) },
+       { name: "Kältetrockner FD 120", manufacturer: "Atlas Copco", model: "FD 120", serial: "FD778812", year: 2019, location: "Halle 2", intervalMonths: 12, lastMaintenance: addDays(t, -200) }]),
+    c("c2", "10002", "Lorenz Kunststofftechnik", "Am Gewerbepark 3", "09221", "Neukirchen/Erzgeb.", "0371 22110", [{ name: "Maria Lorenz", email: "m.lorenz@lorenz-kt.de" }, { name: "Uwe Bergmann", email: "u.bergmann@lorenz-kt.de", role: "Instandhaltung" }],
+      [{ name: "Kältetrockner Taupunkt +3 °C", manufacturer: "Kaeser", model: "TC 44", serial: "KT-44-0912", year: 2020, intervalMonths: 12, lastMaintenance: addDays(t, -380) },
+       { name: "Schraubenkompressor SK 25", manufacturer: "Kaeser", model: "SK 25", serial: "SK25-55102", year: 2016, intervalMonths: 6, lastMaintenance: addDays(t, -170) }]),
+    c("c3", "10003", "Richter Holzbau", "Waldweg 8", "09577", "Niederwiesa", "037206 1234", [{ name: "Tom Richter", email: "t.richter@richter-holz.de" }],
+      [{ name: "Schraubenkompressor GA 30", manufacturer: "Atlas Copco", model: "GA 30", serial: "GA30-88123", year: 2014, intervalMonths: 12, lastMaintenance: addDays(t, -350) }]),
+    c("c4", "10004", "Hofmann Druckguss", "Gießereistraße 1", "09125", "Chemnitz", "0371 51000", [{ name: "Jens Hofmann", email: "hofmann@druckguss-hofmann.de" }],
+      [{ name: "Kältetrockner", manufacturer: "Boge", model: "DS 80", serial: "B-DS80-4411", year: 2018, intervalMonths: 12, lastMaintenance: addDays(t, -362) },
+       { name: "Druckbehälter 2000 l", manufacturer: "Boge", model: "DB 2000", serial: "DB-2000-17", year: 2018, intervalMonths: 60, lastMaintenance: addDays(t, -14) }]),
+    c("c5", "10005", "Müller Maschinenbau GmbH", "Zwickauer Straße 210", "09116", "Chemnitz", "0371 300400", [{ name: "Andrea Müller", email: "a.mueller@mueller-maschinenbau.de", role: "Einkauf" }], []),
+  ];
+  for (const i of issues) if (i.customer?.company) { const k = customers.find((x) => x.name === i.customer.company); if (k) i.customerId = k.id; }
+  const asset = { "Jahreswartung Schraubenkompressor GA 30": "c3a1", "Jährliche Wartung Kältetrockner": "c4a1", "Kältetrockner Alarm Taupunkt zu hoch": "c2a1", "Schraubenkompressor zeigt Fehler E42 – Produktion steht": "c1a1", "Druckbehälterprüfung nach BetrSichV": "c4a2" };
+  for (const i of issues) if (asset[i.summary]) i.assetId = asset[i.summary];
+  // Abwesenheiten (normalerweise aus Factorial; hier Beispiel)
+  const absences = [{ id: "ab1", userId: "u6", start: addDays(t, 8), end: addDays(t, 12), type: "Urlaub", source: "manual", note: "" }];
+  return { users, teams, customers, absences, projects, sprints, issues, filters: [], notifications: [] };
 }
 
 return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur,
-  workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed };
+  workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed,
+  addMonths, nextMaintenance, customerSnapshot, customerAddress, maintenanceDue, maintenanceIssueData, completeMaintenance };
 })();

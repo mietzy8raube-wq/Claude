@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS portal_tokens_issue ON portal_tokens (issue_id);
 CREATE TABLE IF NOT EXISTS mail_log (notification_id TEXT PRIMARY KEY, sent_at INTEGER NOT NULL);
 `;
 
-export const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
+export const COLLECTIONS = ["users", "teams", "customers", "absences", "projects", "sprints", "issues", "filters", "notifications"];
 
 export class Store {
   constructor(file) {
