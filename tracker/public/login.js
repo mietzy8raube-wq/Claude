@@ -12,3 +12,6 @@ document.getElementById("login").addEventListener("submit", async (e) => {
   finally { btn.disabled = false; }
 });
 try { const th = localStorage.getItem("gft-theme"); if (th) document.documentElement.dataset.theme = th; } catch {}
+// Anmeldung mit Microsoft anbieten, wenn eingerichtet; Fehlermeldung aus der Rückleitung anzeigen
+fetch("/api/auth/config").then((r) => r.json()).then((c) => { if (c.microsoft) document.getElementById("sso").hidden = false; }).catch(() => {});
+{ const msg = new URLSearchParams(location.search).get("sso"); if (msg) { const err = document.getElementById("err"); err.textContent = msg; err.hidden = false; } }

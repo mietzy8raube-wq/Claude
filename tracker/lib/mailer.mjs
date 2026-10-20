@@ -5,16 +5,26 @@ export class Mailer {
   constructor(cfg) {
     this.cfg = cfg; this.token = null;
     this.loginHost = (cfg.loginHost || "https://login.microsoftonline.com").replace(/\/$/, "");
-    this.graph = (cfg.graphBase || "https://graph.microsoft.com/v1.0").replace(/\/$/, "");
+    this.graphBase = (cfg.graphBase || "https://graph.microsoft.com/v1.0").replace(/\/$/, "");
   }
   get configured() { return Boolean(this.cfg.tenantId && this.cfg.clientId && this.cfg.clientSecret && this.cfg.sender); }
+  /** App-Anmeldung möglich (für Postfach, Kalender) – unabhängig vom Absender. */
+  get appConfigured() { return Boolean(this.cfg.tenantId && this.cfg.clientId && this.cfg.clientSecret); }
+
+  /** Allgemeiner Graph-Aufruf mit App-Token; liefert JSON (oder null bei leerer Antwort). */
+  async graph(method, path, body, headers = {}) {
+    const res = await fetch(`${this.graphBase}${path}`, { method, headers: { Authorization: `Bearer ${await this.accessToken()}`, ...(body ? { "Content-Type": "application/json" } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20e3) });
+    const text = await res.text();
+    if (!res.ok) throw Object.assign(new Error(`Microsoft Graph ${method} ${path.split("?")[0]} → ${res.status}: ${text.slice(0, 300)}`), { status: res.status });
+    return text ? JSON.parse(text) : null;
+  }
 
   async accessToken() {
     if (this.token && this.token.exp - Date.now() > 5 * 60e3) return this.token.value;
     const res = await fetch(`${this.loginHost}/${this.cfg.tenantId}/oauth2/v2.0/token`, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({ client_id: this.cfg.clientId, client_secret: this.cfg.clientSecret, grant_type: "client_credentials", scope: `${new URL(this.graph).origin}/.default` }),
+      body: new URLSearchParams({ client_id: this.cfg.clientId, client_secret: this.cfg.clientSecret, grant_type: "client_credentials", scope: `${new URL(this.graphBase).origin}/.default` }),
     });
     if (!res.ok) throw new Error(`Microsoft-Anmeldung fehlgeschlagen (${res.status}): ${(await res.text()).slice(0, 300)}`);
     const body = await res.json();
@@ -24,7 +34,7 @@ export class Mailer {
 
   async send({ to, subject, html }) {
     if (!this.configured) return false;
-    const res = await fetch(`${this.graph}/users/${encodeURIComponent(this.cfg.sender)}/sendMail`, {
+    const res = await fetch(`${this.graphBase}/users/${encodeURIComponent(this.cfg.sender)}/sendMail`, {
       method: "POST",
       headers: { Authorization: `Bearer ${await this.accessToken()}`, "Content-Type": "application/json" },
       body: JSON.stringify({ message: { subject, body: { contentType: "HTML", content: html }, toRecipients: [{ emailAddress: { address: to } }] }, saveToSentItems: false }),
