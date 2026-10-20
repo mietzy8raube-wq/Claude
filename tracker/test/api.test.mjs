@@ -111,8 +111,22 @@ test("Kundenportal: Anfrage stellen, verfolgen, antworten – interne Notizen bl
   assert.ok(view.comments.some((c) => c.text === "Welcher Fehlercode?"));
   assert.ok(!view.comments.some((c) => c.text.includes("schwierig")), "interne Notiz darf nicht sichtbar sein");
   const rep = await pub.req(`/api/portal/requests/${r.data.token}/comments`, { method: "POST", body: { text: "Fehler E07" } });
-  assert.equal(rep.status, 200); assert.equal(rep.data.status, "In Bearbeitung");
+  assert.equal(rep.status, 200); assert.equal(rep.data.status, "In Arbeit");
   assert.equal((await pub.req("/api/portal/requests/ungueltigertokenungueltigertoken")).status, 404);
+});
+
+test("Service-Ablauf: Termin und Servicebericht erscheinen beim Kunden im Portal", async () => {
+  const pub = new Client();
+  const r = await pub.req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "MAINT", name: "Eva Test", company: "Test AG", email: "eva@test.de", summary: "Wartung Kompressor", description: "Bitte Termin", urgency: "MEDIUM" } });
+  const issue = (await mehmet.req("/api/state")).data.issues.find((i) => i.summary === "Wartung Kompressor");
+  const appt = new Date(Date.now() + 2 * 864e5).toISOString();
+  await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: issue.id, op: "patch", patch: { set: { status: "SCHEDULED", assigneeId: "u5", appointmentAt: appt } } }] } });
+  let v = (await pub.req(`/api/portal/requests/${r.data.token}`)).data;
+  assert.equal(v.status, "Eingeplant"); assert.equal(v.appointmentAt, appt); assert.equal(v.technician, "Mehmet Yilmaz"); assert.equal(v.report, null);
+  const res = { cause: "Filter verschmutzt", action: "Filter gewechselt", parts: "1× Luftfilter", hours: 1.5, at: new Date().toISOString(), by: "u5" };
+  await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: issue.id, op: "patch", patch: { set: { status: "RESOLVED", resolution: res, resolvedAt: new Date().toISOString() } } }] } });
+  v = (await pub.req(`/api/portal/requests/${r.data.token}`)).data;
+  assert.equal(v.statusCat, "done"); assert.equal(v.report.action, "Filter gewechselt"); assert.equal(v.appointmentAt, null);
 });
 
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {

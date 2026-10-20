@@ -212,10 +212,17 @@ function customerMails({ before, after }) {
     const agent = userById(c.userId)?.name || "Service";
     queueMail(after.customer.email, `[${key}] Neue Antwort zu Ihrer Anfrage`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`, title: after.summary, lines: [`${agent} hat geantwortet:`, c.text], button: { url: link, label: "Anfrage ansehen und antworten" }, footer: `Vorgang ${key}` }));
   }
+  if (after.status === "SCHEDULED" && after.appointmentAt && (before?.status !== "SCHEDULED" || before?.appointmentAt !== after.appointmentAt)) {
+    const when = fmtAppt(after.appointmentAt); const tech = userById(after.assigneeId)?.name;
+    queueMail(after.customer.email, `[${key}] ${before?.status === "SCHEDULED" ? "Neuer Termin" : "Terminbestätigung"}: ${when}`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`,
+      title: `${before?.status === "SCHEDULED" ? "Ihr Termin wurde verschoben" : "Wir haben einen Termin für Sie eingeplant"}: ${when}`, lines: [`Anliegen: ${after.summary}`, tech ? `Techniker/in: ${tech}` : "", "Passt der Termin nicht? Antworten Sie einfach über den Link."].filter(Boolean),
+      button: { url: link, label: "Anfrage ansehen" }, footer: `Vorgang ${key}` }));
+  }
   if (before && S.statusInfo(p, before.status).cat !== "done" && S.statusInfo(p, after.status).cat === "done") {
     queueMail(after.customer.email, `[${key}] Ihre Anfrage wurde gelöst`, mailTemplate({ company: CFG.company, greeting: `Guten Tag ${after.customer.name || ""},`, title: `Ihre Anfrage „${after.summary}“ wurde gelöst.`, lines: ["Falls noch etwas offen ist, antworten Sie einfach über den Link – die Anfrage wird dann wieder geöffnet."], button: { url: link, label: "Anfrage ansehen" }, footer: `Vorgang ${key}` }));
   }
 }
+const fmtAppt = (iso) => new Date(iso).toLocaleString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: env.TZ || "Europe/Berlin" }) + " Uhr";
 const mailQueue = [];
 function queueMail(to, subject, html) { mailQueue.push({ to, subject, html }); }
 async function flushMailQueue() {
@@ -234,6 +241,11 @@ function deadlineJob() {
         const d = S.daysBetween(t, i.dueDate);
         if (d < 0) for (const u of new Set([i.assigneeId, i.reporterId].filter(Boolean))) created += createNotification(u, "overdue", `Überfällig: ${key} ${i.summary}`, `Fällig war ${i.dueDate.split("-").reverse().join(".")}.`, i.id, `od:${i.id}:${i.dueDate}`);
         else if (d <= 2) { const u = i.assigneeId || i.reporterId; if (u) created += createNotification(u, "due", `Bald fällig: ${key} ${i.summary}`, `Fällig am ${i.dueDate.split("-").reverse().join(".")}.`, i.id, `ds:${i.id}:${i.dueDate}`); }
+      }
+      if (i.status === "SCHEDULED" && i.appointmentAt && i.assigneeId) {
+        const ms = new Date(i.appointmentAt).getTime() - Date.now();
+        if (ms > 0 && ms <= 18 * 36e5) created += createNotification(i.assigneeId, "due", `Einsatz ${fmtAppt(i.appointmentAt).replace(/ Uhr$/, "")}: ${key}`, `${i.customer?.company || ""} – ${i.summary}`, i.id, `appt:${i.id}:${i.appointmentAt}`);
+        if (ms < -2 * 36e5) created += createNotification(i.assigneeId, "overdue", `Einsatz noch nicht begonnen: ${key}`, `Termin war ${fmtAppt(i.appointmentAt)}. Bitte beginnen oder neu einplanen.`, i.id, `apptlate:${i.id}:${i.appointmentAt}`);
       }
       for (const kind of ["first", "resolve"]) {
         const s = S.slaCompute(i, p, kind); if (!s || s.stopped) continue;
@@ -279,6 +291,8 @@ function backupJob() {
 function portalView(issue) {
   const p = projectById(issue.projectId); const st = S.statusInfo(p, issue.status);
   return { key: issueKey(issue), summary: issue.summary, description: issue.description, type: issue.type, status: st.name, statusCat: st.cat, closed: issue.status === "CLOSED", createdAt: issue.createdAt,
+    appointmentAt: ["SCHEDULED", "WORKING"].includes(issue.status) ? issue.appointmentAt || null : null, technician: issue.assigneeId ? userById(issue.assigneeId)?.name || null : null,
+    report: issue.resolution && st.cat === "done" ? { cause: issue.resolution.cause, action: issue.resolution.action, parts: issue.resolution.parts, hours: issue.resolution.hours, at: issue.resolution.at } : null,
     comments: issue.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, text: c.text, fromCustomer: !c.userId, author: c.userId ? `${userById(c.userId)?.name || "Service"} (Service)` : c.author || "Sie" })) };
 }
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
@@ -328,7 +342,7 @@ async function portalReply(req, token) {
     i.comments.push({ id: S.uid(), userId: null, author: i.customer?.name || "Kunde", text, at: now, internal: false });
     if (i.status === "WAITING" || S.statusInfo(p, i.status).cat === "done") {
       const from = i.status; i.status = "WORKING"; S.applyTransition(i, p, from, "WORKING", now);
-      i.history.unshift({ id: S.uid(), at: now, userId: null, field: "Status", from: S.statusInfo(p, from).name, to: "In Bearbeitung" });
+      i.history.unshift({ id: S.uid(), at: now, userId: null, field: "Status", from: S.statusInfo(p, from).name, to: S.statusInfo(p, "WORKING").name });
     }
     i.updatedAt = now; store.put("issues", i);
     const who = i.assigneeId || p.leadId; if (who) createNotification(who, "comment", `Kunde hat geantwortet: ${issueKey(i)}`, `${i.customer?.name}: ${text.slice(0, 120)}`, i.id);

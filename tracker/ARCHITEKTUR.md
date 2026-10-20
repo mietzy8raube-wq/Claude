@@ -410,6 +410,42 @@ Die Zeiten laufen derzeit in **Kalenderzeit** (auch nachts/am Wochenende).
 | `SD` Service-Desk | Service-Desk | Störungen, Wartungen, Kundenanfragen – Portal-Link auf Website und in E-Mail-Signaturen |
 | `DIG` Digitalisierung | Scrum | IT- und Digitalisierungsprojekte mit Sprints |
 
+**Der Arbeitsablauf im System**
+
+Jeder Vorgang zeigt rechts den Kasten **„Arbeitsablauf“**: oben eine
+Fortschrittsleiste, darunter der *nächste sinnvolle Schritt* als blaue
+Schaltfläche und die Alternativen. Ein Schritt fragt genau die Angaben ab, die
+für ihn nötig sind – ohne sie geht es nicht weiter. Der Statuswechsel per
+Board-Drag oder „Status direkt setzen“ bleibt als Ausnahme möglich.
+
+Service-Desk (Störung, Wartung, Anfrage):
+
+| Status | Nächster Schritt | Pflichtangaben | Kunde erhält |
+| --- | --- | --- | --- |
+| Neu | Übernehmen → **Einplanen** (Störung/Wartung) bzw. **Bearbeiten** (Anfrage) | Techniker, Datum, Uhrzeit | Terminbestätigung per Mail + im Portal |
+| Eingeplant | **Einsatz beginnen** · Termin verschieben · Rückfrage | – / neuer Termin / Nachricht | bei Verschiebung neue Terminmail |
+| In Arbeit | **Erledigt – Servicebericht** · Ersatzteil bestellt · Rückfrage | Durchgeführte Arbeiten (+ Ursache, Material, Stunden) / interne Notiz / Nachricht | Servicebericht per Mail + im Portal |
+| Wartet auf Kunde / Ersatzteil | **Fortsetzen** oder neu einplanen | – / Termin | – |
+| Erledigt | **Abschließen** (oder Wiedereröffnen) | – | – |
+
+Interne Projekte: *Zu erledigen → In Arbeit → Prüfung → Fertig*, mit
+„Blockiert“ (Grund ist Pflicht). Bei „Zur Prüfung“ wird der Melder
+benachrichtigt und findet den Vorgang unter „Zur Freigabe durch Sie“;
+„Nacharbeit“ verlangt eine Begründung.
+
+- **Mein Tag** („Ihre Arbeit“): Sofort erledigen (überfällig, SLA gefährdet,
+  verpasste Termine), Neue Kundenanfragen, Heute, In Arbeit, Wartet,
+  Zur Freigabe – jede Zeile mit ihrer nächsten Schaltfläche.
+- **Einsatzplanung** (Service-Desk): Wochenraster Techniker × Tag. Offene
+  Vorgänge links auf eine Zelle ziehen = einplanen; Karten verschieben =
+  Termin ändern (Uhrzeit bleibt, Kunde wird informiert).
+- **Servicebericht**: entsteht beim Schritt „Erledigt“, ist im Vorgang
+  druckbar (PDF über den Browser) und für den Kunden im Portal sichtbar;
+  die Stunden fließen in die Zeiterfassung.
+- **Erinnerungen**: Der Techniker wird am Vortag/morgens an seinen Termin
+  erinnert; ist ein Einsatz 2 Stunden nach Termin nicht begonnen, erscheint
+  er unter „Sofort erledigen“ und es gibt eine Benachrichtigung.
+
 **Spielregeln, damit nichts liegen bleibt**
 
 1. **Jeder Vorgang hat genau eine verantwortliche Person und – wo sinnvoll –

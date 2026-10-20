@@ -21,10 +21,58 @@ const PROJECT_TYPES = {
   business: { label: "Business (Kanban)", types: ["TASK", "EPIC", "SUBTASK"], workflow: "standard" },
   service: { label: "Service-Desk", types: ["INCIDENT", "SERVICE", "MAINT", "SUBTASK"], workflow: "service" },
 };
+/* Workflows: "side" = Nebenzustand (Warten/Blockiert), erscheint nicht als Hauptschritt im Fortschritt. */
 const WORKFLOWS = {
-  standard: [{ id: "TODO", name: "Zu erledigen", cat: "todo" }, { id: "PROGRESS", name: "In Arbeit", cat: "progress" }, { id: "REVIEW", name: "In Prüfung", cat: "progress" }, { id: "DONE", name: "Fertig", cat: "done" }],
-  service: [{ id: "OPEN", name: "Offen", cat: "todo" }, { id: "WORKING", name: "In Bearbeitung", cat: "progress" }, { id: "WAITING", name: "Wartet auf Kunde", cat: "progress" }, { id: "RESOLVED", name: "Gelöst", cat: "done" }, { id: "CLOSED", name: "Geschlossen", cat: "done" }],
+  standard: [
+    { id: "TODO", name: "Zu erledigen", cat: "todo" },
+    { id: "PROGRESS", name: "In Arbeit", cat: "progress" },
+    { id: "BLOCKED", name: "Blockiert", cat: "progress", side: true },
+    { id: "REVIEW", name: "In Prüfung", cat: "progress" },
+    { id: "DONE", name: "Fertig", cat: "done" },
+  ],
+  service: [
+    { id: "OPEN", name: "Neu", cat: "todo" },
+    { id: "SCHEDULED", name: "Eingeplant", cat: "progress" },
+    { id: "WORKING", name: "In Arbeit", cat: "progress" },
+    { id: "WAITING", name: "Wartet auf Kunde", cat: "progress", side: true },
+    { id: "PARTS", name: "Wartet auf Ersatzteil", cat: "progress", side: true },
+    { id: "RESOLVED", name: "Erledigt", cat: "done" },
+    { id: "CLOSED", name: "Abgeschlossen", cat: "done" },
+  ],
 };
+/* Arbeitsschritte (Übergänge) mit Pflichtangaben.
+   needs: assignee = Verantwortliche/r · appointment = Termin · reply = Nachricht an Kunden (Pflicht)
+          note = interne Notiz (Pflicht) · comment = Kommentar (Pflicht) · report = Servicebericht · optComment = Kommentar optional
+   types: nur für diese Vorgangstypen · primary: Hauptschritt (hervorgehoben) */
+const TRANSITIONS = {
+  standard: [
+    { id: "start", from: ["TODO"], to: "PROGRESS", label: "Starten", primary: true, needs: ["assignee"] },
+    { id: "review", from: ["PROGRESS"], to: "REVIEW", label: "Zur Prüfung geben", primary: true, needs: ["optComment"], hint: "Der Melder wird zur Freigabe benachrichtigt." },
+    { id: "done", from: ["PROGRESS"], to: "DONE", label: "Erledigt", needs: ["optComment"] },
+    { id: "approve", from: ["REVIEW"], to: "DONE", label: "Freigeben", primary: true, needs: ["optComment"] },
+    { id: "rework", from: ["REVIEW"], to: "PROGRESS", label: "Zurück zur Überarbeitung", needs: ["comment"] },
+    { id: "block", from: ["TODO", "PROGRESS"], to: "BLOCKED", label: "Blockiert melden", needs: ["comment"], hint: "Woran hängt es? Wer muss etwas tun?" },
+    { id: "unblock", from: ["BLOCKED"], to: "PROGRESS", label: "Weiter bearbeiten", primary: true, needs: ["optComment"] },
+    { id: "defer", from: ["PROGRESS"], to: "TODO", label: "Zurückstellen", needs: ["optComment"] },
+    { id: "reopen", from: ["DONE"], to: "PROGRESS", label: "Wieder öffnen", needs: ["comment"] },
+  ],
+  service: [
+    { id: "schedule", from: ["OPEN"], to: "SCHEDULED", label: "Einplanen", primary: true, types: ["INCIDENT", "MAINT"], needs: ["assignee", "appointment"], hint: "Der Kunde erhält eine Terminbestätigung per E-Mail." },
+    { id: "work", from: ["OPEN"], to: "WORKING", label: "Bearbeiten", primary: true, types: ["SERVICE", "SUBTASK"], needs: ["assignee"] },
+    { id: "work-now", from: ["OPEN"], to: "WORKING", label: "Sofort bearbeiten", types: ["INCIDENT", "MAINT"], needs: ["assignee"] },
+    { id: "ask", from: ["OPEN", "SCHEDULED", "WORKING"], to: "WAITING", label: "Rückfrage an Kunden", needs: ["reply"], hint: "Die Lösungsfrist (SLA) pausiert, bis der Kunde antwortet." },
+    { id: "begin", from: ["SCHEDULED"], to: "WORKING", label: "Einsatz beginnen", primary: true, needs: [] },
+    { id: "reschedule", from: ["SCHEDULED"], to: "SCHEDULED", label: "Termin verschieben", needs: ["assignee", "appointment"], hint: "Der Kunde erhält den neuen Termin per E-Mail." },
+    { id: "parts", from: ["SCHEDULED", "WORKING"], to: "PARTS", label: "Ersatzteil bestellt", needs: ["note"], hint: "Welches Teil, bei wem bestellt, voraussichtlicher Liefertermin?" },
+    { id: "resume", from: ["WAITING", "PARTS"], to: "WORKING", label: "Fortsetzen", primary: true, needs: ["optComment"] },
+    { id: "replan", from: ["PARTS", "WAITING"], to: "SCHEDULED", label: "Neu einplanen", needs: ["assignee", "appointment"] },
+    { id: "resolve", from: ["WORKING"], to: "RESOLVED", label: "Erledigt – Servicebericht", primary: true, needs: ["report"], hint: "Der Bericht wird dem Kunden im Portal und per E-Mail angezeigt." },
+    { id: "close", from: ["RESOLVED"], to: "CLOSED", label: "Abschließen", primary: true, needs: ["optComment"], hint: "Abgerechnet bzw. vollständig erledigt." },
+    { id: "reopen", from: ["RESOLVED", "CLOSED"], to: "WORKING", label: "Wieder öffnen", needs: ["comment"] },
+  ],
+};
+const transitionsFor = (project, issue) => (TRANSITIONS[PROJECT_TYPES[project.type].workflow] || [])
+  .filter((t) => t.from.includes(issue.status) && (!t.types || t.types.includes(issue.type)));
 const CAT_LABEL = { todo: "Zu erledigen", progress: "In Arbeit", done: "Fertig" };
 const PRIOS = {
   HIGHEST: { label: "Höchste", color: "#c9372c", rank: 5, svg: '<path d="M6 13l6-6 6 6M6 19l6-6 6 6"/>' },
@@ -90,6 +138,7 @@ function applyTransition(issue, project, from, to, nowIso = new Date().toISOStri
   if (project.type === "service") {
     if (from === "OPEN" && !issue.firstResponseAt) issue.firstResponseAt = nowIso;
     if (to === "WAITING" && !issue.pausedSince) issue.pausedSince = nowIso;
+    if (from === "SCHEDULED" && to === "OPEN") issue.appointmentAt = null;
     if (from === "WAITING" && issue.pausedSince) { issue.pausedMs = (issue.pausedMs || 0) + (new Date(nowIso).getTime() - new Date(issue.pausedSince).getTime()); issue.pausedSince = null; }
   }
 }
@@ -103,7 +152,7 @@ function newIssue(d) {
     labels: d.labels || [], dueDate: d.dueDate || null, startDate: d.startDate || null, storyPoints: d.storyPoints ?? null, estimateH: d.estimateH ?? null, loggedH: 0,
     epicId: d.epicId || null, parentId: d.parentId || null, sprintId: d.sprintId || null, links: [], watchers: [], comments: [], history: [],
     createdAt: nowIso, updatedAt: nowIso, resolvedAt: null, customer: d.customer || null, firstResponseAt: null, pausedMs: 0, pausedSince: null,
-    rank: d.rank ?? Date.now(), color: d.color || null,
+    rank: d.rank ?? Date.now(), color: d.color || null, appointmentAt: d.appointmentAt || null, resolution: null,
   };
   i.watchers = [...new Set([i.reporterId, i.assigneeId].filter(Boolean))];
   i.history.push({ id: uid(), at: nowIso, userId: i.reporterId, field: "Vorgang", from: "", to: "erstellt" });
@@ -189,6 +238,7 @@ function seed() {
       links: [], watchers: [], comments: [], history: [], createdAt: iso(created), updatedAt: iso(o.updatedAgo ?? Math.min(created, 2 * D)),
       resolvedAt: o.resolvedAgo != null ? iso(o.resolvedAgo) : null, customer: o.customer || null, firstResponseAt: o.firstRespAgo != null ? iso(o.firstRespAgo) : null,
       pausedMs: 0, pausedSince: o.pausedAgo != null ? iso(o.pausedAgo) : null, rank: rank++, color: o.color || null,
+      appointmentAt: o.appointmentAt || null, resolution: o.resolution || null,
     };
     issue.watchers = [...new Set([issue.reporterId, issue.assigneeId].filter(Boolean))];
     (o.comments || []).forEach(([userId, text, agoMs, internal, author]) => issue.comments.push({ id: uid(), userId, author: author || null, text, at: iso(agoMs), internal: !!internal }));
@@ -225,29 +275,41 @@ function seed() {
   add("pGF", { type: "TASK", summary: "Elektroinstallation Halle 2 beauftragen", status: "DONE", assigneeId: "u1", epicId: g1.id, createdAgo: 18 * D, resolvedAgo: 9 * D });
   add("pGF", { type: "TASK", summary: "Recruiting: 2 Servicetechniker", status: "PROGRESS", priority: "HIGH", assigneeId: "u1", dueDate: addDays(t, 20), createdAgo: 15 * D, labels: ["personal"] });
   add("pGF", { type: "TASK", summary: "Quartalszahlen für die Bank aufbereiten", status: "TODO", priority: "MEDIUM", assigneeId: "u1", reporterId: "u2", dueDate: addDays(t, 3), createdAgo: 4 * D, labels: ["finanzen"] });
+  add("pGF", { type: "TASK", summary: "Leasingvertrag Servicefahrzeuge verlängern", status: "BLOCKED", priority: "HIGH", assigneeId: "u2", reporterId: "u1", dueDate: addDays(t, 4), createdAgo: 6 * D, labels: ["verwaltung"],
+    comments: [["u2", "Warten auf Angebot der Leasinggesellschaft – zweimal nachgefragt.", 2 * D]] });
+  add("pGF", { type: "TASK", summary: "Preisliste Wartungsverträge 2027 erstellen", status: "REVIEW", priority: "MEDIUM", assigneeId: "u3", reporterId: "u2", dueDate: addDays(t, 2), createdAgo: 5 * D,
+    comments: [["u3", "Entwurf liegt im Teams-Ordner Vertrieb, bitte freigeben.", 4 * H]] });
   add("pGF", { type: "TASK", summary: "Schulungsplan Q1 für Servicetechniker", status: "TODO", priority: "LOW", assigneeId: "u3", reporterId: "u1", dueDate: addDays(t, 12), createdAgo: 2 * D });
   add("pGF", { type: "TASK", summary: "Website: Referenzprojekte aktualisieren", status: "TODO", priority: "MEDIUM", assigneeId: null, dueDate: addDays(t, 5), createdAgo: 3 * D, labels: ["marketing"] });
   add("pGF", { type: "TASK", summary: "Monatliches Liquiditäts-Reporting", status: "DONE", assigneeId: "u1", dueDate: addDays(t, -6), createdAgo: 12 * D, resolvedAgo: 7 * D });
-  // SD – Service-Desk
+  // SD – Service-Desk (typischer Ablauf: Neu → Eingeplant → In Arbeit → Erledigt → Abgeschlossen)
   const cust = (name, company, email) => ({ name, company, email, phone: "" });
+  const at = (dayOffset, hh, mm = 0) => { const d = new Date(); d.setDate(d.getDate() + dayOffset); d.setHours(hh, mm, 0, 0); return d.toISOString(); };
   add("pSD", { type: "INCIDENT", summary: "Schraubenkompressor zeigt Fehler E42 – Produktion steht", status: "WORKING", priority: "HIGHEST", assigneeId: "u5", reporterId: null, customer: cust("Peter Kunze", "Kunze Metallbau GmbH", "p.kunze@kunze-metallbau.de"),
-    createdAgo: 5 * H, firstRespAgo: 4.6 * H, labels: ["vor-ort"], description: "Anlage: GA 37 VSD, Halle B\nSeit heute Morgen Fehler E42, Kompressor schaltet ab.",
+    createdAgo: 5 * H, firstRespAgo: 4.6 * H, appointmentAt: at(0, 7, 30), labels: ["vor-ort"], description: "Anlage: GA 37 VSD, Halle B\nSeit heute Morgen Fehler E42, Kompressor schaltet ab.",
     comments: [[null, "Kompressor schaltet nach 2 Minuten wieder ab.", 5 * H, false, "Peter Kunze"], ["u5", "Techniker ist unterwegs, Ankunft ca. 11 Uhr.", 4.6 * H], ["u5", "Vermutlich Temperaturfühler – Ersatzteil im Fahrzeug prüfen.", 4.5 * H, true]] });
   add("pSD", { type: "INCIDENT", summary: "Druckabfall im Leitungsnetz", status: "OPEN", priority: "HIGH", assigneeId: null, reporterId: null, customer: cust("Maria Lorenz", "Lorenz Kunststofftechnik", "m.lorenz@lorenz-kt.de"), createdAgo: 3.5 * H,
-    description: "Netzdruck fällt von 7,5 auf 5,8 bar, Leckage vermutet." });
-  add("pSD", { type: "MAINT", summary: "Jährliche Wartung Kältetrockner", status: "WAITING", priority: "LOW", assigneeId: "u6", reporterId: null, customer: cust("Jens Hofmann", "Hofmann Druckguss", "hofmann@druckguss-hofmann.de"), createdAgo: 2 * D, firstRespAgo: 1.8 * D, pausedAgo: 1.7 * D,
-    comments: [["u6", "Welche Termine passen Ihnen in KW 44?", 1.7 * D]] });
-  add("pSD", { type: "SERVICE", summary: "Angebot Ersatzfilter für 3 Anlagen", status: "WORKING", priority: "MEDIUM", assigneeId: "u6", reporterId: null, customer: cust("Peter Kunze", "Kunze Metallbau GmbH", "p.kunze@kunze-metallbau.de"), createdAgo: 2.5 * D, firstRespAgo: 2.4 * D });
-  add("pSD", { type: "INCIDENT", summary: "Kondensatableiter undicht", status: "RESOLVED", priority: "MEDIUM", assigneeId: "u5", reporterId: null, customer: cust("Maria Lorenz", "Lorenz Kunststofftechnik", "m.lorenz@lorenz-kt.de"), createdAgo: 6 * D, firstRespAgo: 5.9 * D, resolvedAgo: 5 * D });
-  add("pSD", { type: "INCIDENT", summary: "Kompressor sehr laut seit Ölwechsel", status: "WORKING", priority: "HIGH", assigneeId: "u5", reporterId: null, customer: cust("Tom Richter", "Richter Holzbau", "t.richter@richter-holz.de"), createdAgo: 30 * H, firstRespAgo: 25 * H });
-  add("pSD", { type: "MAINT", summary: "Druckbehälterprüfung nach BetrSichV", status: "CLOSED", priority: "MEDIUM", assigneeId: "u6", reporterId: null, customer: cust("Jens Hofmann", "Hofmann Druckguss", "hofmann@druckguss-hofmann.de"), createdAgo: 14 * D, firstRespAgo: 13.8 * D, resolvedAgo: 11 * D });
+    description: "Anlage/Standort: Ringleitung Halle 1\n\nNetzdruck fällt von 7,5 auf 5,8 bar, Leckage vermutet." });
+  add("pSD", { type: "MAINT", summary: "Jahreswartung Schraubenkompressor GA 30", status: "OPEN", priority: "MEDIUM", assigneeId: null, reporterId: null, customer: cust("Tom Richter", "Richter Holzbau", "t.richter@richter-holz.de"), createdAgo: 20 * H,
+    description: "Bitte Termin in den nächsten zwei Wochen, vormittags." });
+  add("pSD", { type: "MAINT", summary: "Jährliche Wartung Kältetrockner", status: "SCHEDULED", priority: "LOW", assigneeId: "u6", reporterId: null, customer: cust("Jens Hofmann", "Hofmann Druckguss", "hofmann@druckguss-hofmann.de"), createdAgo: 2 * D, firstRespAgo: 1.8 * D, appointmentAt: at(1, 9, 0),
+    comments: [["u6", "Termin bestätigt: morgen 9:00 Uhr, Techniker Sarah Becker.", 1.7 * D]] });
+  add("pSD", { type: "INCIDENT", summary: "Kältetrockner Alarm Taupunkt zu hoch", status: "SCHEDULED", priority: "HIGH", assigneeId: "u5", reporterId: null, customer: cust("Maria Lorenz", "Lorenz Kunststofftechnik", "m.lorenz@lorenz-kt.de"), createdAgo: 22 * H, firstRespAgo: 20 * H, appointmentAt: at(0, 13, 30) });
+  add("pSD", { type: "SERVICE", summary: "Angebot Ersatzfilter für 3 Anlagen", status: "WAITING", priority: "MEDIUM", assigneeId: "u6", reporterId: null, customer: cust("Peter Kunze", "Kunze Metallbau GmbH", "p.kunze@kunze-metallbau.de"), createdAgo: 2.5 * D, firstRespAgo: 2.4 * D, pausedAgo: 1 * D,
+    comments: [["u6", "Welche Seriennummern haben die drei Anlagen? Dann erstellen wir das Angebot.", 1 * D]] });
+  add("pSD", { type: "INCIDENT", summary: "Kompressor sehr laut seit Ölwechsel", status: "PARTS", priority: "HIGH", assigneeId: "u5", reporterId: null, customer: cust("Tom Richter", "Richter Holzbau", "t.richter@richter-holz.de"), createdAgo: 30 * H, firstRespAgo: 25 * H, appointmentAt: at(-1, 10, 0),
+    comments: [["u5", "Lagerschaden am Motor. Ersatzlager bei Hersteller bestellt, Lieferung voraussichtlich übermorgen.", 6 * H, true]] });
+  add("pSD", { type: "INCIDENT", summary: "Kondensatableiter undicht", status: "RESOLVED", priority: "MEDIUM", assigneeId: "u5", reporterId: null, customer: cust("Maria Lorenz", "Lorenz Kunststofftechnik", "m.lorenz@lorenz-kt.de"), createdAgo: 6 * D, firstRespAgo: 5.9 * D, resolvedAgo: 5 * D, appointmentAt: at(-5, 8, 0),
+    resolution: { cause: "Dichtung des Kondensatableiters verschlissen", action: "Kondensatableiter getauscht, Dichtheit geprüft", parts: "1× Kondensatableiter EWD 50", hours: 1.5, at: iso(5 * D), by: "u5" } });
+  add("pSD", { type: "MAINT", summary: "Druckbehälterprüfung nach BetrSichV", status: "CLOSED", priority: "MEDIUM", assigneeId: "u6", reporterId: null, customer: cust("Jens Hofmann", "Hofmann Druckguss", "hofmann@druckguss-hofmann.de"), createdAgo: 14 * D, firstRespAgo: 13.8 * D, resolvedAgo: 11 * D, appointmentAt: at(-11, 9, 0),
+    resolution: { cause: "Wiederkehrende Prüfung", action: "Äußere Prüfung durchgeführt, Prüfbescheinigung ausgestellt", parts: "", hours: 2, at: iso(11 * D), by: "u6" } });
   const findI = (s) => issues.find((i) => i.summary.startsWith(s));
   const a = findI("Login schlägt"), b = findI("Störung über das Portal");
   a.links.push({ type: "blocks", issueId: b.id }); b.links.push({ type: "blocked_by", issueId: a.id });
   return { users, projects, sprints, issues, filters: [], notifications: [] };
 }
 
-return { TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
+return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur,
   workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed };
 })();

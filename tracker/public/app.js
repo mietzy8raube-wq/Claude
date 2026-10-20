@@ -4,7 +4,7 @@
    als Patches synchronisiert und per Server-Sent Events live verteilt.
    Fachlogik (Workflows, SLA, Patch-Verfahren) steckt in shared.js.
    ====================================================================== */
-const { TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
+const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch } = TrackerShared;
 
 /* ---------- Symbole ---------- */
@@ -215,7 +215,7 @@ function notify(userIds, type, title, text, issueId, key) {
 // Fristen- und SLA-Benachrichtigungen erzeugt der Server (deadlineJob).
 
 /* ---------- Vorgänge ändern ---------- */
-const FIELD_LABEL = { summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
+const FIELD_LABEL = { appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
   dueDate: "Fälligkeitsdatum", startDate: "Startdatum", storyPoints: "Story Points", estimateH: "Schätzung", epicId: "Epic", sprintId: "Sprint", type: "Vorgangstyp", parentId: "Übergeordnet", color: "Farbe" };
 function fieldText(i, f, v) {
   if (v == null || v === "" || (Array.isArray(v) && !v.length)) return "–";
@@ -226,6 +226,8 @@ function fieldText(i, f, v) {
   if (f === "sprintId") return sprint(v)?.name || "Backlog";
   if (f === "type") return TYPES[v]?.label || v;
   if (f === "dueDate" || f === "startDate") return fmtDay(v);
+  if (f === "appointmentAt") return fmtAppt(v);
+  if (f === "resolution") return "erfasst";
   if (f === "labels") return v.join(", ");
   if (f === "description") return v.length > 60 ? v.slice(0, 60) + "…" : v;
   return String(v);
@@ -542,7 +544,7 @@ function renderTop() {
 function projectNav(p, view) {
   const items = p.type === "software" ? [["board", "Board", "board"], ["backlog", "Backlog", "backlog"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
     : p.type === "business" ? [["board", "Board", "board"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
-    : [["queue", "Warteschlangen", "queue"], ["board", "Board", "board"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]];
+    : [["queue", "Warteschlangen", "queue"], ["dispatch", "Einsatzplanung", "timeline"], ["board", "Board", "board"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]];
   items.push(["settings", "Projekteinstellungen", "gear"]);
   $("#psidebar").hidden = false;
   $("#psidebar").innerHTML = `<div class="phead"><span class="pavatar" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><div class="trunc"><div class="b trunc">${esc(p.name)}</div><div class="small muted">${PROJECT_TYPES[p.type].label}</div></div></div>
@@ -560,7 +562,7 @@ function render() {
       case "projects": html = viewProjects(); break;
       case "p": { const p = projByKey(parts[1]); if (!p) { html = `<div class="empty">Projekt nicht gefunden.</div>`; break; }
         const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
-        html = tabs + ({ board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
+        html = tabs + ({ dispatch: viewDispatch, board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
       case "filters": html = viewFilters(params); break;
       case "dashboard": html = viewDashboard(); break;
       case "portal": html = `<div class="empty">Das Kundenportal ist öffentlich erreichbar unter <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – diesen Link können Sie an Kunden weitergeben.</div>`; break;
@@ -574,31 +576,167 @@ function render() {
   if (ui.openIssue && $("#modal").classList.contains("open") && ui.modal === "issue") renderIssue();
 }
 
-/* ---------- Ansicht: Ihre Arbeit ---------- */
+/* ---------- Arbeitsablauf: Schritte, Termine, Servicebericht ---------- */
+const fmtAppt = (iso) => iso ? new Date(iso).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "–";
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+const ACTIVE_APPT = ["SCHEDULED", "WORKING", "PARTS", "WAITING"];
+function apptChip(i) {
+  if (!i.appointmentAt || !ACTIVE_APPT.includes(i.status)) return "";
+  const d = dayKey(i.appointmentAt), t = today();
+  const cls = d < t && i.status === "SCHEDULED" ? "red" : d === t ? "yellow" : "gray";
+  return `<span class="chip ${cls}" title="Termin">◷ ${d === t ? "heute " + fmtTime(i.appointmentAt) : fmtAppt(i.appointmentAt)}</span>`;
+}
+const stepsFor = (i) => transitionsFor(proj(i.projectId), i);
+const primaryStep = (i) => stepsFor(i).find((t) => t.primary) || null;
+/** Hauptknopf für Listen: "Übernehmen", wenn niemand zuständig ist, sonst der nächste Arbeitsschritt. */
+function actionButton(i, size = "sm") {
+  if (!i.assigneeId && !isDone(i)) return `<button class="btn ${size} primary" data-act="take" data-id="${i.id}">Übernehmen</button>`;
+  const t = primaryStep(i); if (!t) return "";
+  return `<button class="btn ${size} primary" data-act="step" data-id="${i.id}" data-t="${t.id}">${esc(t.label)}</button>`;
+}
+/** Fortschrittsleiste der Hauptschritte (Nebenzustände wie „Wartet“ werden markiert). */
+function processStepper(i) {
+  const wf = workflowOf(proj(i.projectId)); const main = wf.filter((s) => !s.side); const cur = statusOf(i);
+  const curIdx = cur.side ? main.findIndex((s) => s.id === (proj(i.projectId).type === "service" ? "WORKING" : "PROGRESS")) : main.findIndex((s) => s.id === i.status);
+  return `<div class="stepper">${main.map((st, k) => `<div class="step ${k < curIdx ? "done" : k === curIdx ? "current" : ""}"><span class="dot">${k < curIdx ? "✓" : k + 1}</span><span class="lbl">${esc(st.name)}</span></div>`).join("")}</div>
+    ${cur.side ? `<div class="note warn" style="margin-top:8px">⏸ ${esc(cur.name)}</div>` : ""}`;
+}
+function workflowPanel(i) {
+  const steps = stepsFor(i); const prim = steps.filter((t) => t.primary), sec = steps.filter((t) => !t.primary);
+  return `<div class="details wf-panel"><div class="dh row" style="justify-content:space-between">Arbeitsablauf ${lozenge(i)}</div>
+    <div style="padding:12px 14px">${processStepper(i)}
+      <div class="row" style="margin-top:12px">${!i.assigneeId && !isDone(i) ? `<button class="btn primary" data-act="take" data-id="${i.id}">Übernehmen</button>` : ""}
+        ${prim.map((t) => `<button class="btn ${i.assigneeId || isDone(i) ? "primary" : ""}" data-act="step" data-id="${i.id}" data-t="${t.id}">${esc(t.label)}</button>`).join("")}</div>
+      ${sec.length ? `<div class="row" style="margin-top:8px">${sec.map((t) => `<button class="btn sm" data-act="step" data-id="${i.id}" data-t="${t.id}">${esc(t.label)}</button>`).join("")}</div>` : ""}
+      <details style="margin-top:10px"><summary class="small muted" style="cursor:pointer">Status direkt setzen</summary><select class="status-btn cat-${statusOf(i).cat}" data-f="status" aria-label="Status" style="width:auto;margin-top:6px">${statusOpts(i)}</select></details>
+    </div></div>`;
+}
+function reportText(r) {
+  return ["Servicebericht", r.cause ? `Ursache: ${r.cause}` : "", `Durchgeführte Arbeiten: ${r.action}`, r.parts ? `Material/Ersatzteile: ${r.parts}` : "", r.hours ? `Arbeitszeit: ${String(r.hours).replace(".", ",")} h` : ""].filter(Boolean).join("\n");
+}
+function reportBlock(i) {
+  const r = i.resolution; if (!r) return "";
+  return `<div class="card pad report" style="margin:6px 0 16px;border-left:4px solid var(--ok)"><div class="row"><b>Servicebericht</b><span class="small muted">${esc(uname(r.by))} · ${fmtDT(r.at)}</span><span class="sp"></span><button class="btn sm" data-act="print-report" data-id="${i.id}">Drucken / PDF</button></div>
+    <div class="grid g2" style="gap:8px;margin-top:8px;font-size:13px">${r.cause ? `<div><div class="small muted">Ursache</div>${esc(r.cause)}</div>` : ""}<div><div class="small muted">Durchgeführte Arbeiten</div><div style="white-space:pre-wrap">${esc(r.action)}</div></div>
+    ${r.parts ? `<div><div class="small muted">Material / Ersatzteile</div><div style="white-space:pre-wrap">${esc(r.parts)}</div></div>` : ""}${r.hours ? `<div><div class="small muted">Arbeitszeit</div>${String(r.hours).replace(".", ",")} h</div>` : ""}</div></div>`;
+}
+function printReport(i) {
+  const r = i.resolution; if (!r) return; const p = proj(i.projectId);
+  const w = window.open("", "_blank"); if (!w) return toast("Bitte Pop-ups für diese Seite erlauben.");
+  const row = (l, v) => v ? `<tr><th>${l}</th><td>${esc(v).replace(/\n/g, "<br>")}</td></tr>` : "";
+  w.document.write(`<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Servicebericht ${keyOf(i)}</title><style>body{font:14px/1.5 "Segoe UI",Arial,sans-serif;color:#172b4d;margin:40px}h1{font-size:22px;margin:0 0 4px}table{border-collapse:collapse;width:100%;margin-top:16px}th,td{border:1px solid #c7ccd4;padding:8px 10px;text-align:left;vertical-align:top}th{width:200px;background:#f1f2f4}.sign{display:flex;gap:40px;margin-top:60px}.sign div{flex:1;border-top:1px solid #172b4d;padding-top:6px;font-size:12px}</style></head><body>
+    <h1>Servicebericht ${keyOf(i)}</h1><div>${esc(sync.company)} · ${esc(p.name)}</div>
+    <table>${row("Kunde", [i.customer?.company, i.customer?.name].filter(Boolean).join(" – "))}${row("Anliegen", i.summary)}${row("Termin", i.appointmentAt ? fmtAppt(i.appointmentAt) : "")}${row("Techniker/in", uname(r.by))}${row("Ursache", r.cause)}${row("Durchgeführte Arbeiten", r.action)}${row("Material / Ersatzteile", r.parts)}${row("Arbeitszeit", r.hours ? String(r.hours).replace(".", ",") + " h" : "")}${row("Erledigt am", fmtDT(r.at))}</table>
+    <div class="sign"><div>Ort, Datum</div><div>Unterschrift Kunde</div><div>Unterschrift Techniker/in</div></div></body></html>`);
+  w.document.close(); w.focus(); setTimeout(() => w.print(), 300);
+}
+/** Dialog für einen Arbeitsschritt mit den nötigen Pflichtangaben. */
+function stepForm(i, t, prefill = {}) {
+  const p = proj(i.projectId); const isSvc = p.type === "service"; const n = new Set(t.needs);
+  const appt = prefill.appointmentAt || i.appointmentAt; const ad = appt ? new Date(appt) : (() => { const d = new Date(); d.setDate(d.getDate() + (d.getHours() >= 12 ? 1 : 0)); return d; })();
+  const dateVal = dayKey(ad), timeVal = appt ? fmtTime(appt) : "08:00";
+  ui.stepReturn = ui.modal === "issue" ? i.id : null;
+  openModal(`<div class="modal-h"><h2>${esc(t.label)}</h2><button class="btn subtle icon" data-act="step-cancel" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="step-form" data-id="${i.id}" data-t="${t.id}"><div class="modal-b">
+      <div class="row small muted">${typeIcon(i.type)} <b class="key">${keyOf(i)}</b> ${esc(i.summary)}</div>
+      <div class="row small">${lozenge(i)} → <span class="lozenge cat-${statusInfo(p, t.to).cat}">${esc(statusInfo(p, t.to).name)}</span></div>
+      ${t.hint ? `<div class="note info">${esc(t.hint)}</div>` : ""}
+      ${n.has("assignee") ? `<label class="f"><span>Verantwortlich <span class="req">*</span></span><select name="assigneeId" required>${userOpts(prefill.assigneeId || i.assigneeId || db.currentUserId, "– bitte wählen –")}</select></label>` : ""}
+      ${n.has("appointment") ? `<div class="grid g2" style="gap:12px"><label class="f"><span>Termin – Datum <span class="req">*</span></span><input type="date" name="date" value="${dateVal}" required></label><label class="f"><span>Uhrzeit <span class="req">*</span></span><input type="time" name="time" value="${timeVal}" step="900" required></label></div>` : ""}
+      ${n.has("reply") ? `<label class="f"><span>Nachricht an den Kunden <span class="req">*</span></span><textarea name="reply" rows="4" required placeholder="z. B. Welche Seriennummer hat die Anlage?"></textarea></label>` : ""}
+      ${n.has("note") ? `<label class="f"><span>Interne Notiz <span class="req">*</span></span><textarea name="note" rows="3" required></textarea></label>` : ""}
+      ${n.has("comment") ? `<label class="f"><span>Begründung <span class="req">*</span></span><textarea name="comment" rows="3" required></textarea></label>` : ""}
+      ${n.has("optComment") ? `<label class="f">Kommentar (optional)<textarea name="comment" rows="2"></textarea></label>` : ""}
+      ${n.has("report") ? `<label class="f">Ursache<input type="text" name="cause" maxlength="300" placeholder="z. B. Temperaturfühler defekt"></label>
+        <label class="f"><span>Durchgeführte Arbeiten <span class="req">*</span></span><textarea name="action" rows="4" required placeholder="z. B. Fühler getauscht, Probelauf 30 min ohne Fehler"></textarea></label>
+        <div class="grid g2" style="gap:12px"><label class="f">Material / Ersatzteile<textarea name="parts" rows="2"></textarea></label><label class="f">Arbeitszeit (Stunden)<input type="number" name="hours" min="0" step="0.25" placeholder="z. B. 1,5"></label></div>` : ""}
+      ${isSvc && (n.has("reply") || n.has("report") || n.has("appointment")) && !i.customer?.email ? `<p class="small muted" style="margin:0">Hinweis: Für diesen Vorgang ist keine Kunden-E-Mail hinterlegt.</p>` : ""}
+    </div><div class="modal-f"><button type="button" class="btn subtle" data-act="step-cancel">Abbrechen</button><button class="btn primary" type="submit">${esc(t.label)}</button></div></form>`);
+  setTimeout(() => $("#step-form select, #step-form input, #step-form textarea")?.focus(), 30);
+}
+function performStep(i, t, fd) {
+  const p = proj(i.projectId); const isSvc = p.type === "service"; const n = new Set(t.needs); const changes = {};
+  if (n.has("assignee")) { const a = fd.get("assigneeId"); if (!a) throw new Error("Bitte eine verantwortliche Person wählen."); changes.assigneeId = a; }
+  if (n.has("appointment")) {
+    const d = fd.get("date"), tm = fd.get("time"); if (!d || !tm) throw new Error("Bitte Datum und Uhrzeit des Termins angeben.");
+    const dt = new Date(`${d}T${tm}`); if (isNaN(dt)) throw new Error("Ungültiger Termin."); changes.appointmentAt = dt.toISOString();
+  }
+  const text = (k) => String(fd.get(k) || "").trim();
+  if (n.has("reply") && !text("reply")) throw new Error("Bitte eine Nachricht an den Kunden eingeben.");
+  if (n.has("note") && !text("note")) throw new Error("Bitte eine interne Notiz eingeben.");
+  if (n.has("comment") && !text("comment")) throw new Error("Bitte eine Begründung eingeben.");
+  if (n.has("report")) {
+    if (!text("action")) throw new Error("Bitte die durchgeführten Arbeiten beschreiben.");
+    const hours = Number(String(fd.get("hours") || "0").replace(",", ".")) || 0;
+    changes.resolution = { cause: text("cause"), action: text("action"), parts: text("parts"), hours, at: new Date().toISOString(), by: db.currentUserId };
+    if (hours > 0) i.loggedH = Math.round(((i.loggedH || 0) + hours) * 100) / 100;
+  }
+  if (text("reply")) addComment(i, text("reply"), { internal: false });
+  if (text("note")) addComment(i, text("note"), { internal: true });
+  if (text("comment")) addComment(i, text("comment"), { internal: isSvc });
+  if (changes.resolution) addComment(i, reportText(changes.resolution), { internal: false });
+  updateIssue(i, { ...changes, status: t.to });
+  if (t.id === "review" && i.reporterId && i.reporterId !== db.currentUserId) { notify([i.reporterId], "review", `Zur Freigabe: ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id); save(); }
+}
+function takeIssue(i) { updateIssue(i, { assigneeId: db.currentUserId }); toast(`${keyOf(i)} übernommen`); }
+
+/* ---------- Ansicht: Mein Tag ---------- */
+function workRow(i, reason = "") {
+  return `<div class="wrow" data-act="open" data-id="${i.id}">
+    <div class="wmain">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="trunc b" style="font-weight:500">${esc(i.summary)}</span></div>
+    <div class="wmeta">${reason}${apptChip(i)}${dueChip(i)}${(() => { const s = slaInfo(i, "resolve"); return s && !s.stopped && (s.breached || s.risk) ? slaChip(s) : ""; })()}${i.customer ? `<span class="chip gray">${esc(i.customer.company || i.customer.name)}</span>` : ""}${prioIcon(i.priority)}${lozenge(i)}</div>
+    <div class="wact">${actionButton(i)}</div></div>`;
+}
+function section(title, list, empty, reasonFn = () => "", tone = "") {
+  if (!list.length && !empty) return "";
+  return `<section class="wsec ${tone}"><h2>${title} <span class="count">${list.length}</span></h2>${list.length ? `<div class="card wlist">${list.map((i) => workRow(i, reasonFn(i))).join("")}</div>` : `<p class="small muted" style="margin:0 0 6px">${empty}</p>`}</section>`;
+}
+function viewYourWork() {
+  const t = today(); const uid_ = db.currentUserId; const u = me();
+  const open = db.issues.filter((i) => !isDone(i) && i.type !== "EPIC");
+  const mine = open.filter((i) => i.assigneeId === uid_);
+  const isAgent = u.role === "AGENT" || u.role === "ADMIN" || db.projects.some((p) => p.type === "service" && p.leadId === uid_);
+  const urgentOf = (i) => isOverdue(i) || ["first", "resolve"].some((k) => { const s = slaInfo(i, k); return s && !s.stopped && (s.breached || s.risk); }) || (i.status === "SCHEDULED" && i.appointmentAt && new Date(i.appointmentAt) < new Date(Date.now() - 2 * 36e5));
+  const newRequests = isAgent ? open.filter((i) => proj(i.projectId).type === "service" && i.status === "OPEN" && !i.assigneeId && i.type !== "SUBTASK") : [];
+  const urgent = mine.filter(urgentOf);
+  const todayList = mine.filter((i) => !urgent.includes(i) && ((i.appointmentAt && dayKey(i.appointmentAt) === t && ACTIVE_APPT.includes(i.status)) || i.dueDate === t))
+    .sort((a, b) => (a.appointmentAt || "9").localeCompare(b.appointmentAt || "9"));
+  const waitingStates = ["WAITING", "PARTS", "BLOCKED"];
+  const approvals = open.filter((i) => i.status === "REVIEW" && i.reporterId === uid_ && i.assigneeId !== uid_);
+  const doing = mine.filter((i) => !urgent.includes(i) && !todayList.includes(i) && statusOf(i).cat === "progress" && !waitingStates.includes(i.status) && i.status !== "REVIEW");
+  const waiting = mine.filter((i) => !urgent.includes(i) && !todayList.includes(i) && (waitingStates.includes(i.status) || i.status === "REVIEW"));
+  const next = mine.filter((i) => !urgent.includes(i) && !todayList.includes(i) && statusOf(i).cat === "todo")
+    .sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9") || PRIOS[b.priority].rank - PRIOS[a.priority].rank);
+  const doneToday = db.issues.filter((i) => i.assigneeId === uid_ && i.resolvedAt && dayKey(i.resolvedAt) === t).length;
+  const reasonUrgent = (i) => isOverdue(i) ? `<span class="chip red">überfällig seit ${daysBetween(i.dueDate, t)} T</span>` : i.status === "SCHEDULED" && i.appointmentAt && new Date(i.appointmentAt) < new Date() ? '<span class="chip red">Einsatz nicht begonnen</span>' : "";
+  const tab = ui.yourWork === "assigned" ? "day" : ui.yourWork;
+  const watched = db.issues.filter((i) => i.watchers.includes(uid_) && i.assigneeId !== uid_ && !isDone(i));
+  const recent = (localState.recent[uid_] || []).map(issue).filter(Boolean);
+  const tabs = `<div class="tabs"><button class="${tab === "day" ? "on" : ""}" data-act="yw-tab" data-v="day">Mein Tag</button><button class="${tab === "watched" ? "on" : ""}" data-act="yw-tab" data-v="watched">Beobachtet (${watched.length})</button><button class="${tab === "recent" ? "on" : ""}" data-act="yw-tab" data-v="recent">Zuletzt angesehen</button></div>`;
+  const head = `<div class="page-head"><div><h1>${tab === "day" ? "Mein Tag" : "Ihre Arbeit"}</h1><p class="muted" style="margin:4px 0 0">Hallo ${esc(u.name.split(" ")[0])} · ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}${doneToday ? ` · heute ${doneToday} erledigt ✓` : ""}</p></div>
+    <button class="btn primary" data-act="create">${icon("plus")} Vorgang erfassen</button></div>`;
+  if (tab !== "day") {
+    const list = tab === "watched" ? watched : recent;
+    return head + tabs + (list.length ? `<div class="card wlist">${list.map((i) => workRow(i)).join("")}</div>` : `<div class="empty">${tab === "watched" ? "Sie beobachten keine offenen Vorgänge." : "Noch keine Vorgänge angesehen."}</div>`);
+  }
+  const tiles = [["Sofort erledigen", urgent.length + newRequests.length, urgent.length + newRequests.length ? "var(--danger)" : ""], ["Heute", todayList.length, ""], ["In Arbeit", doing.length, ""], ["Wartet / zur Freigabe", waiting.length + approvals.length, ""]];
+  const allClear = !urgent.length && !newRequests.length && !todayList.length && !doing.length && !next.length && !waiting.length && !approvals.length;
+  return head + tabs + `<div class="grid g4" style="margin-bottom:6px">${tiles.map(([l, v, c]) => `<div class="card stat"><div class="v" style="${c ? `color:${c}` : ""}">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
+    ${allClear ? `<div class="empty" style="margin-top:16px">Alles erledigt – keine offenen Vorgänge für Sie. 🎉</div>` : ""}
+    ${section("Sofort erledigen", urgent, "", reasonUrgent, "danger")}
+    ${section("Neue Kundenanfragen – bitte übernehmen", newRequests, "", (i) => `<span class="chip gray">${ago(i.createdAt)}</span>`, "danger")}
+    ${section("Heute", todayList, "Heute stehen keine Termine oder Fristen an.")}
+    ${section("Zur Freigabe durch Sie", approvals, "", (i) => `<span class="chip gray">von ${esc(uname(i.assigneeId))}</span>`)}
+    ${section("In Arbeit", doing, "")}
+    ${section("Als Nächstes", next.slice(0, 15), "")}
+    ${section("Wartet auf andere", waiting, "", (i) => i.status === "REVIEW" ? `<span class="chip gray">Freigabe: ${esc(uname(i.reporterId))}</span>` : "")}`;
+}
+
+/* ---------- Ansicht: Listenzeile ---------- */
 function issueRow(i, extra = "") {
   return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
     <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
 }
-function viewYourWork() {
-  const mine = db.issues.filter((i) => i.assigneeId === db.currentUserId && !isDone(i) && i.type !== "EPIC").sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9") || PRIOS[b.priority].rank - PRIOS[a.priority].rank);
-  const watched = db.issues.filter((i) => i.watchers.includes(db.currentUserId) && i.assigneeId !== db.currentUserId && !isDone(i));
-  const recent = (localState.recent[db.currentUserId] || []).map(issue).filter(Boolean);
-  const overdue = mine.filter(isOverdue).length; const soon = mine.filter((i) => i.dueDate && !isOverdue(i) && daysBetween(today(), i.dueDate) <= 7).length;
-  const tab = ui.yourWork; const list = tab === "assigned" ? mine : tab === "watched" ? watched : recent;
-  const grouped = {}; list.forEach((i) => (grouped[i.projectId] ||= []).push(i));
-  return `<div class="page-head"><div><h1>Ihre Arbeit</h1><p class="muted" style="margin:4px 0 0">Hallo ${esc(me().name.split(" ")[0])} · ${new Date().toLocaleDateString("de-DE", { weekday: "long", day: "numeric", month: "long" })}</p></div></div>
-    <div class="grid g4" style="margin-bottom:18px">
-      <div class="card stat"><div class="v">${mine.length}</div><div class="l">Mir zugewiesen (offen)</div></div>
-      <div class="card stat"><div class="v" style="${overdue ? "color:var(--danger)" : ""}">${overdue}</div><div class="l">davon überfällig</div></div>
-      <div class="card stat"><div class="v">${soon}</div><div class="l">in den nächsten 7 Tagen fällig</div></div>
-      <div class="card stat"><div class="v">${db.issues.filter((i) => i.assigneeId === db.currentUserId && i.resolvedAt && Date.now() - new Date(i.resolvedAt) < 7 * 864e5).length}</div><div class="l">erledigt in 7 Tagen</div></div>
-    </div>
-    <div class="tabs"><button class="${tab === "assigned" ? "on" : ""}" data-act="yw-tab" data-v="assigned">Mir zugewiesen (${mine.length})</button><button class="${tab === "watched" ? "on" : ""}" data-act="yw-tab" data-v="watched">Beobachtet (${watched.length})</button><button class="${tab === "recent" ? "on" : ""}" data-act="yw-tab" data-v="recent">Zuletzt angesehen</button></div>
-    ${list.length ? Object.entries(grouped).map(([pid, l]) => `<div class="card pad" style="margin-bottom:14px"><div class="row" style="margin-bottom:6px"><span class="pavatar" style="background:${proj(pid).color};width:24px;height:24px;font-size:9px">${esc(proj(pid).key.slice(0, 3))}</span><a class="b" href="#/p/${proj(pid).key}">${esc(proj(pid).name)}</a></div>
-      <div class="tbl-wrap"><table><tbody>${l.map((i) => issueRow(i, `<td style="width:30px">${avatar(i.assigneeId)}</td>`)).join("")}</tbody></table></div></div>`).join("")
-      : `<div class="empty">${tab === "assigned" ? "Ihnen sind keine offenen Vorgänge zugewiesen. 🎉" : tab === "watched" ? "Sie beobachten keine offenen Vorgänge." : "Noch keine Vorgänge angesehen."}</div>`}`;
-}
-
 /* ---------- Ansicht: Projekte ---------- */
 function viewProjects() {
   return `<div class="page-head"><h1>Projekte</h1>${me().role === "ADMIN" ? `<button class="btn primary" data-act="new-project">${icon("plus")} Projekt erstellen</button>` : ""}</div>
@@ -627,7 +765,7 @@ function boardCard(i) {
   return `<div class="bcard" draggable="true" data-drag="${i.id}" data-act="open" data-id="${i.id}">
     <div class="sum">${esc(i.summary)}</div>
     ${i.epicId || i.labels.length || i.customer ? `<div class="row" style="margin-bottom:8px">${epicChip(i)}${i.customer ? `<span class="chip gray">${esc(i.customer.company || i.customer.name)}</span>` : ""}${i.labels.slice(0, 2).map((l) => `<span class="label-chip">${esc(l)}</span>`).join("")}</div>` : ""}
-    <div class="row nowrap">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="sp"></span>${sla && !sla.stopped ? slaChip(sla) : ""}${dueChip(i)}${subtaskProgress(i)}${i.storyPoints != null ? `<span class="pts">${i.storyPoints}</span>` : ""}${prioIcon(i.priority)}${avatar(i.assigneeId)}</div></div>`;
+    <div class="row nowrap">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="sp"></span>${sla && !sla.stopped ? slaChip(sla) : ""}${apptChip(i)}${dueChip(i)}${subtaskProgress(i)}${i.storyPoints != null ? `<span class="pts">${i.storyPoints}</span>` : ""}${prioIcon(i.priority)}${avatar(i.assigneeId)}</div></div>`;
 }
 function viewBoard(p) {
   const sp = activeSprint(p); const wf = workflowOf(p); const list = boardIssues(p); const b = ui.board;
@@ -739,7 +877,10 @@ const QUEUES = [
   { id: "mine", name: "Mir zugewiesen", fn: (i) => !isDone(i) && i.assigneeId === db.currentUserId },
   { id: "unassigned", name: "Nicht zugewiesen", fn: (i) => !isDone(i) && !i.assigneeId },
   { id: "risk", name: "SLA gefährdet / verletzt", fn: (i) => !isDone(i) && ["first", "resolve"].some((k) => { const s = slaInfo(i, k); return s && !s.stopped && (s.risk || s.breached); }) },
+  { id: "new", name: "Neu – nicht eingeplant", fn: (i) => i.status === "OPEN" },
+  { id: "scheduled", name: "Eingeplant", fn: (i) => i.status === "SCHEDULED" },
   { id: "waiting", name: "Wartet auf Kunde", fn: (i) => i.status === "WAITING" },
+  { id: "parts", name: "Wartet auf Ersatzteil", fn: (i) => i.status === "PARTS" },
   { id: "incidents", name: "Störungen", fn: (i) => !isDone(i) && i.type === "INCIDENT" },
   { id: "resolved", name: "Kürzlich gelöst", fn: (i) => isDone(i) && i.resolvedAt && Date.now() - new Date(i.resolvedAt) < 14 * 864e5 },
 ];
@@ -751,11 +892,42 @@ function viewQueue(p) {
     <div class="side-layout" id="queue-layout">
       <div class="card pad queue-nav">${QUEUES.map((x) => { const n = items.filter(x.fn).length; return `<button class="${x.id === q.id ? "on" : ""}" data-act="queue" data-v="${x.id}"><span>${esc(x.name)}</span><span class="${x.id === "risk" && n ? "chip red" : "muted"}">${n}</span></button>`; }).join("")}
         <p class="small muted" style="margin:12px 10px 0">SLA-Ziele (Kalenderzeit): ${Object.entries(SLA).map(([k, v]) => `${PRIOS[k].label} ${v[0]} h / ${v[1] >= 24 ? v[1] / 24 + " T" : v[1] + " h"}`).join(" · ")}. „Wartet auf Kunde“ pausiert die Lösungszeit.</p></div>
-      <div>${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Typ</th><th>Schlüssel</th><th>Anfrage / Kunde</th><th>Erste Antwort</th><th>Lösung</th><th>Status</th><th>Prio.</th><th></th></tr></thead><tbody>
+      <div>${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Typ</th><th>Schlüssel</th><th>Anfrage / Kunde</th><th>Erste Antwort</th><th>Lösung</th><th>Status</th><th>Prio.</th><th></th><th>Nächster Schritt</th></tr></thead><tbody>
         ${list.map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:280px">${esc(i.summary)}</div><div class="small muted trunc" style="max-width:280px">${esc(i.customer?.company || "")}${i.customer?.name ? " · " + esc(i.customer.name) : ""} · ${ago(i.createdAt)}</div></td>
-          <td>${slaChip(slaInfo(i, "first"))}</td><td>${slaChip(slaInfo(i, "resolve"))}</td><td>${lozenge(i)}</td><td>${prioIcon(i.priority)}</td><td>${avatar(i.assigneeId)}</td></tr>`).join("")}
+          <td>${slaChip(slaInfo(i, "first"))}</td><td>${slaChip(slaInfo(i, "resolve"))}</td><td>${lozenge(i)}${apptChip(i) ? `<div style="margin-top:3px">${apptChip(i)}</div>` : ""}</td><td>${prioIcon(i.priority)}</td><td>${avatar(i.assigneeId)}</td><td>${actionButton(i)}</td></tr>`).join("")}
         </tbody></table></div>` : `<div class="empty">Keine Anfragen in dieser Warteschlange. 🎉</div>`}</div></div>`;
 }
+
+/* ---------- Ansicht: Einsatzplanung (Service) ---------- */
+function weekDays(offset) {
+  const d = parseDay(today()); d.setDate(d.getDate() - ((d.getDay() + 6) % 7) + offset * 7);
+  return Array.from({ length: 6 }, (_, k) => { const x = new Date(d); x.setDate(d.getDate() + k); return dayKey(x); });
+}
+function viewDispatch(p) {
+  const days = weekDays(ui.dispatchWeek || 0); const t = today();
+  const items = projIssues(p).filter((i) => i.type !== "SUBTASK");
+  const planned = items.filter((i) => i.appointmentAt && days.includes(dayKey(i.appointmentAt)));
+  const techs = activeUsers().filter((u) => u.role === "AGENT" || planned.some((i) => i.assigneeId === u.id));
+  const unplanned = items.filter((i) => ["OPEN", "PARTS", "WAITING"].includes(i.status) && (i.type !== "SERVICE" || i.status === "PARTS"))
+    .sort((a, b) => PRIOS[b.priority].rank - PRIOS[a.priority].rank || a.createdAt.localeCompare(b.createdAt));
+  const card = (i) => { const done = isDone(i); return `<div class="dcard ${done ? "done" : ""} cat-b-${statusOf(i).cat}" draggable="${done ? "false" : "true"}" data-drag-appt="${i.id}" data-act="open" data-id="${i.id}">
+    <div class="row nowrap small"><b>${fmtTime(i.appointmentAt)}</b><span class="key">${keyOf(i)}</span><span class="sp"></span>${prioIcon(i.priority)}</div>
+    <div class="trunc" style="font-weight:500">${esc(i.summary)}</div><div class="small muted trunc">${esc(i.customer?.company || "")}</div><div style="margin-top:3px">${lozenge(i)}</div></div>`; };
+  const fmtHead = (k) => parseDay(k).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
+  return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Einsatzplanung</h1>
+      <div class="small muted">KW ${isoWeek(days[0])} · ${fmtDay(days[0])} – ${fmtDay(days[5])}</div></div>
+      <div class="row"><button class="btn" data-act="dispatch-week" data-v="-1" aria-label="Vorige Woche">←</button><button class="btn" data-act="dispatch-week" data-v="0">Diese Woche</button><button class="btn" data-act="dispatch-week" data-v="1" aria-label="Nächste Woche">→</button></div></div>
+    <div class="dispatch-layout">
+      <div class="card pad"><h3 style="font-size:14px;margin-bottom:4px">Einzuplanen <span class="badge-count">${unplanned.length}</span></h3><p class="small muted" style="margin:0 0 8px">Auf Techniker und Tag ziehen – oder öffnen und „Einplanen“ wählen.</p>
+        ${unplanned.map((i) => `<div class="dcard" draggable="true" data-drag-appt="${i.id}" data-act="open" data-id="${i.id}"><div class="row nowrap small"><span class="key">${keyOf(i)}</span>${lozenge(i)}<span class="sp"></span>${prioIcon(i.priority)}</div><div class="trunc" style="font-weight:500">${esc(i.summary)}</div><div class="small muted trunc">${esc(i.customer?.company || "")} · ${ago(i.createdAt)}</div></div>`).join("") || '<p class="small muted">Alles eingeplant. 👍</p>'}</div>
+      <div class="card dgrid-wrap"><div class="dgrid" style="grid-template-columns:150px repeat(${days.length}, minmax(140px, 1fr))">
+        <div class="dhead"></div>${days.map((k) => `<div class="dhead ${k === t ? "today" : ""}">${fmtHead(k)}</div>`).join("")}
+        ${techs.length ? techs.map((u) => `<div class="dtech">${avatar(u.id)} <span class="trunc">${esc(u.name)}</span><span class="small muted">${planned.filter((i) => i.assigneeId === u.id && !isDone(i)).length} offen</span></div>
+          ${days.map((k) => `<div class="dcell ${k === t ? "today" : ""} ${k < t ? "past" : ""}" data-drop-appt="${u.id}|${k}">${planned.filter((i) => i.assigneeId === u.id && dayKey(i.appointmentAt) === k).sort((a, b) => a.appointmentAt.localeCompare(b.appointmentAt)).map(card).join("")}</div>`).join("")}`).join("")
+          : `<div style="grid-column:1/-1;padding:16px" class="small muted">Noch keine Service-Mitarbeiter. Unter Einstellungen Personen die Rolle „Service-Mitarbeiter“ geben.</div>`}
+      </div></div></div>`;
+}
+function isoWeek(k) { const d = parseDay(k); const th = new Date(d); th.setDate(d.getDate() + 3 - ((d.getDay() + 6) % 7)); const jan4 = new Date(th.getFullYear(), 0, 4); return 1 + Math.round(((th - jan4) / 864e5 - 3 + ((jan4.getDay() + 6) % 7)) / 7); }
 
 /* ---------- Ansicht: Berichte ---------- */
 function createdResolvedChart(list, days = 30) {
@@ -910,6 +1082,7 @@ function renderIssue() {
         <input class="issue-sum" data-f="summary" value="${esc(i.summary)}" aria-label="Zusammenfassung">
         <div class="row" style="margin:8px 0 16px">${i.type !== "SUBTASK" && i.type !== "EPIC" ? `<button class="btn sm" data-act="add-subtask">${icon("sub")} Teilaufgabe</button>` : ""}<button class="btn sm" data-act="add-link">${icon("link")} Verknüpfen</button>${i.type === "EPIC" ? `<button class="btn sm" data-act="create" data-project="${p.id}" data-epic="${i.id}">${icon("plus")} Vorgang im Epic</button>` : ""}</div>
         ${i.customer ? `<div class="note info" style="margin-bottom:14px"><b>${esc(i.customer.name)}</b> · ${esc(i.customer.company || "")} · <a href="mailto:${encodeURIComponent(i.customer.email)}?subject=${encodeURIComponent(`[${keyOf(i)}] ${i.summary}`)}">${esc(i.customer.email)}</a>${i.customer.phone ? ` · ${esc(i.customer.phone)}` : ""}</div>` : ""}
+        ${reportBlock(i)}
         <div class="sec-title">Beschreibung</div>
         ${ui.editingDesc ? `<textarea id="desc-edit" rows="8">${esc(i.description)}</textarea><div class="row" style="margin-top:6px"><button class="btn primary sm" data-act="save-desc">Speichern</button><button class="btn subtle sm" data-act="cancel-desc">Abbrechen</button></div>`
           : `<div class="desc-view" data-act="edit-desc" title="Klicken zum Bearbeiten">${i.description ? esc(i.description) : '<span class="muted">Beschreibung hinzufügen…</span>'}</div>`}
@@ -929,8 +1102,8 @@ function renderIssue() {
           <div class="row"><button class="btn primary sm" type="submit">${isSvc ? "Antwort an Kunden" : "Speichern"}</button>${isSvc ? `<button class="btn sm" type="submit" name="internal" value="1">Interne Notiz</button>` : ""}<span class="small muted">Strg+Enter zum Senden</span></div></form>${comments}` : history}
       </div>
       <div>
-        <div class="row" style="margin-bottom:12px"><select class="status-btn cat-${s.cat}" data-f="status" aria-label="Status" style="width:auto">${statusOpts(i)}</select>
-          ${!isDone(i) ? `<button class="btn sm" data-act="quick-done">${icon("check")} Erledigt</button>` : ""}</div>
+        <div style="margin-bottom:12px">${workflowPanel(i)}</div>
+        ${i.appointmentAt ? `<div class="details" style="margin-bottom:12px"><div class="drow" style="padding:10px 14px"><span>Termin</span><span class="b">${fmtAppt(i.appointmentAt)}${i.assigneeId ? ` · ${esc(uname(i.assigneeId))}` : ""}</span></div></div>` : ""}
         ${isSvc && (sf || sr) ? `<div class="details" style="margin-bottom:12px"><div class="dh">SLA</div><div class="drow"><span>Erste Antwort</span><span>${slaChip(sf)} <span class="small muted">Ziel ${SLA[i.priority][0]} h</span></span></div><div class="drow" style="padding-bottom:10px"><span>Lösung</span><span>${slaChip(sr)} <span class="small muted">Ziel ${SLA[i.priority][1]} h</span></span></div></div>` : ""}
         <div class="details"><div class="dh">Details</div>
           <div class="drow"><span>Verantwortlich</span><span><select data-f="assigneeId">${userOpts(i.assigneeId)}</select>${i.assigneeId !== db.currentUserId ? `<a href="#" class="small" data-act="assign-me">Mir zuweisen</a>` : ""}</span></div>
@@ -971,9 +1144,9 @@ function createForm(prefill = {}) {
   const type = prefill.type && types.includes(prefill.type) ? prefill.type : types[0];
   openModal(`<div class="modal-h"><h2>Vorgang erstellen</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
     <form id="create-form"><div class="modal-b">
-      <div class="grid g2" style="gap:12px"><label class="f">Projekt <span class="req">*</span><select name="projectId" id="cf-project">${db.projects.map((x) => `<option value="${x.id}" ${x.id === pid ? "selected" : ""}>${esc(x.name)} (${x.key})</option>`).join("")}</select></label>
-        <label class="f">Vorgangstyp <span class="req">*</span><select name="type">${types.map((t) => `<option value="${t}" ${t === type ? "selected" : ""}>${TYPES[t].label}</option>`).join("")}</select></label></div>
-      <label class="f">Zusammenfassung <span class="req">*</span><input type="text" name="summary" required maxlength="255" autofocus></label>
+      <div class="grid g2" style="gap:12px"><label class="f"><span>Projekt <span class="req">*</span></span><select name="projectId" id="cf-project">${db.projects.map((x) => `<option value="${x.id}" ${x.id === pid ? "selected" : ""}>${esc(x.name)} (${x.key})</option>`).join("")}</select></label>
+        <label class="f"><span>Vorgangstyp <span class="req">*</span></span><select name="type">${types.map((t) => `<option value="${t}" ${t === type ? "selected" : ""}>${TYPES[t].label}</option>`).join("")}</select></label></div>
+      <label class="f"><span>Zusammenfassung <span class="req">*</span></span><input type="text" name="summary" required maxlength="255" autofocus></label>
       <label class="f">Beschreibung<textarea name="description" rows="4"></textarea></label>
       <div class="grid g2" style="gap:12px">
         <label class="f">Verantwortlich<select name="assigneeId">${userOpts(prefill.assigneeId ?? null)}</select></label>
@@ -1011,8 +1184,8 @@ function completeSprintForm(s) {
 function projectForm() {
   openModal(`<div class="modal-h"><h2>Projekt erstellen</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
     <form id="new-project-form"><div class="modal-b">
-      <label class="f">Name <span class="req">*</span><input type="text" name="name" id="np-name" required autofocus></label>
-      <label class="f">Schlüssel <span class="req">*</span><input type="text" name="key" id="np-key" required maxlength="6" pattern="[A-Za-z][A-Za-z0-9]{1,5}" title="2–6 Zeichen, beginnt mit Buchstabe"></label>
+      <label class="f"><span>Name <span class="req">*</span></span><input type="text" name="name" id="np-name" required autofocus></label>
+      <label class="f"><span>Schlüssel <span class="req">*</span></span><input type="text" name="key" id="np-key" required maxlength="6" pattern="[A-Za-z][A-Za-z0-9]{1,5}" title="2–6 Zeichen, beginnt mit Buchstabe"></label>
       <label class="f">Vorlage<select name="type">${Object.entries(PROJECT_TYPES).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("")}</select></label>
       <p class="small muted" style="margin:0"><b>Scrum</b>: Backlog, Sprints, Burndown – für Entwicklungsvorhaben. <b>Kanban</b>: fortlaufender Arbeitsfluss – für Fach- und Verwaltungsaufgaben. <b>Service-Desk</b>: Kundenanfragen mit Portal und SLA.</p>
       <label class="f">Projektleitung<select name="leadId">${userOpts(db.currentUserId, "–")}</select></label></div>
@@ -1022,6 +1195,29 @@ function projectForm() {
 /* ---------- Drag & Drop ---------- */
 let dragId = null;
 function bindDnD() {
+  $$("[data-drag-appt]").forEach((el) => el.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/appt", el.dataset.dragAppt); el.classList.add("dragging"); }));
+  $$("[data-drag-appt]").forEach((el) => el.addEventListener("dragend", () => el.classList.remove("dragging")));
+  $$("[data-drop-appt]").forEach((cell) => {
+    cell.addEventListener("dragover", (e) => { e.preventDefault(); cell.classList.add("drop-on"); });
+    cell.addEventListener("dragleave", (e) => { if (!cell.contains(e.relatedTarget)) cell.classList.remove("drop-on"); });
+    cell.addEventListener("drop", (e) => {
+      e.preventDefault(); cell.classList.remove("drop-on");
+      const i = issue(e.dataTransfer.getData("text/appt")); if (!i) return;
+      const [userId, day] = cell.dataset.dropAppt.split("|");
+      if (i.status === "SCHEDULED") {
+        const old = new Date(i.appointmentAt); const [y, m, d] = day.split("-").map(Number);
+        const next = new Date(y, m - 1, d, old.getHours(), old.getMinutes());
+        if (next.toISOString() === i.appointmentAt && i.assigneeId === userId) return;
+        updateIssue(i, { assigneeId: userId, appointmentAt: next.toISOString() }); render();
+        toast(`${keyOf(i)} verschoben auf ${fmtAppt(next.toISOString())} (${uname(userId)})${i.customer?.email ? " – Kunde wird informiert" : ""}`);
+        return;
+      }
+      const t = stepsFor(i).find((x) => x.to === "SCHEDULED");
+      if (!t) return toast(`${keyOf(i)} kann im Status „${statusOf(i).name}“ nicht eingeplant werden.`);
+      const [y, m, d] = day.split("-").map(Number);
+      stepForm(i, t, { assigneeId: userId, appointmentAt: new Date(y, m - 1, d, 8, 0).toISOString() });
+    });
+  });
   $$("[data-drag]").forEach((el) => {
     el.addEventListener("dragstart", (e) => { dragId = el.dataset.drag; e.dataTransfer.setData("text/plain", dragId); el.classList.add("dragging"); });
     el.addEventListener("dragend", () => { el.classList.remove("dragging"); dragId = null; $$(".drop-on,.drop-before").forEach((x) => x.classList.remove("drop-on", "drop-before")); });
@@ -1115,6 +1311,11 @@ document.addEventListener("click", (e) => {
     case "save-desc": if (cur) { updateIssue(cur, { description: $("#desc-edit").value }); ui.editingDesc = false; renderIssue(); } break;
     case "watch": if (cur) { const w = cur.watchers.includes(db.currentUserId); cur.watchers = w ? cur.watchers.filter((x) => x !== db.currentUserId) : [...cur.watchers, db.currentUserId]; save(); renderIssue(); toast(w ? "Beobachtung beendet" : "Sie beobachten diesen Vorgang"); } break;
     case "assign-me": e.preventDefault(); if (cur) { updateIssue(cur, { assigneeId: db.currentUserId }); render(); renderIssue(); } break;
+    case "take": { const it = issue(id); if (it) { takeIssue(it); render(); if (ui.modal === "issue") renderIssue(); } break; }
+    case "step": { const it = issue(id); const t = it && stepsFor(it).find((x) => x.id === el.dataset.t); if (t) stepForm(it, t); break; }
+    case "step-cancel": { const back = ui.stepReturn; closeModal(); if (back) openIssue(back); break; }
+    case "print-report": { const it = issue(id); if (it) printReport(it); break; }
+    case "dispatch-week": ui.dispatchWeek = el.dataset.v === "0" ? 0 : (ui.dispatchWeek || 0) + Number(el.dataset.v); render(); break;
     case "quick-done": if (cur) { const wf = workflowOf(proj(cur.projectId)); updateIssue(cur, { status: wf.find((s) => s.cat === "done").id }); render(); renderIssue(); toast(`${keyOf(cur)} erledigt ✓`); } break;
     case "add-subtask": ui.addingSub = true; renderIssue(); $("#sub-form input")?.focus(); break;
     case "add-link": ui.addingLink = true; renderIssue(); $("#link-form input")?.focus(); break;
@@ -1172,6 +1373,11 @@ async function handleSubmit(e, f) {
       ui.lastProject = i.projectId;
       if (fd.get("another")) { const pid = i.projectId; createForm({ projectId: pid }); $("#create-form").another.checked = true; render(); toast(`${keyOf(i)} erstellt`); }
       else { closeModal(); render(); toast(`${keyOf(i)} erstellt`); openIssue(i.id); }
+      break; }
+    case "step-form": {
+      const it = issue(f.dataset.id); const t = it && TRANSITIONS[PROJECT_TYPES[proj(it.projectId).type].workflow].find((x) => x.id === f.dataset.t);
+      if (!it || !t) return;
+      performStep(it, t, fd); const back = ui.stepReturn; closeModal(); render(); toast(`${keyOf(it)}: ${t.label} ✓`); if (back) openIssue(back);
       break; }
     case "comment-form": {
       const text = String(fd.get("text") || "").trim(); if (!text || !cur) return;
