@@ -360,6 +360,10 @@ h1 .tavatar { margin-right: 10px; }
 .avatars { display: inline-flex; } .avatars .avatar + .avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--surface); }
 @media (max-width: 860px) { .tstats { grid-template-columns: repeat(2, 1fr); } .tcols { grid-template-columns: minmax(0, 1fr) !important; } }
 
+/* Quartalsvergleich */
+.qtable td.num, .qtable th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qd { font-size: 10px; } .qd.good { color: var(--ok); } .qd.bad { color: var(--danger); }
+
 .sa-login { max-width: 520px; margin: 8vh auto; padding: 0 16px; }
 .sa-logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: #fff; }
 .sa-users { display: grid; gap: 8px; }
@@ -1493,9 +1497,24 @@ function viewDashboard() {
       <div class="card pad"><h3 style="font-size:15px">Erstellt vs. erledigt</h3><p class="small muted" style="margin:2px 0 8px">Alle Projekte</p>${createdResolvedChart(db.issues)}</div>
       <div class="card pad"><h3 style="font-size:15px;margin-bottom:8px">Arbeitslast</h3>${workloadBars(db.issues)}
         <h3 style="font-size:15px;margin:16px 0 8px">Offen je Projekt</h3>${hbars(db.projects.map((p) => ({ label: p.name, value: open.filter((i) => i.projectId === p.id).length })))}</div>
+      ${quarterCard()}
       <div class="card pad" style="grid-column:1/-1"><h3 style="font-size:15px;margin-bottom:8px">Aktivitäten</h3>
         ${stream.map((h) => `<div class="row nowrap small" style="padding:6px 0;border-bottom:1px solid var(--border)">${h.userId ? avatar(h.userId) : custAvatar({ name: h.author || "Kunde" })}<span class="trunc" style="flex:1"><b>${esc(h.userId ? uname(h.userId) : h.author || "Kunde")}</b> · ${esc(h.field)}${h.to ? `: ${esc(h.to)}` : ""} · <a href="#" data-act="open" data-id="${h.i.id}">${keyOf(h.i)}</a> ${esc(h.i.summary)}</span><span class="muted">${ago(h.at)}</span></div>`).join("")}</div>
     </div>`;
+}
+
+/** Quartalsvergleich der letzten vier Quartale (Dashboard). */
+function quarterCard() {
+  const qs = lastQuarters(5).map((p) => periodStats(db.issues, p)); const show = qs.slice(1).reverse(); // aktuelles Quartal zuerst
+  const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)} %`); const num1 = (x) => (x == null ? "–" : x.toFixed(1).replace(".", ","));
+  const cell = (cur, prev, f, better = "up") => { const d = cur == null || prev == null ? 0 : cur - prev; const tone = better === "none" ? "" : (better === "up" ? d > 0 : d < 0) ? "good" : "bad";
+    return `<td class="num">${f(cur)}${d ? ` <span class="qd ${tone}">${d > 0 ? "▲" : "▼"}</span>` : ""}</td>`; };
+  return `<div class="card pad" style="grid-column:1/-1"><div class="row" style="margin-bottom:8px"><h3 style="font-size:15px;flex:1">Quartalsvergleich</h3>
+      <button class="btn sm" data-act="export-quarter-xlsx" data-q="${show[0].p.y}:${show[0].p.q}">${icon("download")} Excel ${esc(show[0].p.label)}</button><button class="btn sm" data-act="export-quarter-xlsx" data-q="${show[1].p.y}:${show[1].p.q}">${icon("download")} Excel ${esc(show[1].p.label)}</button></div>
+    <div class="tbl-wrap"><table class="qtable"><thead><tr><th>Quartal</th><th class="num">Erstellt</th><th class="num">Erledigt</th><th class="num">Ø Durchlaufzeit (Tage)</th><th class="num">Termintreue</th><th class="num">SLA eingehalten</th><th class="num">Einsatzstunden</th></tr></thead><tbody>
+    ${show.map((q, k) => { const pv = qs[qs.length - 2 - k];
+      return `<tr><td><b>${esc(q.p.label)}</b>${k === 0 ? ' <span class="chip blue">läuft</span>' : ""}</td>${cell(q.created, pv.created, String, "none")}${cell(q.done, pv.done, String)}${cell(q.dur, pv.dur, num1, "down")}${cell(q.onTime, pv.onTime, pct)}${cell(q.sla, pv.sla, pct)}${cell(q.hours, pv.hours, num1, "none")}</tr>`; }).join("")}
+    </tbody></table></div><p class="small muted" style="margin:6px 0 0">▲▼ Veränderung zum jeweiligen Vorquartal (grün = besser). Termintreue = Anteil der Vorgänge mit Frist, die bis zur Frist erledigt wurden.</p></div>`;
 }
 
 /* ---------- Ansicht: Einstellungen ---------- */
@@ -1769,16 +1788,72 @@ function exportCsv(list, name) {
   download(name, "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n"), "text/csv;charset=utf-8");
 }
 
+/* ---------- Zeiträume: Quartale und Jahre ---------- */
+const quarterOf = (dk) => { const [y, m] = dk.split("-").map(Number); return { y, q: Math.floor((m - 1) / 3) + 1 }; };
+function quarterRange(y, q) {
+  const sm = (q - 1) * 3 + 1; const next = q === 4 ? `${y + 1}-01-01` : `${y}-${pad(sm + 3)}-01`;
+  return { kind: "q", y, q, start: `${y}-${pad(sm)}-01`, end: addDays(next, -1), label: `Q${q} ${y}` };
+}
+const prevQuarter = (p) => (p.q === 1 ? quarterRange(p.y - 1, 4) : quarterRange(p.y, p.q - 1));
+const yearRange = (y) => ({ kind: "y", y, start: `${y}-01-01`, end: `${y}-12-31`, label: `Jahr ${y}` });
+const currentQuarter = () => { const c = quarterOf(today()); return quarterRange(c.y, c.q); };
+/** Die letzten n Quartale bis einschließlich des aktuellen (älteste zuerst). */
+const lastQuarters = (n) => { let p = currentQuarter(); const out = [p]; while (out.length < n) { p = prevQuarter(p); out.unshift(p); } return out; };
+/** Im Zeitraum aktiv: bis zum Ende erstellt und nicht vor dem Beginn erledigt. */
+const activeIn = (i, p) => dayKey(i.createdAt) <= p.end && (!i.resolvedAt || dayKey(i.resolvedAt) >= p.start);
+const inRange = (iso, p) => { if (!iso) return false; const d = dayKey(iso); return d >= p.start && d <= p.end; };
+/** Kennzahlen eines Zeitraums: erstellt, erledigt, Durchlaufzeit, Termintreue, SLA, Einsatzstunden. */
+function periodStats(list, p) {
+  const created = list.filter((i) => inRange(i.createdAt, p)); const done = list.filter((i) => inRange(i.resolvedAt, p));
+  const withDue = done.filter((i) => i.dueDate); const late = withDue.filter((i) => dayKey(i.resolvedAt) > i.dueDate).length;
+  const sl = done.map((i) => slaInfo(i, "resolve")).filter((x) => x && x.stopped);
+  return { p, created: created.length, done: done.length,
+    dur: done.length ? done.reduce((s, i) => s + (new Date(i.resolvedAt) - new Date(i.createdAt)) / 864e5, 0) / done.length : null,
+    onTime: withDue.length ? 1 - late / withDue.length : null, sla: sl.length ? sl.filter((x) => x.met).length / sl.length : null,
+    hours: done.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0), service: done.filter((i) => proj(i.projectId)?.type === "service" && i.type !== "SUBTASK").length };
+}
+/** Quartale ab dem ersten mit Daten (mindestens 4) bis heute. */
+function quarterSeries(list, min = 4, max = 12) {
+  const first = list.reduce((m, i) => (i.createdAt < m ? i.createdAt : m), new Date().toISOString());
+  const all = lastQuarters(max); const f = quarterOf(dayKey(first)); const idx = all.findIndex((p) => p.y > f.y || (p.y === f.y && p.q >= f.q));
+  return all.slice(Math.min(Math.max(0, idx), all.length - min));
+}
+const delta = (a, b, fmt = (x) => x) => (a == null || b == null ? "" : a > b ? `▲ ${fmt(a - b)}` : a < b ? `▼ ${fmt(b - a)}` : "± 0");
+
+/** Auswahl des Zeitraums vor dem Excel-Export. */
+function xlsxDialog(scope, base, title) {
+  ui.xlsx = { scope, base, title };
+  const cur = currentQuarter(), prev = prevQuarter(cur); const older = lastQuarters(8).reverse().slice(2);
+  const years = [...new Set(scope.map((i) => Number(i.createdAt.slice(0, 4))).concat(cur.y))].sort((a, b) => b - a);
+  const opt = (v, l) => `<option value="${v}">${esc(l)}</option>`;
+  openModal(`<div class="modal-h"><h2>Excel-Auswertung</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="xlsx-form"><div class="modal-b">
+      <div class="small muted">${esc(title)} · ${scope.length} Vorgänge</div>
+      <label class="f">Zeitraum<select name="period">${opt("all", "Gesamter Zeitraum")}<optgroup label="Quartale">${opt(`q:${cur.y}:${cur.q}`, `Aktuelles Quartal – ${cur.label}`)}${opt(`q:${prev.y}:${prev.q}`, `Vorquartal – ${prev.label}`)}${older.map((p) => opt(`q:${p.y}:${p.q}`, p.label)).join("")}</optgroup>
+        <optgroup label="Jahre">${years.map((y) => opt(`y:${y}`, `Jahr ${y}`)).join("")}</optgroup></select></label>
+      <p class="small muted" style="margin:0">Ein Quartal enthält alle Vorgänge, die darin erstellt, bearbeitet oder erledigt wurden. Das Dashboard vergleicht automatisch mit dem Vorquartal; das Blatt „Quartale“ zeigt die Entwicklung über alle Quartale.</p>
+    </div><div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">${icon("download")} Excel erstellen</button></div></form>`);
+}
+
 /** Dashboard-Blatt für die Excel-Auswertung: Kennzahlen, native Excel-Diagramme, Listen „Überfällig“ und „Nächste Termine“.
     Die Diagrammdaten stehen im Blatt „Diagrammdaten“, damit die Diagramme in Excel bearbeitbar bleiben. */
-function xlsxDashboard(list, title, svc) {
+function xlsxDashboard(list, title, svc, { period = null, scope = list } = {}) {
   // Farben: Kategorien in fester Reihenfolge, Status (überfällig) nur für Verzug
   const C = { blue: "#2A78D6", orange: "#EB6834", aqua: "#1BAF7A", critical: "#D03B3B", ink: "#1F2328", muted: "#5B6270", line: "#E3E5E8", tile: "#F4F6F8", navy: "#1F3A5F" };
   const tk = today(); const open = list.filter((i) => !isDone(i) && i.type !== "EPIC"); const overdue = open.filter(isOverdue);
-  const since30 = addDays(tk, -29); const done30 = list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) >= since30); const created30 = list.filter((i) => dayKey(i.createdAt) >= since30);
-  const doneAll = list.filter((i) => i.resolvedAt); const avgDays = doneAll.length ? doneAll.reduce((s, i) => s + (new Date(i.resolvedAt) - new Date(i.createdAt)) / 864e5, 0) / doneAll.length : null;
-  const sla = svc.map((i) => slaInfo(i, "resolve")).filter((x) => x && x.stopped); const slaQ = sla.length ? sla.filter((x) => x.met).length / sla.length : null;
-  const hours = svc.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0);
+  // Ohne Zeitraum: letzte 30 Tage bzw. alles; mit Zeitraum: genau dieses Quartal/Jahr, beim Quartal mit Vergleich zum Vorquartal
+  const win = period || { start: addDays(tk, -29), end: tk, label: "30 Tage" };
+  const cur = periodStats(list, win); const prevQ = period?.kind === "q" ? periodStats(scope, prevQuarter(period)) : null;
+  const doneAll = period ? list.filter((i) => inRange(i.resolvedAt, period)) : list.filter((i) => i.resolvedAt);
+  const avgDays = doneAll.length ? doneAll.reduce((s, i) => s + (new Date(i.resolvedAt) - new Date(i.createdAt)) / 864e5, 0) / doneAll.length : null;
+  const svcDone = period ? svc.filter((i) => inRange(i.resolvedAt, period)) : svc;
+  const sla = svcDone.map((i) => slaInfo(i, "resolve")).filter((x) => x && x.stopped); const slaQ = sla.length ? sla.filter((x) => x.met).length / sla.length : null;
+  const hours = svcDone.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0);
+  const vs = prevQ ? ` ggü. ${prevQ.p.label}` : "";
+  // Abgeschlossener Zeitraum: offene und überfällige Vorgänge zum Stichtag (Ende des Zeitraums)
+  const past = !!period && period.end < tk;
+  const openK = past ? list.filter((i) => i.type !== "EPIC" && dayKey(i.createdAt) <= period.end && (!i.resolvedAt || dayKey(i.resolvedAt) > period.end)) : open;
+  const overdueK = past ? openK.filter((i) => i.dueDate && i.dueDate < period.end) : overdue;
   const inbox = open.filter((i) => !i.assigneeId && i.type !== "SUBTASK");
 
   /* --- Diagrammdaten --- */
@@ -1789,8 +1864,16 @@ function xlsxDashboard(list, title, svc) {
     dc += head.length + 1; const n = Math.max(rows.length, 1);
     return { cats: { ref: XLSX.ref(DS, c0, 1, c0, n), vals: rows.map((r) => String(r[0])) }, ser: (k, name, color) => ({ name, nameRef: XLSX.ref(DS, c0 + k, 0), ref: XLSX.ref(DS, c0 + k, 1, c0 + k, n), vals: rows.map((r) => r[k]), color }) };
   };
-  const weeks = Array.from({ length: 12 }, (_, k) => { const end = addDays(tk, -7 * (11 - k)); return { start: addDays(end, -6), end }; });
-  const trend = block(["Woche", "Erstellt", "Erledigt"], weeks.map((w) => [`KW ${isoWeek(w.end)}`, list.filter((i) => { const d = dayKey(i.createdAt); return d >= w.start && d <= w.end; }).length, list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) >= w.start && dayKey(i.resolvedAt) <= w.end).length]));
+  // Verlauf: Kalenderwochen des Quartals, Monate des Jahres oder die letzten 12 Wochen
+  let buckets;
+  if (period?.kind === "y") buckets = Array.from({ length: 12 }, (_, m) => ({ start: `${period.y}-${pad(m + 1)}-01`, end: addDays(m === 11 ? `${period.y + 1}-01-01` : `${period.y}-${pad(m + 2)}-01`, -1), label: new Date(period.y, m, 1).toLocaleDateString("de-DE", { month: "short" }) }));
+  else if (period) { buckets = []; const stop = period.end < tk ? period.end : tk; // laufendes Quartal: nur bis heute
+    for (let d = period.start; d <= stop; d = addDays(d, 7)) { const e = addDays(d, 6) > period.end ? period.end : addDays(d, 6); buckets.push({ start: d, end: e, label: `KW ${isoWeek(d)}` }); } }
+  else buckets = Array.from({ length: 12 }, (_, k) => { const end = addDays(tk, -7 * (11 - k)); return { start: addDays(end, -6), end, label: `KW ${isoWeek(end)}` }; });
+  const weeks = buckets;
+  const trend = block([period?.kind === "y" ? "Monat" : "Woche", "Erstellt", "Erledigt"], weeks.map((w) => [w.label, list.filter((i) => { const d = dayKey(i.createdAt); return d >= w.start && d <= w.end; }).length, list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) >= w.start && dayKey(i.resolvedAt) <= w.end).length]));
+  const qRows = quarterSeries(scope).map((p) => { const st = periodStats(scope, p); return [p.label, st.created, st.done, st.dur == null ? null : Math.round(st.dur * 10) / 10]; });
+  const qBlock = block(["Quartal", "Erstellt", "Erledigt", "Ø Durchlaufzeit (Tage)"], qRows);
   const stNames = []; open.forEach((i) => { const n = statusOf(i).name; if (!stNames.includes(n)) stNames.push(n); });
   const byStatus = block(["Status", "Offen"], stNames.map((n) => [n, open.filter((i) => statusOf(i).name === n).length]).sort((a, b) => b[1] - a[1]));
   const ppl = activeUsers().map((u) => { const l = open.filter((i) => i.assigneeId === u.id); const od = l.filter(isOverdue).length; return [u.name, l.length - od, od]; }).filter((r) => r[1] + r[2] > 0).sort((a, b) => b[1] + b[2] - (a[1] + a[2])).slice(0, 10);
@@ -1815,14 +1898,14 @@ function xlsxDashboard(list, title, svc) {
   const put = (r, c, v, s, t) => cells.push({ r, c, v, s, t });
   const box = (r1, c1, r2, c2, v, s, t) => { for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) put(r, c, r === r1 && c === c1 ? v : null, s, t); if (r1 !== r2 || c1 !== c2) merges.push(`${XLSX.colName(c1)}${r1 + 1}:${XLSX.colName(c2)}${r2 + 1}`); };
   box(1, 1, 1, LAST, `Dashboard · ${title}`, { b: true, sz: 20, color: C.ink, valign: "center" });
-  box(2, 1, 2, LAST, `Stand ${fmtDT(new Date().toISOString())} · erstellt von ${uname(db.currentUserId)} · ${list.length} Vorgänge · Details in den folgenden Tabellenblättern`, { sz: 10, color: C.muted });
+  box(2, 1, 2, LAST, `${period ? `Zeitraum ${fmtDay(period.start)} – ${fmtDay(period.end)} · ` : ""}Stand ${fmtDT(new Date().toISOString())} · erstellt von ${uname(db.currentUserId)} · ${list.length} Vorgänge · Details in den folgenden Tabellenblättern`, { sz: 10, color: C.muted });
   const tiles = [
-    ["Offene Vorgänge", open.length, "0", inbox.length ? `davon ${inbox.length} nicht verteilt` : "alle verteilt", C.blue],
-    ["Überfällig", overdue.length, "0", overdue.length ? "Fälligkeit überschritten" : "nichts überfällig ✓", overdue.length ? C.critical : C.aqua],
-    ["Erledigt (30 Tage)", done30.length, "0", `${created30.length} neu erstellt`, C.aqua],
-    ["Ø Durchlaufzeit", avgDays, '0.0" Tage"', "von Erstellung bis erledigt", C.blue],
-    ["SLA eingehalten", slaQ, "0%", sla.length ? `${sla.length} gelöste Serviceanfragen` : "noch keine Serviceanfragen", slaQ != null && slaQ < 0.9 ? C.orange : C.aqua],
-    ["Einsatzstunden", Math.round(hours * 10) / 10, '0.0" h"', "laut Serviceberichten", C.orange],
+    [past ? "Offen zum Stichtag" : "Offene Vorgänge", openK.length, "0", past ? `Stand ${fmtDay(period.end)}` : inbox.length ? `davon ${inbox.length} nicht verteilt` : "alle verteilt", C.blue],
+    ["Überfällig", overdueK.length, "0", past ? `zum ${fmtDay(period.end)}` : overdue.length ? "Fälligkeit überschritten" : "nichts überfällig ✓", overdueK.length ? C.critical : C.aqua],
+    [period ? `Erledigt ${period.label}` : "Erledigt (30 Tage)", cur.done, "0", prevQ ? `${delta(cur.done, prevQ.done)}${vs} · ${cur.created} neu` : `${cur.created} neu erstellt`, C.aqua],
+    ["Ø Durchlaufzeit", avgDays, '0.0" Tage"', prevQ && prevQ.dur != null ? `${prevQ.p.label}: ${prevQ.dur.toFixed(1).replace(".", ",")} Tage` : "von Erstellung bis erledigt", C.blue],
+    ["SLA eingehalten", slaQ, "0%", prevQ && prevQ.sla != null ? `${prevQ.p.label}: ${Math.round(prevQ.sla * 100)} %` : sla.length ? `${sla.length} gelöste Serviceanfragen` : "noch keine Serviceanfragen", slaQ != null && slaQ < 0.9 ? C.orange : C.aqua],
+    ["Einsatzstunden", Math.round(hours * 10) / 10, '0.0" h"', prevQ ? `${prevQ.p.label}: ${String(Math.round(prevQ.hours * 10) / 10).replace(".", ",")} h` : "laut Serviceberichten", C.orange],
   ];
   tiles.forEach(([label, v, fmt, hint, accent], k) => {
     const c = tileCol(k); const base = { fill: C.tile };
@@ -1833,8 +1916,10 @@ function xlsxDashboard(list, title, svc) {
   // Diagramme: 2 je Reihe, je 17 Zeilen hoch
   const charts = []; const H = 17; let row = 8;
   const pair = (left, right) => { if (left) charts.push({ ...left, at: [1, row, MID, row + H] }); if (right) charts.push({ ...right, at: [MID + 1, row, LAST + 1, row + H] }); row += H + 1; };
-  pair({ type: "col", title: "Erstellt vs. erledigt", subtitle: "je Kalenderwoche, letzte 12 Wochen", cats: trend.cats, series: [trend.ser(1, "Erstellt", C.blue), trend.ser(2, "Erledigt", C.orange)], labels: false, gap: 80 },
-    { type: "bar", title: "Offene Vorgänge nach Status", subtitle: "Anzahl", cats: byStatus.cats, series: [byStatus.ser(1, "Offen", C.blue)], hideValAx: true });
+  pair({ type: "col", title: "Erstellt vs. erledigt", subtitle: period?.kind === "y" ? `je Monat, ${period.label}` : period ? `je Kalenderwoche, ${period.label}` : "je Kalenderwoche, letzte 12 Wochen", cats: trend.cats, series: [trend.ser(1, "Erstellt", C.blue), trend.ser(2, "Erledigt", C.orange)], labels: false, gap: 80 },
+    { type: "bar", title: "Offene Vorgänge nach Status", subtitle: period ? "aktueller Stand" : "Anzahl", cats: byStatus.cats, series: [byStatus.ser(1, "Offen", C.blue)], hideValAx: true });
+  pair({ type: "col", title: "Quartalsvergleich: erstellt vs. erledigt", subtitle: `${qRows[0][0]} bis ${qRows.at(-1)[0]}`, cats: qBlock.cats, series: [qBlock.ser(1, "Erstellt", C.blue), qBlock.ser(2, "Erledigt", C.orange)], labels: true, gap: 70 },
+    { type: "col", title: "Ø Durchlaufzeit je Quartal", subtitle: "Tage von Erstellung bis erledigt", cats: qBlock.cats, series: [qBlock.ser(3, "Ø Tage", C.blue)], hideValAx: true, numFmt: "0.0", gap: 90 });
   pair(ppl.length ? { type: "bar", stacked: true, title: "Arbeitslast je Person", subtitle: "offene Vorgänge – rot: überfällig", cats: load.cats, series: [load.ser(1, "Offen im Plan", C.blue), load.ser(2, "Überfällig", C.critical)], labels: true, gap: 50 } : null,
     teamRows.length ? { type: "bar", title: "Offene Vorgänge je Team", subtitle: "Anzahl", cats: byTeam.cats, series: [byTeam.ser(1, "Offen", C.blue)], hideValAx: true } : null);
   pair({ type: "col", title: "Offene Vorgänge nach Priorität", subtitle: "Anzahl", cats: byPrio.cats, series: [byPrio.ser(1, "Offen", C.blue)], hideValAx: true, gap: 90 },
@@ -1865,7 +1950,7 @@ function xlsxDashboard(list, title, svc) {
 
 /* ---------- Excel-Auswertung (.xlsx) ---------- */
 /** Erstellt eine Excel-Mappe mit Dashboard (Kennzahlen und Diagramme), Übersicht, Vorgängen, Serviceeinsätzen, Personen, Monaten, Verlauf und Kommentaren. */
-function exportXlsx(list, name, title) {
+function exportXlsx(list, name, title, opts = {}) {
   list = list.filter(Boolean);
   const days = (a, b) => (a && b ? Math.round(((new Date(b) - new Date(a)) / 864e5) * 10) / 10 : null);
   const hrs = (a, b) => (a && b ? Math.round(((new Date(b) - new Date(a)) / 36e5) * 100) / 100 : null);
@@ -1929,9 +2014,14 @@ function exportXlsx(list, name, title) {
     ["Einsatzstunden laut Servicebericht", r2(svc.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0)), ""],
     ["SLA Lösung eingehalten (%)", slr.length ? Math.round(quota(slr) * 1000) / 10 : null, "Anteil der gelösten Serviceanfragen innerhalb der Zielzeit"],
     ["Erfasste Stunden gesamt", r2(list.reduce((s, i) => s + hoursOf(i), 0)), ""],
-    ["Tabellenblätter", null, "Vorgänge · Serviceeinsätze · Teams · Personen · Monate · Statusverlauf · Kommentare – mit Filter in der Kopfzeile, direkt für Pivot-Tabellen nutzbar"]] };
-  const { dash, dataSheet } = xlsxDashboard(list, title, svc);
-  const sheets = [dash, vorg, ...(reports.length ? [eins] : []), ...(tms.rows.length ? [tms] : []), pers, mon, hist, comm, info, dataSheet];
+    ["Tabellenblätter", null, "Quartale · Vorgänge · Serviceeinsätze · Teams · Personen · Monate · Statusverlauf · Kommentare – mit Filter in der Kopfzeile, direkt für Pivot-Tabellen nutzbar"]] };
+  const qScope = opts.scope || list;
+  const qs = quarterSeries(qScope, 1).map((p) => periodStats(qScope, p));
+  const quart = { name: "Quartale", columns: [{ h: "Quartal", w: 10 }, { h: "Von", w: 11, t: "d" }, { h: "Bis", w: 11, t: "d" }, { h: "Erstellt", w: 9, t: "n" }, { h: "Erledigt", w: 9, t: "n" }, { h: "Veränderung erledigt", w: 12, t: "n" },
+    { h: "davon Service", w: 10, t: "n" }, { h: "Einsatzstunden", w: 11, t: "h" }, { h: "Ø Durchlaufzeit (Tage)", w: 12, t: "h" }, { h: "Termintreue", w: 11, t: "p" }, { h: "SLA eingehalten", w: 11, t: "p" }],
+    rows: qs.map((q, k) => [q.p.label, q.p.start, q.p.end, q.created, q.done, k ? q.done - qs[k - 1].done : null, q.service, r2(q.hours), q.dur == null ? null : Math.round(q.dur * 10) / 10, q.onTime, q.sla]) };
+  const { dash, dataSheet } = xlsxDashboard(list, title, svc, { period: opts.period || null, scope: qScope });
+  const sheets = [dash, quart, vorg, ...(reports.length ? [eins] : []), ...(tms.rows.length ? [tms] : []), pers, mon, hist, comm, info, dataSheet];
   download(name, XLSX.build(sheets, { title, author: sync.company || "GF Tracker" }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   toast(`Excel-Datei „${name}“ mit ${list.length} Vorgängen erstellt.`);
 }
@@ -1970,7 +2060,7 @@ document.addEventListener("click", (e) => {
     case "team-delete": { const t = team(id); if (!t || !confirm(`Team „${t.name}“ löschen? Die Vorgänge bleiben erhalten, verlieren aber die Teamzuordnung.`)) return;
       db.teams = db.teams.filter((x) => x.id !== t.id); db.issues.forEach((i) => { if (i.teamId === t.id) { i.teamId = null; touch(i); } }); db.projects.forEach((p) => { if (p.teamId === t.id) p.teamId = null; });
       save(); closeModal(); go("#/teams"); toast(`Team „${t.name}“ gelöscht`); break; }
-    case "export-team-xlsx": { const t = team(id); if (t) exportXlsx(teamIssues(t), `auswertung-team-${t.name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-")}-${today()}.xlsx`, `Team ${t.name}`); break; }
+    case "export-team-xlsx": { const t = team(id); if (t) xlsxDialog(teamIssues(t), `auswertung-team-${t.name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-")}`, `Team ${t.name}`); break; }
     case "yw-tab": ui.yourWork = el.dataset.v; render(); break;
     case "board-toggle": ui.board[el.dataset.v] = !ui.board[el.dataset.v]; render(); break;
     case "board-user": { const v = el.dataset.v; const a = ui.board.users; ui.board.users = a.includes(v) ? a.filter((x) => x !== v) : [...a, v]; render(); break; }
@@ -1986,9 +2076,11 @@ document.addEventListener("click", (e) => {
     case "save-filter": { const jql = $("#jql")?.value.trim(); if (!jql) return; try { parseJql(jql); } catch (err) { return toast("Abfrage fehlerhaft: " + err.message); } const name = prompt("Name des Filters:"); if (name?.trim()) { const f = { id: uid(), name: name.trim(), jql, ownerId: db.currentUserId }; db.filters.push(f); save(); go(`#/filters?filter=${f.id}`); toast("Filter gespeichert"); } break; }
     case "delete-filter": db.filters = db.filters.filter((f) => f.id !== id); save(); go("#/filters"); break;
     case "export-csv": exportCsv(ui.lastResults || [], `vorgaenge-${today()}.csv`); break;
-    case "export-xlsx": exportXlsx(ui.lastResults || [], `auswertung-filter-${today()}.xlsx`, "Suchergebnis / Filter"); break;
-    case "export-all-xlsx": exportXlsx(db.issues, `auswertung-gesamt-${today()}.xlsx`, "Alle Projekte"); break;
-    case "export-project-xlsx": { const pp = proj(el.dataset.project); if (pp) exportXlsx(projIssues(pp), `auswertung-${pp.key}-${today()}.xlsx`, `Projekt ${pp.name}`); break; }
+    case "export-xlsx": xlsxDialog(ui.lastResults || [], "auswertung-filter", "Suchergebnis / Filter"); break;
+    case "export-all-xlsx": xlsxDialog(db.issues, "auswertung-gesamt", "Alle Projekte"); break;
+    case "export-project-xlsx": { const pp = proj(el.dataset.project); if (pp) xlsxDialog(projIssues(pp), `auswertung-${pp.key}`, `Projekt ${pp.name}`); break; }
+    case "export-quarter-xlsx": { const [y, q] = String(el.dataset.q).split(":").map(Number); const per = quarterRange(y, q);
+      exportXlsx(db.issues.filter((i) => activeIn(i, per)), `auswertung-gesamt-${per.label.toLowerCase().replace(/\s+/g, "-")}-${today()}.xlsx`, `Alle Projekte · ${per.label}`, { period: per, scope: db.issues }); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
     case "export-json": api("/api/admin/export"); break;
     case "import-json": $("#json-file").click(); break;
@@ -2103,6 +2195,11 @@ async function handleSubmit(e, f) {
       db.projects.push(p); if (p.type === "software") db.sprints.push({ id: uid(), projectId: p.id, name: `${key} Sprint 1`, goal: "", state: "future", start: null, end: null, committed: null, completed: null });
       save(); closeModal(); go(`#/p/${key}`); toast(`Projekt ${p.name} erstellt`); break; }
     case "project-form": { const p = proj(f.dataset.id); Object.assign(p, { name: fd.get("name"), desc: fd.get("desc"), leadId: fd.get("leadId") || p.leadId, color: fd.get("color"), teamId: fd.get("teamId") || null }); save(); render(); toast("Gespeichert"); break; }
+    case "xlsx-form": {
+      const x = ui.xlsx; if (!x) break; const v = String(fd.get("period")); let per = null;
+      if (v.startsWith("q:")) { const [, y, q] = v.split(":").map(Number); per = quarterRange(y, q); } else if (v.startsWith("y:")) per = yearRange(Number(v.slice(2)));
+      const l = per ? x.scope.filter((i) => activeIn(i, per)) : x.scope;
+      closeModal(); exportXlsx(l, `${x.base}${per ? "-" + per.label.toLowerCase().replace(/\s+/g, "-") : ""}-${today()}.xlsx`, per ? `${x.title} · ${per.label}` : x.title, { period: per, scope: x.scope }); break; }
     case "team-form": {
       const members = fd.getAll("m"); const t = team(f.dataset.id);
       const fix = (x) => { if (x.leadId && !x.memberIds.includes(x.leadId)) x.memberIds.unshift(x.leadId); return x; };

@@ -349,3 +349,7 @@ h1 .tavatar { margin-right: 10px; }
 .tmembers { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 14px; border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
 .avatars { display: inline-flex; } .avatars .avatar + .avatar { margin-left: -6px; box-shadow: 0 0 0 2px var(--surface); }
 @media (max-width: 860px) { .tstats { grid-template-columns: repeat(2, 1fr); } .tcols { grid-template-columns: minmax(0, 1fr) !important; } }
+
+/* Quartalsvergleich */
+.qtable td.num, .qtable th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qd { font-size: 10px; } .qd.good { color: var(--ok); } .qd.bad { color: var(--danger); }

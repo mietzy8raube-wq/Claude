@@ -474,6 +474,18 @@ Kommentare – mit Filter in der Kopfzeile und echten Datums-/Zahlenwerten, also
 direkt für Pivot-Tabellen und Diagramme nutzbar. Die Filtersuche exportiert genau
 das aktuelle Suchergebnis.
 
+Vor dem Export wird der **Zeitraum** gewählt: gesamter Zeitraum, aktuelles
+Quartal, Vorquartal, frühere Quartale oder ein Jahr. Ein Quartal enthält alle
+Vorgänge, die darin erstellt, bearbeitet oder erledigt wurden. Das Blatt
+**Dashboard** zeigt Kennzahlen (bei abgeschlossenen Quartalen „offen“ und
+„überfällig“ zum Stichtag, sonst mit Vergleich zum Vorquartal), native
+Excel-Diagramme – Wochenverlauf, Quartalsvergleich erstellt/erledigt, Ø
+Durchlaufzeit je Quartal, Status, Arbeitslast, Teams, Priorität, Top-Kunden –
+sowie die Listen „Überfällig“ und „Nächste Termine“. Das Blatt **Quartale** enthält
+je Quartal erstellt, erledigt, Veränderung, Einsatzstunden, Ø Durchlaufzeit,
+Termintreue und SLA-Quote. Im App-Dashboard steht der **Quartalsvergleich** der
+letzten vier Quartale mit Direkt-Export.
+
 **Spielregeln, damit nichts liegen bleibt**
 
 1. **Jeder Vorgang hat genau eine verantwortliche Person und – wo sinnvoll –
