@@ -651,7 +651,7 @@ function stepForm(i, t, prefill = {}) {
         <label class="f"><span>Durchgeführte Arbeiten <span class="req">*</span></span><textarea name="action" rows="4" required placeholder="z. B. Fühler getauscht, Probelauf 30 min ohne Fehler"></textarea></label>
         <div class="grid g2" style="gap:12px"><label class="f">Material / Ersatzteile<textarea name="parts" rows="2"></textarea></label><label class="f">Arbeitszeit (Stunden)<input type="number" name="hours" min="0" step="0.25" placeholder="z. B. 1,5"></label></div>` : ""}
       ${isSvc && (n.has("reply") || n.has("report") || n.has("appointment")) && !i.customer?.email ? `<p class="small muted" style="margin:0">Hinweis: Für diesen Vorgang ist keine Kunden-E-Mail hinterlegt.</p>` : ""}
-    </div><div class="modal-f"><button type="button" class="btn subtle" data-act="step-cancel">Abbrechen</button><button class="btn primary" type="submit">${esc(t.label)}</button></div></form>`);
+    </div><div class="modal-f"><span class="modal-hint">Esc = Abbrechen · Strg+Enter = Bestätigen</span><button type="button" class="btn subtle" data-act="step-cancel">Abbrechen</button><button class="btn primary" type="submit">${esc(t.label)}</button></div></form>`);
   setTimeout(() => $("#step-form select, #step-form input, #step-form textarea")?.focus(), 30);
 }
 function performStep(i, t, fd) {
@@ -1056,8 +1056,26 @@ function viewSettings() {
 }
 
 /* ---------- Vorgang: Detailansicht ---------- */
-function openModal(html, wide = false, kind = "form") { const m = $("#modal"); m.className = "modal open" + (wide ? " wide" : ""); m.innerHTML = html; ui.modal = kind; $("#overlay").classList.add("open"); }
-function closeModal() { $("#modal").className = "modal"; $("#modal").innerHTML = ""; ui.modal = null; ui.openIssue = null; ui.editingDesc = false; $("#overlay").classList.remove("open"); }
+function openModal(html, wide = false, kind = "form") {
+  const m = $("#modal");
+  if (!ui.modal && document.activeElement && document.activeElement !== document.body) ui.modalReturnFocus = document.activeElement;
+  m.className = "modal open" + (wide ? " wide" : ""); m.innerHTML = html; m.scrollTop = 0; m.tabIndex = -1; ui.modal = kind; ui.modalDirty = false;
+  $("#overlay").classList.add("open"); document.body.classList.add("modal-open");
+  setTimeout(() => { if (!m.contains(document.activeElement)) m.focus({ preventScroll: true }); }, 40);
+}
+function closeModal() {
+  const m = $("#modal"); m.className = "modal"; m.innerHTML = ""; ui.modal = null; ui.openIssue = null; ui.editingDesc = false; ui.modalDirty = false; ui.stepReturn = null;
+  $("#overlay").classList.remove("open"); document.body.classList.remove("modal-open");
+  const f = ui.modalReturnFocus; ui.modalReturnFocus = null; if (f && document.contains(f)) f.focus({ preventScroll: true });
+}
+/** Schließen durch Nutzer (Esc, Klick daneben, ×): fragt bei ungespeicherten Eingaben nach; Arbeitsschritte kehren zum Vorgang zurück. */
+function dismissModal() {
+  if (!ui.modal) return;
+  const typed = ui.modalDirty || [...$("#modal").querySelectorAll("#comment-text, #desc-edit, textarea[name=description]")].some((t) => t.value.trim() && t.defaultValue !== t.value);
+  if (typed && !confirm("Ihre Eingaben sind noch nicht gespeichert. Trotzdem schließen?")) return;
+  const back = ui.modal === "form" ? ui.stepReturn : null; ui.stepReturn = null;
+  closeModal(); if (back && issue(back)) openIssue(back);
+}
 function openIssue(id) { const i = issue(id); if (!i) return toast("Vorgang nicht gefunden."); ui.openIssue = id; ui.editingDesc = false; ui.addingSub = false; ui.addingLink = false; ui.issueTab = ui.issueTab || "comments"; pushRecent(id); openModal("", true, "issue"); renderIssue(); }
 function renderIssue() {
   const i = issue(ui.openIssue); if (!i) { closeModal(); return; }
@@ -1072,7 +1090,8 @@ function renderIssue() {
   const timePct = i.estimateH ? Math.min(100, (i.loggedH / i.estimateH) * 100) : 0;
   const sf = slaInfo(i, "first"), sr = slaInfo(i, "resolve");
   $("#modal").innerHTML = `
-    <div class="modal-h" style="padding-bottom:0"><div class="small muted" style="flex:1">${crumbs}</div>
+    <div class="modal-h" style="padding-bottom:8px"><div class="small muted mh-crumbs" style="flex:1">${crumbs}</div>
+      <div class="mh-sticky">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><b>${esc(i.summary)}</b>${lozenge(i)}${actionButton(i)}</div>
       <button class="btn subtle sm" data-act="watch" title="Beobachten">${icon("eye")} ${i.watchers.includes(db.currentUserId) ? "Beobachtet" : "Beobachten"} (${i.watchers.length})</button>
       <button class="btn subtle sm icon" data-act="clone" title="Klonen">${icon("copy")}</button>
       <button class="btn subtle sm icon" data-act="delete-issue" title="Löschen">${icon("trash")}</button>
@@ -1270,7 +1289,7 @@ document.addEventListener("click", (e) => {
   const cur = issue(ui.openIssue);
   switch (act) {
     case "open": if (e.target.closest("button:not([data-act=open]), select, input")) return; e.preventDefault(); openIssue(id); break;
-    case "close": closeModal(); break;
+    case "close": if (el.tagName === "A") closeModal(); else dismissModal(); break;
     case "reload": location.reload(); break;
     case "goto": e.preventDefault(); go(el.dataset.href); break;
     case "menu": $("#topnav").classList.toggle("menu-open"); break;
@@ -1313,7 +1332,7 @@ document.addEventListener("click", (e) => {
     case "assign-me": e.preventDefault(); if (cur) { updateIssue(cur, { assigneeId: db.currentUserId }); render(); renderIssue(); } break;
     case "take": { const it = issue(id); if (it) { takeIssue(it); render(); if (ui.modal === "issue") renderIssue(); } break; }
     case "step": { const it = issue(id); const t = it && stepsFor(it).find((x) => x.id === el.dataset.t); if (t) stepForm(it, t); break; }
-    case "step-cancel": { const back = ui.stepReturn; closeModal(); if (back) openIssue(back); break; }
+    case "step-cancel": dismissModal(); break;
     case "print-report": { const it = issue(id); if (it) printReport(it); break; }
     case "dispatch-week": ui.dispatchWeek = el.dataset.v === "0" ? 0 : (ui.dispatchWeek || 0) + Number(el.dataset.v); render(); break;
     case "quick-done": if (cur) { const wf = workflowOf(proj(cur.projectId)); updateIssue(cur, { status: wf.find((s) => s.cat === "done").id }); render(); renderIssue(); toast(`${keyOf(cur)} erledigt ✓`); } break;
@@ -1423,9 +1442,14 @@ async function handleSubmit(e, f) {
 }
 document.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
-  if (e.key === "Escape") { if ($("#notifs").classList.contains("open")) $("#notifs").classList.remove("open"); else if (ui.modal) closeModal(); }
+  if (e.key === "Escape") { if ($("#notifs").classList.contains("open")) $("#notifs").classList.remove("open"); else if (ui.modal) { e.preventDefault(); dismissModal(); } }
+  if (e.key === "Tab" && ui.modal) { // Fokus im Fenster halten
+    const f = [...$("#modal").querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
+    if (f.length && (e.shiftKey ? document.activeElement === f[0] || document.activeElement === $("#modal") : document.activeElement === f[f.length - 1])) { e.preventDefault(); (e.shiftKey ? f[f.length - 1] : f[0]).focus(); }
+  }
   if (e.key === "Enter" && e.target.id === "gsearch") { const q = e.target.value.trim(); if (!q) return; const i = byKey(q); if (i) { openIssue(i.id); e.target.value = ""; } else go(`#/filters?jql=${encodeURIComponent(`text ~ "${q.replace(/"/g, "")}" ORDER BY updated DESC`)}`); }
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "comment-text") { e.preventDefault(); $("#comment-form").requestSubmit(); }
+  if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && ui.modal === "form" && e.target.closest("#modal form")) { e.preventDefault(); e.target.closest("form").requestSubmit(); }
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "jql") { e.preventDefault(); $("#jql-form").requestSubmit(); }
   if (!typing && !ui.modal && !e.ctrlKey && !e.metaKey && !e.altKey) {
     if (e.key === "c") { e.preventDefault(); createForm(); }
@@ -1436,7 +1460,12 @@ document.addEventListener("click", (e) => { const th = e.target.closest("th[data
   const cur = $("#jql")?.value || ""; const base = cur.replace(/\s*ORDER\s+BY[\s\S]*$/i, "").trim(); let dir = "ASC";
   try { const o = parseJql(cur).order[0]; if (o && o.f === th.dataset.sort && o.dir === "ASC") dir = "DESC"; } catch {}
   go(`#/filters?jql=${encodeURIComponent(`${base}${base ? " " : ""}ORDER BY ${th.dataset.sort} ${dir}`)}`); });
-$("#overlay").addEventListener("click", closeModal);
+// Nur schließen, wenn der Klick auch auf dem Hintergrund begonnen hat (nicht beim Markieren von Text im Fenster)
+let overlayDown = false;
+$("#overlay").addEventListener("mousedown", (e) => (overlayDown = e.target === e.currentTarget));
+$("#overlay").addEventListener("click", () => { if (overlayDown) dismissModal(); overlayDown = false; });
+$("#modal").addEventListener("scroll", (e) => e.currentTarget.classList.toggle("scrolled", e.currentTarget.scrollTop > 4), { passive: true });
+$("#modal").addEventListener("input", (e) => { if (ui.modal === "form" && e.target.closest("form")) ui.modalDirty = true; });
 // Tooltip für Diagramme
 document.addEventListener("mousemove", (e) => { const t = e.target.closest("[data-tip]"); const tip = $("#tip");
   if (!t) { tip.style.display = "none"; return; } tip.textContent = t.dataset.tip; tip.style.display = "block";
