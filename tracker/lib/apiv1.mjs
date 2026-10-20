@@ -17,13 +17,22 @@ export function createApiV1(ctx) {
     store.db.prepare("INSERT INTO api_keys (id, name, prefix, token_hash, scope, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(id, str(name, 80) || "API", token.slice(0, 10), sha256(token), scope === "write" ? "write" : "read", userId, Date.now());
     return { id, token };
   }
-  const listKeys = () => store.db.prepare("SELECT id, name, prefix, scope, created_by, created_at, last_used_at, revoked FROM api_keys ORDER BY created_at DESC").all();
+  /** Persönlicher Schlüssel (z. B. Outlook-Add-in): handelt im Namen der Person; ein neuer ersetzt den bisherigen. */
+  function createUserKey(userId, name = "Outlook-Add-in") {
+    store.db.prepare("UPDATE api_keys SET revoked = 1 WHERE user_id = ? AND name = ?").run(userId, name);
+    const token = `gft_${randomToken(30)}`; const id = ID();
+    store.db.prepare("INSERT INTO api_keys (id, name, prefix, token_hash, scope, created_by, created_at, user_id) VALUES (?, ?, ?, ?, 'write', ?, ?, ?)").run(id, name, token.slice(0, 10), sha256(token), userId, Date.now(), userId);
+    return { id, token };
+  }
+  const userKeyInfo = (userId, name = "Outlook-Add-in") => store.db.prepare("SELECT id, prefix, created_at, last_used_at FROM api_keys WHERE user_id = ? AND name = ? AND revoked = 0 ORDER BY created_at DESC LIMIT 1").get(userId, name) || null;
+  const listKeys = () => store.db.prepare("SELECT id, name, prefix, scope, created_by, created_at, last_used_at, revoked FROM api_keys WHERE user_id IS NULL ORDER BY created_at DESC").all();
   const revokeKey = (id) => store.db.prepare("UPDATE api_keys SET revoked = 1 WHERE id = ?").run(id).changes > 0;
   function authenticate(req) {
     const m = String(req.headers.authorization || "").match(/^Bearer\s+(gft_[A-Za-z0-9_-]{20,})$/);
     if (!m) throw new HttpError(401, "API-Schlüssel fehlt (Header: Authorization: Bearer gft_…).");
     const key = store.db.prepare("SELECT * FROM api_keys WHERE token_hash = ? AND revoked = 0").get(sha256(m[1]));
     if (!key) throw new HttpError(401, "API-Schlüssel ungültig oder widerrufen.");
+    if (key.user_id) { const u = userById(key.user_id); if (!u || !u.active) throw new HttpError(401, "Die Person zu diesem Schlüssel ist nicht mehr aktiv."); key.user = u; }
     const now = Date.now(); const w = limiter.get(key.id) || { start: now, n: 0 }; if (now - w.start > 60e3) { w.start = now; w.n = 0; }
     if (++w.n > 600) throw new HttpError(429, "Zu viele Anfragen – höchstens 600 je Minute.");
     limiter.set(key.id, w);
@@ -54,8 +63,8 @@ export function createApiV1(ctx) {
     createdAt: c.createdAt, updatedAt: c.updatedAt });
 
   /* ---------- Schreibhilfen ---------- */
-  const byApi = (key) => `API: ${key.name}`;
-  function hist(i, key, field, from, to) { i.history.unshift({ id: ID(), at: new Date().toISOString(), userId: null, by: byApi(key), field, from: from ?? "", to: to ?? "" }); }
+  const byApi = (key) => (key.user ? key.user.name : `API: ${key.name}`);
+  function hist(i, key, field, from, to) { i.history.unshift({ id: ID(), at: new Date().toISOString(), userId: key.user?.id || null, by: key.user ? null : byApi(key), field, from: from ?? "", to: to ?? "" }); }
   function commit(before, after) {
     after.updatedAt = new Date().toISOString(); store.put("issues", after);
     issueEffects({ before, after });
@@ -84,14 +93,15 @@ export function createApiV1(ctx) {
     const contact = b.contact && typeof b.contact === "object" ? { name: str(b.contact.name, 120), company: c?.name || str(b.contact.company, 160), email: str(b.contact.email, 200).toLowerCase(), phone: str(b.contact.phone, 60) } : c ? S.customerSnapshot(c) : null;
     const asset = c && b.assetSerial ? (c.assets || []).find((a) => a.serial === String(b.assetSerial)) : null;
     const i = store.tx(() => {
-      const x = S.newIssue({ project: p, no: store.reserveNumber(p.id), type, summary, description: str(b.description, 20000), priority: prioFor(b.priority) || "MEDIUM", assigneeId: assignee?.id || null, reporterId: null,
+      const x = S.newIssue({ project: p, no: store.reserveNumber(p.id), type, summary, description: str(b.description, 20000), priority: prioFor(b.priority) || "MEDIUM", assigneeId: assignee?.id || null, reporterId: key.user?.id || null,
         labels: Array.isArray(b.labels) ? b.labels.map((l) => str(l, 40).toLowerCase()).filter(Boolean) : [], dueDate: dateOrNull(b.dueDate, "dueDate"), teamId: team ? team.id : undefined,
         customerId: c?.id || null, assetId: asset?.id || null, customer: contact, externalId: extId });
-      x.history[0] = { ...x.history[0], userId: null, by: byApi(key) };
+      x.history[0] = { ...x.history[0], userId: key.user?.id || null, by: key.user ? null : byApi(key) };
+      if (key.user && !x.watchers.includes(key.user.id)) x.watchers.push(key.user.id);
       const st = statusFor(p, b.status); if (st && st.id !== x.status) { const from = x.status; x.status = st.id; S.applyTransition(x, p, from, st.id); }
       store.put("issues", x); issueEffects({ before: null, after: x });
       const notifyIds = assignee ? [assignee.id] : team ? team.memberIds : [];
-      for (const uid of notifyIds) ctx.createNotification(uid, assignee ? "assign" : "new", `${assignee ? "Ihnen zugewiesen" : `Neu im Team-Eingang (${team.name})`}: ${p.key}-${x.no}`, `${byApi(key)}: ${summary}`, x.id);
+      for (const uid of notifyIds.filter((u) => u !== key.user?.id)) ctx.createNotification(uid, assignee ? "assign" : "new", `${assignee ? "Ihnen zugewiesen" : `Neu im Team-Eingang (${team.name})`}: ${p.key}-${x.no}`, `${byApi(key)}: ${summary}`, x.id);
       return x;
     });
     return { issue: i, created: true };
@@ -113,7 +123,7 @@ export function createApiV1(ctx) {
       set("customerId", "Kunde", c?.id || null, (v) => store.get("customers", v)?.name || "–"); if (c) i.customer = S.customerSnapshot(c); i.assetId = null; }
     if ("status" in b) { const st = statusFor(p, b.status); if (st && st.id !== i.status) { const from = i.status; hist(i, key, "Status", S.statusInfo(p, from).name, st.name); i.status = st.id; S.applyTransition(i, p, from, st.id); } }
     store.tx(() => commit(before, i));
-    if (before.assigneeId !== i.assigneeId && i.assigneeId) ctx.createNotification(i.assigneeId, "assign", `Ihnen zugewiesen: ${issueKey(i)}`, `${byApi(key)}: ${i.summary}`, i.id);
+    if (before.assigneeId !== i.assigneeId && i.assigneeId && i.assigneeId !== key.user?.id) ctx.createNotification(i.assigneeId, "assign", `Ihnen zugewiesen: ${issueKey(i)}`, `${byApi(key)}: ${i.summary}`, i.id);
     customerMails({ before, after: i }); flushMailQueue();
     return i;
   }
@@ -167,10 +177,25 @@ export function createApiV1(ctx) {
     if (pm && m === "PATCH") { write(); const i = patchIssue(key, resolveIssue(pm[1]), await readJson(req, 1e6)); broadcast(); return issueDto(i); }
     pm = p.match(/^\/api\/v1\/issues\/([^/]+)\/comments$/);
     if (pm && m === "POST") { write(); const b = await readJson(req, 1e6); const text = str(b.text, 8000); if (!text) throw new HttpError(400, "Feld „text“ fehlt.");
-      const i = resolveIssue(pm[1]); const before = JSON.parse(JSON.stringify(i)); const c = { id: ID(), userId: null, author: str(b.author, 80) || byApi(key), text, at: new Date().toISOString(), internal: b.internal !== false };
-      i.comments.push(c); store.tx(() => commit(before, i)); broadcast();
-      const who = i.assigneeId || projectById(i.projectId)?.leadId; if (who) ctx.createNotification(who, "comment", `Neuer Kommentar (${byApi(key)}): ${issueKey(i)}`, text.slice(0, 140), i.id);
+      const i = resolveIssue(pm[1]); const before = JSON.parse(JSON.stringify(i)); const c = { id: ID(), userId: key.user?.id || null, author: key.user ? null : str(b.author, 80) || byApi(key), text, at: new Date().toISOString(), internal: b.internal !== false };
+      if (key.user && !i.watchers.includes(key.user.id)) i.watchers.push(key.user.id);
+      i.comments.push(c); store.tx(() => commit(before, i)); broadcast(); customerMails({ before, after: i }); flushMailQueue();
+      const who = i.assigneeId || projectById(i.projectId)?.leadId; if (who && who !== key.user?.id) ctx.createNotification(who, "comment", `Neuer Kommentar (${byApi(key)}): ${issueKey(i)}`, text.slice(0, 140), i.id);
       return { __status: 201, body: { ok: true, comment: { at: c.at, author: c.author, internal: c.internal, text } } }; }
+    if (p === "/api/v1/me" && m === "GET") return { key: key.name, user: key.user ? { name: key.user.name, email: key.user.email, role: key.user.role } : null, appUrl: cfg.appUrl };
+    if (p === "/api/v1/lookup" && m === "GET") { // Absender einer E-Mail → Kunde, Ansprechpartner, Vorgänge (für das Outlook-Add-in)
+      const e = String(q("email") || "").trim().toLowerCase(); if (!e) throw new HttpError(400, "Parameter email fehlt.");
+      const c = ctx.findCustomerByEmail(e); const contact = c ? (c.contacts || []).find((k) => (k.email || "").toLowerCase() === e) || null : null;
+      const issues = store.all("issues").filter((i) => (c && i.customerId === c.id) || (i.customer?.email || "").toLowerCase() === e).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      const open = issues.filter((i) => S.statusInfo(projectById(i.projectId), i.status).cat !== "done");
+      return { email: e, customer: c ? customerDto(c) : null, contact: contact ? { name: contact.name, role: contact.role || "", phone: contact.phone || "" } : null,
+        openIssues: open.slice(0, 20).map(issueDto), recentIssues: issues.filter((i) => !open.includes(i)).slice(0, 5).map(issueDto) };
+    }
+    pm = p.match(/^\/api\/v1\/issues\/([^/]+)\/attachments$/);
+    if (pm && m === "POST") { write(); const b = await readJson(req, 25e6); const i = resolveIssue(pm[1]);
+      const data = Buffer.from(String(b.contentBase64 || ""), "base64"); if (!data.length) throw new HttpError(400, "contentBase64 fehlt.");
+      const meta = ctx.addAttachment(i.id, { name: str(b.name, 150) || "datei", type: b.contentType, data, userId: key.user?.id || null, by: key.user ? null : byApi(key), source: b.source === "email" ? "email" : "upload" });
+      broadcast(); return { __status: 201, body: { ok: true, id: meta.id, name: meta.name, size: meta.size } }; }
     if (p === "/api/v1/customers" && m === "GET") {
       let list = customers(); if (q("q")) { const s = q("q").toLowerCase(); list = list.filter((c) => `${c.no} ${c.name} ${c.city} ${c.externalId}`.toLowerCase().includes(s)); }
       if (q("updatedSince")) list = list.filter((c) => (c.updatedAt || "") > q("updatedSince"));
@@ -205,5 +230,5 @@ export function createApiV1(ctx) {
         "/api/v1/projects": { get: { summary: "Projekte mit Status und Typen", responses: ok("Liste") } }, "/api/v1/users": { get: { summary: "Aktive Personen", responses: ok("Liste") } }, "/api/v1/teams": { get: { summary: "Teams", responses: ok("Liste") } },
       } };
   }
-  return { handle, createKey, listKeys, revokeKey, issueDto, customerDto };
+  return { handle, createKey, createUserKey, userKeyInfo, listKeys, revokeKey, issueDto, customerDto };
 }

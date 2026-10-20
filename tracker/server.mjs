@@ -392,7 +392,7 @@ const eventHandlers = [];
 const onEvent = (fn) => eventHandlers.push(fn);
 function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try { fn(type, issue, extra); } catch (e) { log("Ereignis-Fehler:", e.message); } } }
 /* ---------- Schnittstellen: REST-API und Webhooks ---------- */
-const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification });
+const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification, findCustomerByEmail, addAttachment });
 const webhooks = createWebhooks({ store, cfg: CFG, issueDto: apiV1.issueDto, customerDto: apiV1.customerDto, ilog, log });
 onEvent((type, obj, extra) => webhooks.enqueue(type, obj, extra));
 const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue, addAttachment, maxFile: MAX_FILE });
@@ -476,6 +476,63 @@ async function portalCreate(req) {
   broadcast();
   const link = confirmReceipt(issue, email, name);
   return { key: issueKey(issue), token: link.split("/").pop(), url: link, mailSent: mailer.configured };
+}
+/** Manifest des Outlook-Add-ins (Microsoft 365 Admin Center → Integrierte Apps → Benutzerdefinierte App hochladen). */
+function outlookManifest() {
+  const A = CFG.appUrl; const h = sha256(`gf-tracker-outlook|${A}`); const id = `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20, 32)}`;
+  const x = (v) => String(v).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;"); const host = new URL(A).origin;
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0" xsi:type="MailApp">
+  <Id>${id}</Id>
+  <Version>1.1.0.0</Version>
+  <ProviderName>${x(CFG.company)}</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="GF Tracker"/>
+  <Description DefaultValue="Vorgang aus einer E-Mail anlegen, an bestehende Vorgänge anhängen und Kunde mit offenen Vorgängen zum Absender anzeigen."/>
+  <IconUrl DefaultValue="${x(A)}/icons/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="${x(A)}/icons/icon-128.png"/>
+  <SupportUrl DefaultValue="${x(A)}/"/>
+  <AppDomains><AppDomain>${x(host)}</AppDomain></AppDomains>
+  <Hosts><Host Name="Mailbox"/></Hosts>
+  <Requirements><Sets><Set Name="Mailbox" MinVersion="1.5"/></Sets></Requirements>
+  <FormSettings><Form xsi:type="ItemRead"><DesktopSettings><SourceLocation DefaultValue="${x(A)}/outlook/taskpane.html"/><RequestedHeight>450</RequestedHeight></DesktopSettings></Form></FormSettings>
+  <Permissions>ReadItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or"><Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/></Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <Requirements><bt:Sets DefaultMinVersion="1.5"><bt:Set Name="Mailbox"/></bt:Sets></Requirements>
+    <Hosts>
+      <Host xsi:type="MailHost">
+        <DesktopFormFactor>
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <OfficeTab id="TabDefault">
+              <Group id="gftGroup">
+                <Label resid="groupLabel"/>
+                <Control xsi:type="Button" id="gftTaskpane">
+                  <Label resid="btnLabel"/>
+                  <Supertip><Title resid="btnLabel"/><Description resid="btnDesc"/></Supertip>
+                  <Icon><bt:Image size="16" resid="icon16"/><bt:Image size="32" resid="icon32"/><bt:Image size="80" resid="icon80"/></Icon>
+                  <Action xsi:type="ShowTaskpane"><SourceLocation resid="taskpaneUrl"/><SupportsPinning>true</SupportsPinning></Action>
+                </Control>
+              </Group>
+            </OfficeTab>
+          </ExtensionPoint>
+        </DesktopFormFactor>
+      </Host>
+    </Hosts>
+    <Resources>
+      <bt:Images>
+        <bt:Image id="icon16" DefaultValue="${x(A)}/icons/icon-16.png"/>
+        <bt:Image id="icon32" DefaultValue="${x(A)}/icons/icon-32.png"/>
+        <bt:Image id="icon80" DefaultValue="${x(A)}/icons/icon-80.png"/>
+      </bt:Images>
+      <bt:Urls><bt:Url id="taskpaneUrl" DefaultValue="${x(A)}/outlook/taskpane.html"/></bt:Urls>
+      <bt:ShortStrings><bt:String id="groupLabel" DefaultValue="GF Tracker"/><bt:String id="btnLabel" DefaultValue="GF Tracker"/></bt:ShortStrings>
+      <bt:LongStrings><bt:String id="btnDesc" DefaultValue="Kunde zum Absender anzeigen, Vorgang aus dieser E-Mail anlegen oder an einen Vorgang anhängen."/></bt:LongStrings>
+    </Resources>
+  </VersionOverrides>
+</OfficeApp>
+`;
 }
 /** Persönlicher Kalender-Feed (Outlook „Kalender abonnieren“): Einsätze, Fristen, Abwesenheiten – mit ?scope=team für alle Teamkollegen. */
 function calendarFeed(u, team) {
@@ -620,6 +677,8 @@ async function handleApi(req, res, url, session) {
   }
   pm = p.match(/^\/api\/files\/([A-Za-z0-9_-]+)$/);
   if (pm && m === "GET") { const hit = findAttachment(pm[1]); if (!hit) throw new HttpError(404, "Datei nicht gefunden."); return { __file: hit.a }; }
+  if (p === "/api/me/outlook" && m === "GET") return { manifestUrl: `${CFG.appUrl}/outlook/manifest.xml`, key: apiV1.userKeyInfo(user.id), https: CFG.appUrl.startsWith("https://") };
+  if (p === "/api/me/outlook" && m === "POST") { const k = apiV1.createUserKey(user.id); ilog("outlook", "info", `Zugangsschlüssel für das Outlook-Add-in erzeugt: ${user.email}`); return { token: k.token, key: apiV1.userKeyInfo(user.id) }; }
   if (p === "/api/me/calendar" && (m === "GET" || m === "POST")) {
     if (m === "POST") store.db.prepare("DELETE FROM sync_map WHERE kind = 'icstoken' AND local_id = ?").run(user.id);
     let row = store.db.prepare("SELECT remote_id FROM sync_map WHERE kind = 'icstoken' AND local_id = ?").get(user.id);
@@ -758,6 +817,12 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/" || url.pathname === "/index.html") {
       if (!session || !userById(session.userId)?.active) return send(res, 302, "", { Location: "/login" });
       return serveFile(req, res, "index.html");
+    }
+    if (url.pathname === "/outlook/manifest.xml") return send(res, 200, outlookManifest(), { "Content-Type": "application/xml; charset=utf-8", "Content-Disposition": 'attachment; filename="gf-tracker-outlook.xml"', "Cache-Control": "no-store" });
+    if (url.pathname.startsWith("/outlook/")) {
+      // Aufgabenbereich läuft innerhalb von Outlook: Einbetten durch Outlook erlauben, Office.js von Microsoft laden
+      return serveFile(req, res, decodeURIComponent(url.pathname).replace(/^\/+/, ""), { "X-Frame-Options": undefined,
+        "Content-Security-Policy": "default-src 'self'; script-src 'self' https://appsforoffice.microsoft.com https://*.office.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-src https://*.office.com https://*.microsoft.com; frame-ancestors 'self' https://outlook.office.com https://outlook.office365.com https://outlook.live.com https://*.officeapps.live.com https://*.office.com https://*.microsoft.com; base-uri 'none'" });
     }
     const calm = url.pathname.match(/^\/cal\/([A-Za-z0-9_-]{20,64})\.ics$/);
     if (calm && (req.method === "GET" || req.method === "HEAD")) {

@@ -821,6 +821,11 @@ function viewIntegrations() {
         <li>Server neu starten. Mitarbeiter melden sich dann mit ihrem Microsoft-Konto an (die E-Mail muss im GF Tracker als Person angelegt sein).</li></ol></details>
     </div>
 
+    <div class="card pad isec"><h3 class="h3">Outlook-Add-in</h3>
+      <p class="small" style="margin:0 0 8px">In jeder E-Mail: Kunde zum Absender, offene Vorgänge, „Als Vorgang anlegen“ (inkl. Anhänge), „An Vorgang anhängen“. Funktioniert im klassischen und neuen Outlook für Windows, Outlook für Mac und Outlook im Web.</p>
+      <div class="row"><code class="copy" data-act="copy" data-v="${esc(I.appUrl)}/outlook/manifest.xml">${esc(I.appUrl)}/outlook/manifest.xml</code><a class="btn sm" href="/outlook/manifest.xml">Manifest herunterladen</a></div>
+      <p class="small muted" style="margin:8px 0 0">Verteilung an alle: Microsoft 365 Admin Center → Einstellungen → Integrierte Apps → „Benutzerdefinierte Apps hochladen“ → Office-Add-in → Manifest-URL. Jede Person verbindet das Add-in danach einmalig unter Einstellungen → Outlook-Add-in.${I.appUrl.startsWith("https://") ? "" : " <b>Outlook verlangt eine HTTPS-Adresse.</b>"}</p></div>
+
     <div class="card pad isec"><h3 class="h3">Factorial (Personal, Urlaub, Krankheit)</h3>
       ${F.configured ? `<div class="row" style="gap:16px;margin-bottom:8px"><span>${dot("on", "verbunden")} API-Version ${esc(F.version)}</span><span class="small muted">Letzter Abgleich: ${fmtTs(F.lastSync)}</span></div>
         ${F.lastResult ? `<p class="small" style="margin:0 0 8px">${F.lastResult.employees} Mitarbeiter · ${F.lastResult.created} neu angelegt · ${F.lastResult.absences} Abwesenheiten${F.lastResult.unmatched?.length ? ` · <span style="color:var(--warn)">nicht zugeordnet (ohne E-Mail): ${esc(F.lastResult.unmatched.join(", "))}</span>` : ""}</p>` : ""}
@@ -1583,6 +1588,17 @@ function viewSettings() {
           <li><b>Klassisches Outlook (Windows):</b> Kalender → „Kalender hinzufügen“ → „Aus dem Internet …“ → Link einfügen.</li><li><b>iPhone/Android:</b> erscheint automatisch, wenn das Outlook-Konto auf dem Handy eingerichtet ist.</li>
           <li>Outlook aktualisiert abonnierte Kalender selbst (je nach Version alle paar Stunden). Sofort und mit Erinnerung im eigenen Kalender erscheinen Einsätze, wenn die Administration die Outlook-Kalender-Anbindung eingeschaltet hat.</li>
           <li>Der Link ist persönlich – nicht weitergeben. Bei Bedarf „Neuen Link erzeugen“, dann ist der alte ungültig.</li></ol></details>`; })()}
+      <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Add-in</h3>
+      ${(() => { const o = ui.outlook; if (!o) { if (!ui.outlookLoading) { ui.outlookLoading = true; api("/api/me/outlook").then((r) => { ui.outlook = r; if (route().parts[0] === "settings") render(); }).catch(() => { ui.outlook = { standalone: true }; }); } return '<p class="small muted">Lade …</p>'; }
+        if (o.standalone) return '<p class="small muted" style="margin:0">Das Outlook-Add-in gibt es in der Server-Version.</p>';
+        return `<p class="small muted" style="margin:0 0 6px">In jeder E-Mail in Outlook: Kunde zum Absender mit offenen Vorgängen sehen, mit einem Klick einen Vorgang anlegen (inkl. Anhänge) oder die Mail an einen Vorgang hängen.</p>
+        <p class="small" style="margin:0 0 8px">${o.key ? `✓ Verbunden seit ${fmtDT(new Date(o.key.created_at).toISOString())}${o.key.last_used_at ? ` · zuletzt genutzt ${fmtDT(new Date(o.key.last_used_at).toISOString())}` : ""}` : "Noch nicht verbunden."}</p>
+        <div class="row"><button class="btn sm primary" data-act="outlook-token">${o.key ? "Neuen Zugangsschlüssel erzeugen" : "Zugangsschlüssel erzeugen"}</button><a class="btn sm" href="/outlook/manifest.xml">Manifest herunterladen</a></div>
+        <details class="ihelp"><summary>Add-in in Outlook hinzufügen</summary><ol>
+          <li><b>Für alle auf einmal (empfohlen, Administration):</b> Microsoft 365 Admin Center → Einstellungen → <i>Integrierte Apps</i> → „Benutzerdefinierte Apps hochladen“ → App-Typ „Office-Add-in“ → Manifest-URL <code class="copy" data-act="copy" data-v="${esc(o.manifestUrl)}">${esc(o.manifestUrl)}</code>. Nach einigen Stunden erscheint „GF Tracker“ bei allen.</li>
+          <li><b>Nur für mich:</b> In Outlook im Web / neuem Outlook <code>aka.ms/olksideload</code> öffnen → „Meine Add-Ins“ → „Benutzerdefiniertes Add-In hinzufügen“ → „Aus Datei“ → heruntergeladenes Manifest wählen.</li>
+          <li>Eine E-Mail öffnen → in der Menüleiste <b>GF Tracker</b> (ggf. unter „Apps“ / „…“) → Zugangsschlüssel einfügen. Die Anmeldung gilt danach auf allen Geräten mit diesem Outlook-Konto.</li>
+          ${o.https ? "" : "<li><b>Hinweis:</b> Outlook verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details>`; })()}
       <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
       ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
         : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
@@ -2137,6 +2153,9 @@ document.addEventListener("click", (e) => {
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
     case "integ-reload": ui.integ = null; render(); break;
+    case "outlook-token": if (ui.outlook?.key && !confirm("Neuen Schlüssel erzeugen? Der bisherige funktioniert dann im Add-in nicht mehr.")) return;
+      api("/api/me/outlook", { method: "POST" }).then((r) => { ui.outlook = { ...ui.outlook, key: r.key }; render();
+        secretModal("Zugangsschlüssel für Outlook", "Diesen Schlüssel im Outlook-Add-in „GF Tracker“ einfügen (einmalig je Outlook-Konto). Das Add-in arbeitet dann in Ihrem Namen.", r.token); }).catch((err) => toast(err.message)); break;
     case "att-delete": if (!confirm("Anhang entfernen?")) return; api(`/api/issues/${id}/attachments/${el.dataset.k}`, { method: "DELETE" }).then(() => pull()).then(() => renderIssue()).catch((err) => toast(err.message)); break;
     case "cal-reset": if (!confirm("Neuen Kalender-Link erzeugen? Der bisherige Link funktioniert dann nicht mehr – das Abo in Outlook muss mit dem neuen Link neu eingerichtet werden.")) return;
       api("/api/me/calendar", { method: "POST" }).then((r) => { ui.calFeed = r; render(); toast("Neuer Link erzeugt."); }).catch((err) => toast(err.message)); break;

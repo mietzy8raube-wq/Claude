@@ -37,6 +37,8 @@ export class Store {
   constructor(file) {
     this.db = new DatabaseSync(file);
     this.db.exec(SCHEMA);
+    // Ergänzungen bestehender Datenbanken
+    if (!this.db.prepare("PRAGMA table_info(api_keys)").all().some((c) => c.name === "user_id")) this.db.exec("ALTER TABLE api_keys ADD COLUMN user_id TEXT");
     const q = (sql) => this.db.prepare(sql);
     this.s = {
       getMeta: q("SELECT value FROM meta WHERE key = ?"),

@@ -405,6 +405,14 @@ code.copy { cursor: pointer; background: var(--surface-2); padding: 1px 5px; bor
 pre.code { background: var(--surface-2); padding: 10px; border-radius: 6px; font-size: 12px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
 .ilog td { padding: 5px 8px; vertical-align: top; }
 
+/* Anhänge */
+.att-drop { border: 2px dashed transparent; border-radius: 10px; padding: 2px; transition: border-color .15s; } .att-drop.drop-on { border-color: var(--primary); background: var(--primary-soft); }
+.att-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.att { display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; min-width: 0; background: var(--surface); }
+.att-thumb { width: 52px; height: 52px; border-radius: 6px; overflow: hidden; flex: none; display: grid; place-items: center; background: var(--surface-2); }
+.att-thumb img { width: 100%; height: 100%; object-fit: cover; } .att-ic { font-size: 11px; font-weight: 700; color: var(--fg-2); text-decoration: none; }
+.att-meta { min-width: 0; flex: 1; } .att-meta a { display: block; color: var(--fg); }
+
 .sa-login { max-width: 520px; margin: 8vh auto; padding: 0 16px; }
 .sa-logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: #fff; }
 .sa-users { display: grid; gap: 8px; }
@@ -1237,6 +1245,8 @@ function viewIntegrations() {
         <label class="f">Termindauer im Kalender (Minuten)<input type="number" name="calendarMinutes" value="${M.calendarMinutes}" min="15" max="600" step="15"></label>
         <label class="row nowrap small"><input type="checkbox" name="mailInEnabled" ${M.mailIn ? "checked" : ""}> E-Mails an das Postfach automatisch als Vorgang anlegen (alle 2 Minuten)</label>
         <label class="row nowrap small"><input type="checkbox" name="calendarSync" ${M.calendar ? "checked" : ""}> Eingeplante Einsätze im Outlook-Kalender der Techniker eintragen</label>
+        <label class="row nowrap small"><input type="checkbox" name="calendarPull" ${M.calendarPull ? "checked" : ""}> Im Outlook-Kalender verschobene Termine zurück in den Tracker übernehmen (Kunde wird informiert)</label>
+        <label class="row nowrap small"><input type="checkbox" name="calendarInviteCustomer" ${M.calendarInvite ? "checked" : ""}> Kunden als Teilnehmer einladen (Outlook-Einladung vom Techniker-Kalender)</label>
         <label class="row nowrap small"><input type="checkbox" name="ssoMicrosoft" ${M.sso ? "checked" : ""} ${M.ssoEnv ? "disabled" : ""}> „Mit Microsoft anmelden“ auf der Anmeldeseite anbieten${M.ssoEnv ? " (per Konfiguration aktiv)" : ""}</label>
         <div class="row" style="grid-column:1/-1"><button class="btn primary" type="submit">Speichern</button><button type="button" class="btn" data-act="integ-poll" ${M.appConfigured && M.inbox ? "" : "disabled"}>Postfach jetzt abrufen</button><button type="button" class="btn" data-act="mail-test" ${I.mail.configured ? "" : "disabled"}>Test-E-Mail an mich</button><span class="small muted">Letzter Abruf: ${fmtTs(M.lastPoll)}</span></div>
       </form>
@@ -1248,6 +1258,11 @@ function viewIntegrations() {
         <li>Empfohlen: Zugriff per <b>Application Access Policy</b> (Exchange Online PowerShell) auf das Service-Postfach und die Postfächer der Techniker beschränken.</li>
         <li>Server neu starten. Mitarbeiter melden sich dann mit ihrem Microsoft-Konto an (die E-Mail muss im GF Tracker als Person angelegt sein).</li></ol></details>
     </div>
+
+    <div class="card pad isec"><h3 class="h3">Outlook-Add-in</h3>
+      <p class="small" style="margin:0 0 8px">In jeder E-Mail: Kunde zum Absender, offene Vorgänge, „Als Vorgang anlegen“ (inkl. Anhänge), „An Vorgang anhängen“. Funktioniert im klassischen und neuen Outlook für Windows, Outlook für Mac und Outlook im Web.</p>
+      <div class="row"><code class="copy" data-act="copy" data-v="${esc(I.appUrl)}/outlook/manifest.xml">${esc(I.appUrl)}/outlook/manifest.xml</code><a class="btn sm" href="/outlook/manifest.xml">Manifest herunterladen</a></div>
+      <p class="small muted" style="margin:8px 0 0">Verteilung an alle: Microsoft 365 Admin Center → Einstellungen → Integrierte Apps → „Benutzerdefinierte Apps hochladen“ → Office-Add-in → Manifest-URL. Jede Person verbindet das Add-in danach einmalig unter Einstellungen → Outlook-Add-in.${I.appUrl.startsWith("https://") ? "" : " <b>Outlook verlangt eine HTTPS-Adresse.</b>"}</p></div>
 
     <div class="card pad isec"><h3 class="h3">Factorial (Personal, Urlaub, Krankheit)</h3>
       ${F.configured ? `<div class="row" style="gap:16px;margin-bottom:8px"><span>${dot("on", "verbunden")} API-Version ${esc(F.version)}</span><span class="small muted">Letzter Abgleich: ${fmtTs(F.lastSync)}</span></div>
@@ -1489,6 +1504,26 @@ function importSheet(n) {
   if (!imp.projectId) imp.projectId = db.projects[0]?.id;
   if (!imp.rows.length) toast("In diesem Tabellenblatt wurden keine Datenzeilen gefunden.");
   render();
+}
+
+/* ---------- Anhänge ---------- */
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const isImg = (a) => /^image\/(png|jpeg|gif|webp)$/.test(a.type);
+function attTile(i, a) {
+  const src = `/api/files/${a.id}`; const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
+  return `<div class="att">${isImg(a) ? `<a href="${src}?inline=1" target="_blank" rel="noopener" class="att-thumb"><img src="${src}?inline=1" alt="${esc(a.name)}" loading="lazy"></a>` : `<a href="${src}${a.type === "application/pdf" ? "?inline=1" : ""}" target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
+    <div class="att-meta"><a href="${src}" class="trunc b" title="${esc(a.name)}" download>${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
+    ${canDel && a.source === "upload" ? `<button class="btn subtle sm icon" data-act="att-delete" data-id="${i.id}" data-k="${a.id}" title="Entfernen" aria-label="Entfernen">${icon("trash")}</button>` : ""}</div>`;
+}
+async function uploadFiles(issueId, files) {
+  let ok = 0;
+  for (const f of files) {
+    try {
+      const res = await fetch(`/api/issues/${issueId}/attachments`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
+      const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ok++;
+    } catch (e) { toast(`${f.name}: ${e.message}`); }
+  }
+  if (ok) { toast(`${ok} Datei${ok > 1 ? "en" : ""} hochgeladen`); await pull(); if (ui.openIssue === issueId) renderIssue(); }
 }
 
 /* ---------- Ansicht: Kunden & Anlagen ---------- */
@@ -1981,6 +2016,27 @@ function viewSettings() {
         <input type="password" name="next" placeholder="Neues Passwort (mind. 10 Zeichen)" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort">
         <input type="password" name="repeat" placeholder="Neues Passwort wiederholen" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort wiederholen">
         <div><button class="btn" type="submit">Passwort ändern</button></div></form>
+      <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Kalender abonnieren</h3>
+      ${(() => { const c = ui.calFeed; if (!c) { if (!ui.calFeedLoading) { ui.calFeedLoading = true; api("/api/me/calendar").then((r) => { ui.calFeed = r; if (route().parts[0] === "settings") render(); }).catch(() => {}); } return '<p class="small muted">Lade …</p>'; }
+        if (c.standalone) return '<p class="small muted" style="margin:0">Das Kalender-Abo gibt es in der Server-Version.</p>';
+        return `<p class="small muted" style="margin:0 0 6px">Ihre Einsätze, Fristen (mit Erinnerung am Vortag) und Abwesenheiten erscheinen als eigener Kalender in Outlook – auf PC, im Web und auf dem Handy.</p>
+        <div class="secret"><code>${esc(c.url)}</code><button class="btn sm" data-act="copy" data-v="${esc(c.url)}">Kopieren</button></div>
+        <div class="row" style="margin-top:8px"><a class="btn sm primary" href="${esc(c.webcal)}">In Outlook öffnen</a><button class="btn sm" data-act="copy" data-v="${esc(c.teamUrl)}">Team-Kalender kopieren</button><button class="btn subtle sm" data-act="cal-reset">Neuen Link erzeugen</button></div>
+        <details class="ihelp"><summary>So geht's in Outlook</summary><ol><li><b>Outlook im Web / neues Outlook:</b> Kalender → „Kalender hinzufügen“ → „Aus dem Internet abonnieren“ → Link einfügen, Namen vergeben.</li>
+          <li><b>Klassisches Outlook (Windows):</b> Kalender → „Kalender hinzufügen“ → „Aus dem Internet …“ → Link einfügen.</li><li><b>iPhone/Android:</b> erscheint automatisch, wenn das Outlook-Konto auf dem Handy eingerichtet ist.</li>
+          <li>Outlook aktualisiert abonnierte Kalender selbst (je nach Version alle paar Stunden). Sofort und mit Erinnerung im eigenen Kalender erscheinen Einsätze, wenn die Administration die Outlook-Kalender-Anbindung eingeschaltet hat.</li>
+          <li>Der Link ist persönlich – nicht weitergeben. Bei Bedarf „Neuen Link erzeugen“, dann ist der alte ungültig.</li></ol></details>`; })()}
+      <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Add-in</h3>
+      ${(() => { const o = ui.outlook; if (!o) { if (!ui.outlookLoading) { ui.outlookLoading = true; api("/api/me/outlook").then((r) => { ui.outlook = r; if (route().parts[0] === "settings") render(); }).catch(() => { ui.outlook = { standalone: true }; }); } return '<p class="small muted">Lade …</p>'; }
+        if (o.standalone) return '<p class="small muted" style="margin:0">Das Outlook-Add-in gibt es in der Server-Version.</p>';
+        return `<p class="small muted" style="margin:0 0 6px">In jeder E-Mail in Outlook: Kunde zum Absender mit offenen Vorgängen sehen, mit einem Klick einen Vorgang anlegen (inkl. Anhänge) oder die Mail an einen Vorgang hängen.</p>
+        <p class="small" style="margin:0 0 8px">${o.key ? `✓ Verbunden seit ${fmtDT(new Date(o.key.created_at).toISOString())}${o.key.last_used_at ? ` · zuletzt genutzt ${fmtDT(new Date(o.key.last_used_at).toISOString())}` : ""}` : "Noch nicht verbunden."}</p>
+        <div class="row"><button class="btn sm primary" data-act="outlook-token">${o.key ? "Neuen Zugangsschlüssel erzeugen" : "Zugangsschlüssel erzeugen"}</button><a class="btn sm" href="/outlook/manifest.xml">Manifest herunterladen</a></div>
+        <details class="ihelp"><summary>Add-in in Outlook hinzufügen</summary><ol>
+          <li><b>Für alle auf einmal (empfohlen, Administration):</b> Microsoft 365 Admin Center → Einstellungen → <i>Integrierte Apps</i> → „Benutzerdefinierte Apps hochladen“ → App-Typ „Office-Add-in“ → Manifest-URL <code class="copy" data-act="copy" data-v="${esc(o.manifestUrl)}">${esc(o.manifestUrl)}</code>. Nach einigen Stunden erscheint „GF Tracker“ bei allen.</li>
+          <li><b>Nur für mich:</b> In Outlook im Web / neuem Outlook <code>aka.ms/olksideload</code> öffnen → „Meine Add-Ins“ → „Benutzerdefiniertes Add-In hinzufügen“ → „Aus Datei“ → heruntergeladenes Manifest wählen.</li>
+          <li>Eine E-Mail öffnen → in der Menüleiste <b>GF Tracker</b> (ggf. unter „Apps“ / „…“) → Zugangsschlüssel einfügen. Die Anmeldung gilt danach auf allen Geräten mit diesem Outlook-Konto.</li>
+          ${o.https ? "" : "<li><b>Hinweis:</b> Outlook verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details>`; })()}
       <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
       ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
         : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
@@ -2070,6 +2126,8 @@ function renderIssue() {
         ${i.links.length || ui.addingLink ? `<div class="sec-title" style="margin-top:18px">Verknüpfte Vorgänge</div>
           <div>${i.links.map((l, k) => { const o = issue(l.issueId); return o ? `<div class="linkrow" data-act="open" data-id="${o.id}"><span class="small muted" style="width:150px">${LINK_LABEL[l.type]}</span>${typeIcon(o.type)}<span class="key">${keyOf(o)}</span><span class="trunc" style="flex:1">${esc(o.summary)}</span>${lozenge(o)}<button class="btn subtle sm icon" data-act="unlink" data-v="${k}" aria-label="Verknüpfung entfernen">${icon("x")}</button></div>` : ""; }).join("")}</div>
           ${ui.addingLink ? `<form id="link-form" class="row nowrap" style="margin-top:6px"><select name="type" style="width:190px">${Object.entries(LINK_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input type="text" name="key" list="issue-keys" placeholder="Schlüssel, z. B. DIG-3" required><datalist id="issue-keys">${db.issues.filter((x) => x.id !== i.id).map((x) => `<option value="${keyOf(x)}">${esc(x.summary)}</option>`).join("")}</datalist><button class="btn primary" type="submit">Verknüpfen</button></form>` : ""}` : ""}
+        <div class="sec-title row" style="margin-top:20px">Anhänge${(i.attachments || []).length ? ` <span class="badge-count">${i.attachments.length}</span>` : ""}<span class="sp"></span><label class="btn subtle sm" style="cursor:pointer">${icon("upload")} Datei hinzufügen<input type="file" id="att-input" data-id="${i.id}" multiple hidden></label></div>
+        <div class="att-drop" data-att-drop="${i.id}">${(i.attachments || []).length ? `<div class="att-grid">${i.attachments.map((a) => attTile(i, a)).join("")}</div>` : '<p class="small muted" style="margin:0">Keine Anhänge – Dateien hierher ziehen. Anhänge aus E-Mails an das Service-Postfach werden automatisch übernommen.</p>'}</div>
         <div class="sec-title" style="margin-top:22px">Aktivität</div>
         <div class="tabs"><button class="${tab === "comments" ? "on" : ""}" data-act="issue-tab" data-v="comments">Kommentare (${i.comments.length})</button><button class="${tab === "history" ? "on" : ""}" data-act="issue-tab" data-v="history">Verlauf</button></div>
         ${tab === "comments" ? `<form id="comment-form" class="grid" style="gap:6px;margin-bottom:10px"><textarea name="text" id="comment-text" rows="2" placeholder="Kommentar hinzufügen … (@Name erwähnt Personen)"></textarea>
@@ -2533,6 +2591,12 @@ document.addEventListener("click", (e) => {
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
     case "integ-reload": ui.integ = null; render(); break;
+    case "outlook-token": if (ui.outlook?.key && !confirm("Neuen Schlüssel erzeugen? Der bisherige funktioniert dann im Add-in nicht mehr.")) return;
+      api("/api/me/outlook", { method: "POST" }).then((r) => { ui.outlook = { ...ui.outlook, key: r.key }; render();
+        secretModal("Zugangsschlüssel für Outlook", "Diesen Schlüssel im Outlook-Add-in „GF Tracker“ einfügen (einmalig je Outlook-Konto). Das Add-in arbeitet dann in Ihrem Namen.", r.token); }).catch((err) => toast(err.message)); break;
+    case "att-delete": if (!confirm("Anhang entfernen?")) return; api(`/api/issues/${id}/attachments/${el.dataset.k}`, { method: "DELETE" }).then(() => pull()).then(() => renderIssue()).catch((err) => toast(err.message)); break;
+    case "cal-reset": if (!confirm("Neuen Kalender-Link erzeugen? Der bisherige Link funktioniert dann nicht mehr – das Abo in Outlook muss mit dem neuen Link neu eingerichtet werden.")) return;
+      api("/api/me/calendar", { method: "POST" }).then((r) => { ui.calFeed = r; render(); toast("Neuer Link erzeugt."); }).catch((err) => toast(err.message)); break;
     case "copy": navigator.clipboard?.writeText(el.dataset.v).then(() => toast("In die Zwischenablage kopiert.")).catch(() => toast("Bitte markieren und mit Strg+C kopieren.")); break;
     case "integ-poll": api("/api/admin/mail/poll", { method: "POST" }).then((r) => { toast(r.skipped ? "Abruf ist deaktiviert." : r.error ? `Fehler: ${r.error}` : `Postfach abgerufen: ${r.created} neue Vorgänge, ${r.replies} Antworten.`); loadIntegrations(); }).catch((err) => toast(err.message)); break;
     case "factorial-sync": el.disabled = true; el.textContent = "Gleiche ab …"; api("/api/admin/factorial/sync", { method: "POST" }).then((r) => { toast(`Factorial: ${r.employees} Mitarbeiter, ${r.created} neu, ${r.absences} Abwesenheiten.`); loadIntegrations(); }).catch((err) => { toast(err.message); loadIntegrations(); }); break;
@@ -2625,6 +2689,7 @@ document.addEventListener("change", (e) => {
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
   if (el.dataset.act === "hook-active") { api(`/api/admin/webhooks/${el.dataset.id}`, { method: "PATCH", body: { active: el.checked } }).then(loadIntegrations).catch((err) => toast(err.message)); return; }
   if (el.dataset.act === "factorial-create") { api("/api/admin/integrations/settings", { method: "POST", body: { factorialCreateUsers: el.checked } }).then((r) => { ui.integ = r; render(); }).catch((err) => toast(err.message)); return; }
+  if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
   if (el.dataset.act === "imp-map") { ui.imp.map[el.dataset.k] = Number(el.value); ui.imp.plan = null; render(); return; }
@@ -2740,7 +2805,7 @@ async function handleSubmit(e, f) {
       const a = assetOf(c, f.dataset.k); if (a) Object.assign(a, data); else c.assets.push({ id: uid(), ...data });
       c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); toast(`Anlage „${data.name}“ gespeichert`); break; }
     case "integ-m365": {
-      const body = { mailInbox: fd.get("mailInbox"), calendarMinutes: Number(fd.get("calendarMinutes")), mailInEnabled: fd.get("mailInEnabled") === "on", calendarSync: fd.get("calendarSync") === "on", ...(f.ssoMicrosoft.disabled ? {} : { ssoMicrosoft: fd.get("ssoMicrosoft") === "on" }) };
+      const body = { mailInbox: fd.get("mailInbox"), calendarMinutes: Number(fd.get("calendarMinutes")), mailInEnabled: fd.get("mailInEnabled") === "on", calendarSync: fd.get("calendarSync") === "on", calendarPull: fd.get("calendarPull") === "on", calendarInviteCustomer: fd.get("calendarInviteCustomer") === "on", ...(f.ssoMicrosoft.disabled ? {} : { ssoMicrosoft: fd.get("ssoMicrosoft") === "on" }) };
       ui.integ = await api("/api/admin/integrations/settings", { method: "POST", body }); render(); toast("Gespeichert"); break; }
     case "apikey-form": {
       const r = await api("/api/admin/api-keys", { method: "POST", body: { name: fd.get("name"), scope: fd.get("scope") } }); f.reset(); await loadIntegrations();
@@ -2799,6 +2864,10 @@ document.addEventListener("click", (e) => { const th = e.target.closest("th[data
   const cur = $("#jql")?.value || ""; const base = cur.replace(/\s*ORDER\s+BY[\s\S]*$/i, "").trim(); let dir = "ASC";
   try { const o = parseJql(cur).order[0]; if (o && o.f === th.dataset.sort && o.dir === "ASC") dir = "DESC"; } catch {}
   go(`#/filters?jql=${encodeURIComponent(`${base}${base ? " " : ""}ORDER BY ${th.dataset.sort} ${dir}`)}`); });
+// Dateien auf den geöffneten Vorgang ziehen = hochladen
+$("#modal").addEventListener("dragover", (e) => { if (ui.modal === "issue" && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#modal .att-drop")?.classList.add("drop-on"); } });
+$("#modal").addEventListener("dragleave", (e) => { if (!$("#modal").contains(e.relatedTarget)) $("#modal .att-drop")?.classList.remove("drop-on"); });
+$("#modal").addEventListener("drop", (e) => { if (ui.modal !== "issue" || !e.dataTransfer?.files?.length) return; e.preventDefault(); $("#modal .att-drop")?.classList.remove("drop-on"); uploadFiles(ui.openIssue, [...e.dataTransfer.files]); });
 // Nur schließen, wenn der Klick auch auf dem Hintergrund begonnen hat (nicht beim Markieren von Text im Fenster)
 let overlayDown = false;
 $("#overlay").addEventListener("mousedown", (e) => (overlayDown = e.target === e.currentTarget));
@@ -2899,6 +2968,8 @@ async function renderRequest(token) {
       ${v.report ? `<div class="card pad" style="margin-top:12px;border-left:4px solid var(--ok)"><b>Servicebericht</b> <span class="small muted">· ${fmtDT(v.report.at)}</span>
         ${v.report.cause ? `<div style="margin-top:6px"><span class="small muted">Ursache:</span> ${esc(v.report.cause)}</div>` : ""}<div style="white-space:pre-wrap"><span class="small muted">Durchgeführte Arbeiten:</span> ${esc(v.report.action)}</div>
         ${v.report.parts ? `<div style="white-space:pre-wrap"><span class="small muted">Material/Ersatzteile:</span> ${esc(v.report.parts)}</div>` : ""}${v.report.hours ? `<div><span class="small muted">Arbeitszeit:</span> ${String(v.report.hours).replace(".", ",")} h</div>` : ""}</div>` : ""}
+      ${(v.attachments || []).length ? `<h3 style="font-size:15px;margin:18px 0 6px">Dateien</h3><div class="row" style="gap:6px">${v.attachments.map((a) => `<a class="chip gray" href="/api/portal/requests/${token}/files/${a.id}" download>📎 ${esc(a.name)}</a>`).join("")}</div>` : ""}
+      ${v.closed ? "" : `<label class="btn sm" style="margin-top:10px;cursor:pointer">📷 Foto oder PDF hinzufügen<input type="file" id="pfile" accept="image/*,application/pdf" multiple hidden></label>`}
       <h3 style="font-size:15px;margin:18px 0 6px">Verlauf</h3>
       ${v.comments.map((c) => `<div class="comment"><span class="avatar" style="background:${c.fromCustomer ? "#5b6b8a" : "#0c66e4"}">${c.fromCustomer ? "Sie" : "S"}</span><div class="body"><div class="small"><b>${esc(c.fromCustomer ? "Sie" : c.author)}</b> · <span class="muted">${fmtDT(c.at)}</span></div><div class="text">${esc(c.text)}</div></div></div>`).join("") || '<p class="muted small">Noch keine Nachrichten – wir melden uns schnellstmöglich.</p>'}
       ${v.closed ? '<p class="note info">Diese Anfrage ist abgeschlossen. Für ein neues Anliegen stellen Sie bitte eine neue Anfrage.</p>' : `<form id="reply" class="grid" style="gap:8px;margin-top:10px"><label class="f">Nachricht an den Service<textarea name="text" rows="3" required maxlength="8000"></textarea></label><div><button class="btn primary" type="submit">${icon("send")} Senden</button></div></form>`}
@@ -2909,7 +2980,17 @@ document.addEventListener("click", (e) => {
   state.type = t.dataset.type || null; renderHome();
   if (state.type) setTimeout(() => $("#req input")?.focus(), 0);
 });
-document.addEventListener("change", (e) => { if (e.target.id === "proj") { state.project = e.target.value; renderHome(); } });
+document.addEventListener("change", async (e) => {
+  if (e.target.id === "proj") { state.project = e.target.value; renderHome(); }
+  if (e.target.id === "pfile" && e.target.files.length) {
+    const token = tokenFromPath(); let ok = 0;
+    for (const f of e.target.files) {
+      try { const res = await fetch(`/api/portal/requests/${token}/attachments`, { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
+        const d = await res.json().catch(() => ({})); if (!res.ok) throw new Error(d.error || `Fehler ${res.status}`); ok++; } catch (ex) { toast(`${f.name}: ${ex.message}`); }
+    }
+    if (ok) { toast(`${ok} Datei${ok > 1 ? "en" : ""} gesendet – vielen Dank.`); renderRequest(token); }
+  }
+});
 document.addEventListener("submit", async (e) => {
   e.preventDefault(); const f = e.target; const btn = f.querySelector("button[type=submit]"); btn.disabled = true;
   try {
@@ -3104,6 +3185,7 @@ const KEYED = {
   links: { key: (x) => `${x.type}|${x.issueId}` },
   contacts: { key: (x) => x.id },
   assets: { key: (x) => x.id },
+  attachments: { key: (x) => x.id, sort: (a, b) => String(a.at).localeCompare(String(b.at)) },
 };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function diffEntity(base, next) {
@@ -4043,6 +4125,8 @@ function handle(method, url, body) {
   if (/^\/api\/admin\/users\/[A-Za-z0-9_-]+\/password$/.test(p)) { needAdmin(); return { ok: true }; }
   if (p === "/api/admin/export") { needAdmin(); download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(exportAll(d0), null, 2)); return { ok: true }; }
   if (p === "/api/admin/import" && method === "POST") { needAdmin(); return importAll(body, user); }
+  if (p === "/api/me/calendar") return { standalone: true };
+  if (p === "/api/me/outlook") return { standalone: true };
   if (p === "/api/admin/integrations") { needAdmin(); return { standalone: true }; }
   if (p === "/api/admin/mail-test") throw new HttpError(409, "In der Einzeldatei-Version gibt es keinen E-Mail-Versand – dafür wird die Server-Version benötigt.");
   throw new HttpError(404, "Unbekannte Schnittstelle.");
@@ -4054,6 +4138,7 @@ window.fetch = function (input, init = {}) {
   const url = new URL(raw, location.href);
   if (!/\/api\//.test(url.pathname) || (url.origin !== location.origin && url.protocol !== "file:")) return realFetch(input, init);
   const method = (init.method || "GET").toUpperCase();
+  if (/\/attachments$|\/api\/files\//.test(url.pathname)) return Promise.resolve(new Response(JSON.stringify({ error: "Dateianhänge gibt es nur in der Server-Version (die Einzeldatei speichert nur im Browser)." }), { status: 501, headers: { "Content-Type": "application/json" } }));
   let status = 200, out;
   try { out = handle(method, url, init.body ? JSON.parse(init.body) : undefined); }
   catch (e) { status = e instanceof HttpError ? e.status : 500; out = { error: e instanceof HttpError ? e.message : `Interner Fehler: ${e.message}` }; if (!(e instanceof HttpError)) console.error(e); }

@@ -232,6 +232,22 @@ test("Anhänge: hochladen, sicher ausliefern, Rechte beim Löschen, Portal-Uploa
   assert.equal((await fetch(`${BASE}/api/portal/requests/${r.data.token}/files/${a1.data.id}`)).status, 404, "fremde/interne Dateien nicht über das Portal");
 });
 
+test("Outlook-Add-in: persönlicher Schlüssel handelt im Namen der Person, Absender-Suche, Anhang per API, Manifest", async () => {
+  const k1 = (await lisa.req("/api/me/outlook", { method: "POST" })).data; assert.match(k1.token, /^gft_/);
+  const k2 = (await lisa.req("/api/me/outlook", { method: "POST" })).data;
+  const api = (t, p, o = {}) => fetch(BASE + p, { method: o.method || "GET", headers: { Authorization: `Bearer ${t}`, "Content-Type": "application/json" }, body: o.body ? JSON.stringify(o.body) : undefined }).then(async (r) => ({ status: r.status, data: await r.json() }));
+  assert.equal((await api(k1.token, "/api/v1/me")).status, 401, "alter Schlüssel ersetzt");
+  const me = await api(k2.token, "/api/v1/me"); assert.equal(me.data.user.email, "lisa.schmidt@druckluft-chemnitz.de");
+  const lk = await api(k2.token, "/api/v1/lookup?email=P.Kunze@kunze-metallbau.de"); assert.equal(lk.data.customer.no, "10001"); assert.ok(lk.data.openIssues.length >= 1);
+  const r = await api(k2.token, "/api/v1/issues", { method: "POST", body: { project: "SD", summary: "Aus Outlook", customer: "10001", contact: { name: "Peter Kunze", email: "p.kunze@kunze-metallbau.de" }, externalId: "mail:<x@y>", labels: ["outlook"] } });
+  assert.equal(r.status, 201); assert.equal(r.data.issue.reporter.email, "lisa.schmidt@druckluft-chemnitz.de");
+  const att = await api(k2.token, `/api/v1/issues/${r.data.issue.key}/attachments`, { method: "POST", body: { name: "foto.png", contentType: "image/png", contentBase64: Buffer.from("abc").toString("base64"), source: "email" } }); assert.equal(att.status, 201);
+  const i = (await anna.req("/api/state")).data.issues.find((x) => x.externalId === "mail:<x@y>"); assert.equal(i.reporterId, "u3"); assert.equal(i.attachments[0].source, "email"); assert.equal(i.history.at(-1).userId, "u3");
+  assert.equal((await anna.req("/api/admin/integrations")).data.apiKeys.filter((k) => k.name === "Outlook-Add-in").length, 0, "persönliche Schlüssel nicht in der Admin-Liste");
+  const man = await fetch(`${BASE}/outlook/manifest.xml`).then((x) => x.text()); assert.match(man, /<OfficeApp/); assert.match(man, new RegExp(`${BASE}/outlook/taskpane.html`));
+  const tp = await fetch(`${BASE}/outlook/taskpane.html`); assert.equal(tp.headers.get("x-frame-options"), null); assert.match(tp.headers.get("content-security-policy"), /frame-ancestors[^;]*outlook\.office\.com/);
+});
+
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {
   const st = (await lisa.req("/api/state")).data;
   const ctrl = new AbortController();
