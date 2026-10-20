@@ -105,6 +105,7 @@ function canWrite(user, type, op, cur, data, d = load()) {
     const target = (cur || data)?.userId; const lead = (all(d, "teams")).some((t) => t.leadId === user.id && t.memberIds.includes(target));
     if (cur?.source === "factorial") return "Abwesenheiten aus Factorial werden dort gepflegt.";
     if (target !== user.id && !lead) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren.";
+    const moved = data?.set?.userId; if (moved && moved !== target) { const lead2 = (all(d, "teams")).some((t) => t.leadId === user.id && t.memberIds.includes(moved)); if (moved !== user.id && !lead2) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren."; }
   }
   if (type === "teams" && !admin) {
     if (op !== "patch" || !cur || cur.leadId !== user.id) return "Teams verwalten Administratoren; die Teamleitung kann Mitglieder ändern.";
@@ -373,6 +374,7 @@ function handle(method, url, body) {
   if (/^\/api\/admin\/users\/[A-Za-z0-9_-]+\/password$/.test(p)) { needAdmin(); return { ok: true }; }
   if (p === "/api/admin/export") { needAdmin(); download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(exportAll(d0), null, 2)); return { ok: true }; }
   if (p === "/api/admin/import" && method === "POST") { needAdmin(); return importAll(body, user); }
+  if (p === "/api/admin/integrations") { needAdmin(); return { standalone: true }; }
   if (p === "/api/admin/mail-test") throw new HttpError(409, "In der Einzeldatei-Version gibt es keinen E-Mail-Versand – dafür wird die Server-Version benötigt.");
   throw new HttpError(404, "Unbekannte Schnittstelle.");
 }

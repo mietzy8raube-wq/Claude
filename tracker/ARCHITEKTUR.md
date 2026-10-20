@@ -570,22 +570,73 @@ Vorteil, aber zusätzlichen Aufwand (Signierung, Verteilung, Updates).
 Nur das Portal ist einbettbar; die interne App lässt sich nicht in fremde Seiten
 einbetten (Schutz vor Clickjacking).
 
-### 13.3 Verknüpfung mit Ihren anderen Programmen – Fahrplan
+### 13.3 Verknüpfung mit Ihren anderen Programmen (eingebaut)
 
-| Stufe | Verknüpfung | Nutzen | Aufwand |
-| --- | --- | --- | --- |
-| ✅ fertig | E-Mail-Versand über Microsoft 365 | Benachrichtigungen und Kunden-E-Mails aus Ihrem Postfach | Einrichtung (Abschnitt 8) |
-| **1 – empfohlen** | **Anmeldung mit Microsoft 365 (Single Sign-on)** | Kein eigenes Passwort mehr; Personen kommen und gehen automatisch mit dem Microsoft-Konto; Grundlage für Teams | mittel |
-| 1 | **Microsoft Teams**: Tracker als App/Registerkarte in Teams | Arbeiten direkt in Teams, ohne Programmwechsel | gering (setzt SSO voraus) |
-| 1 | Teams-Kanal-Meldungen (Workflows-Webhook) | z. B. „Neue Störung SD-17“ automatisch im Kanal *Service* | gering |
-| 2 | **Outlook-Kalender**: Fristen als Kalender-Abo | Fälligkeiten erscheinen im eigenen Outlook-Kalender | gering |
-| 2 | **E-Mail → Vorgang**: Mails an `service@…` werden automatisch zu Service-Anfragen, Antworten landen im Vorgang | Kein Abtippen, nichts geht im Postfach verloren | mittel |
-| 2 | **Factorial HR**: Abwesenheiten übernehmen, „Vertretung nötig“ | Keine Fristen verpassen wegen Urlaub/Krankheit (in der GF-Suite bereits umgesetzt, Übernahme in den Tracker) | gering–mittel |
-| 3 | Warenwirtschaft/ERP, Buchhaltung | z. B. Kunden- und Anlagenstammdaten übernehmen, erledigte Serviceeinsätze zur Abrechnung übergeben | je nach System (über deren Schnittstelle) |
-| 3 | GF-Suite und Tracker zusammenführen | Eine Oberfläche für Kennzahlen, Entscheidungen und Tickets | mittel–hoch |
+Alle Anbindungen werden unter **Einstellungen → Integrationen** (nur
+Administratoren) eingerichtet, getestet und überwacht – mit Statusübersicht und
+Protokoll. Geheimnisse (Schlüssel, Passwörter) stehen nur in der
+Server-Konfiguration (`.env`), nie in der Datenbank oder im Browser.
 
-Technisch erfolgen diese Verknüpfungen über die **Microsoft-Graph-Schnittstelle**
-(Outlook, Teams, Kalender, Anmeldung) bzw. die **Programmierschnittstellen
-(APIs)** der jeweiligen Anbieter. Der Tracker selbst bietet mit seiner
-REST-Schnittstelle (Abschnitt 4) bereits die Grundlage, um weitere Systeme
-anzubinden.
+| Verknüpfung | Was passiert | Einrichtung |
+| --- | --- | --- |
+| **E-Mail-Versand** (Microsoft 365) | Benachrichtigungen, Terminbestätigungen, Serviceberichte, Eingangsbestätigungen | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MAIL_SENDER`; Graph-Recht `Mail.Send` |
+| **E-Mail → Vorgang** | Alle 2 Minuten werden ungelesene Mails im Service-Postfach zu Vorgängen: Kunde wird über den Absender erkannt, zitierter Verlauf entfernt, Störungen erkannt, Eingangsbestätigung mit Portal-Link. Antworten mit `[SD-12]` im Betreff landen als Kundenantwort im Vorgang (und öffnen ihn ggf. wieder). Abwesenheitsnotizen werden ignoriert. | Postfach unter Integrationen eintragen (oder `MAIL_INBOX`); Recht `Mail.ReadWrite` |
+| **Outlook-Kalender** | Eingeplante Einsätze erscheinen als Termin (mit Adresse, Ansprechpartner, Anlage, Link) im Kalender der zuständigen Person; Verschieben, Umplanen und Ausplanen werden nachgezogen. | Schalter unter Integrationen; Recht `Calendars.ReadWrite` |
+| **Anmeldung mit Microsoft** | Knopf „Mit Microsoft anmelden“; Zugang nur für Personen, die im Tracker angelegt und aktiv sind. Austretende verlieren mit dem Microsoft-Konto auch den Zugang. | Umleitungs-URI `https://…/auth/microsoft/callback` (Plattform „Web“); Schalter unter Integrationen oder `SSO_MICROSOFT=1` |
+| **Microsoft Teams** | Meldungen im Kanal, z. B. „Vorgang angelegt: SD-17 …“ als Karte mit Knopf zum Vorgang | Im Teams-Kanal *Workflows → „Bei Empfang einer Webhookanforderung in einem Kanal posten“*, URL als Webhook mit Format „Microsoft Teams“ |
+| **Factorial (HR)** | Stündlich: Mitarbeiter über die E-Mail zuordnen (fehlende anlegen), Urlaub/Krankheit/… der nächsten 120 Tage übernehmen – sichtbar in Einsatzplanung (Warnung beim Einplanen) und Teamseite | `FACTORIAL_API_KEY` (Factorial → Einstellungen → Entwickler) |
+| **Warenwirtschaft / ERP / Buchhaltung** | Über die **REST-API**: Kunden mit Ansprechpartnern und Anlagen abgleichen, Vorgänge anlegen (z. B. aus Aufträgen), Status/Termine lesen, erledigte Einsätze mit Servicebericht zur Abrechnung abholen. Über **Webhooks** meldet der Tracker Ereignisse sofort zurück. | API-Schlüssel unter Integrationen; Beschreibung unter `/api/v1/openapi.json` |
+| **Power Automate / Zapier / Make / n8n** | Ohne Programmierung: Webhook „Vorgang gelöst“ → Flow, der z. B. eine Rechnungsaufgabe anlegt oder eine Excel-Tabelle in SharePoint fortschreibt; Flows können über die API Vorgänge anlegen. | Webhook (JSON) + API-Schlüssel |
+| **Excel / CSV** | Import-Assistent für Kunden, Ansprechpartner, Anlagen, Mitarbeiter, Vorgänge (Spalten werden erkannt, vorhandene Einträge aktualisiert); Export von Kundenstamm und Auswertungen | Menü Kunden → Importieren bzw. Einstellungen |
+
+#### REST-API in Kürze
+
+Anmeldung mit `Authorization: Bearer gft_…` (Schlüssel „nur lesen“ oder „lesen +
+schreiben“, je Programm einen eigenen – einzeln widerrufbar, höchstens 600
+Anfragen pro Minute).
+
+| Aufruf | Zweck |
+| --- | --- |
+| `GET /api/v1/issues?project=SD&statusCategory=done&updatedSince=2026-10-01` | Vorgänge suchen (auch `assignee`, `team`, `customer`, `externalId`, `q`, `limit`, `offset`) |
+| `POST /api/v1/issues` | Vorgang anlegen: `project`, `summary`, optional `type`, `priority`, `assignee` (E-Mail), `team`, `dueDate`, `labels`, `customer` (Kundennr.), `assetSerial`, `externalId`. Mit `externalId` wird nichts doppelt angelegt. |
+| `GET /api/v1/issues/SD-12` | Vorgang lesen (auch per ID oder `externalId`), inkl. Servicebericht |
+| `PATCH /api/v1/issues/SD-12` | `status` (z. B. `RESOLVED` oder „Erledigt“), `assignee`, `priority`, `dueDate`, `appointmentAt`, `team`, `labels`, `customer` … – mit Verlaufseintrag „API: <Schlüsselname>“ |
+| `POST /api/v1/issues/SD-12/comments` | Kommentar (Standard intern) |
+| `PUT /api/v1/customers/10023` | Kunde anlegen oder aktualisieren; `contacts` werden über E-Mail/Name, `assets` über die Seriennummer zusammengeführt |
+| `GET /api/v1/customers/10023` | Kunde mit offenen Vorgängen |
+| `GET /api/v1/projects`, `/users`, `/teams` | Stammdaten, gültige Status und Typen |
+
+```bash
+curl -X POST https://tracker.ihre-firma.de/api/v1/issues \
+  -H "Authorization: Bearer gft_…" -H "Content-Type: application/json" \
+  -d '{"project":"SD","type":"MAINT","summary":"Wartung laut Vertrag","customer":"10023","assetSerial":"API123456","dueDate":"2026-11-15","externalId":"AUFTRAG-4711"}'
+```
+
+#### Webhooks in Kürze
+
+`POST` an Ihre Adresse mit JSON (`event`, `issue` bzw. `customer`), Header
+`X-GFT-Event`, `X-GFT-Delivery` und `X-GFT-Signature: sha256=<HMAC-SHA256 des
+Nachrichtentexts mit dem Signaturschlüssel>`. Ereignisse: `issue.created`,
+`issue.status_changed`, `issue.resolved`, `issue.assigned`, `comment.created`,
+`customer.updated`. Nicht erreichbare Empfänger werden bis zu 8-mal mit
+wachsendem Abstand erneut beliefert; Zustellungen und Fehler zeigt die
+Integrationsseite.
+
+#### Kunden, Anlagen und Wartungsplan
+
+Kunden (Kundennummer, ERP-ID, Adresse), Ansprechpartner und Anlagen (Hersteller,
+Modell, Seriennummer, Standort, Wartungsintervall) werden im Menü **Kunden**
+gepflegt – oder per Import/API aus der Warenwirtschaft übernommen. Vorgänge
+werden mit Kunde und Anlage verknüpft; Portal- und E-Mail-Anfragen werden über
+die Absenderadresse automatisch dem Kunden zugeordnet. Ist im Service-Projekt
+der Wartungsplan aktiv (Standard), legt der Tracker **21 Tage vor Fälligkeit
+automatisch einen Wartungsvorgang** an; wird er erledigt, rücken letzte und
+nächste Wartung weiter.
+
+#### Was noch fehlt / nächste Schritte
+
+- Eine fertige Anbindung an Ihre konkrete Warenwirtschaft bzw. Buchhaltung
+  (z. B. DATEV, lexoffice, sevDesk, Sage, weclapp, Microsoft Dynamics) – die
+  Schnittstellen dafür sind da; der Adapter hängt vom System ab.
+- Tracker als Registerkarte direkt in Microsoft Teams (setzt die Microsoft-Anmeldung voraus).
+- Anhänge aus E-Mails im Vorgang speichern (derzeit Hinweis „Anhänge im Postfach“).

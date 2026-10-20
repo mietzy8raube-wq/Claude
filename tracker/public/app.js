@@ -592,6 +592,7 @@ function render() {
         const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
         html = tabs + ({ dispatch: viewDispatch, board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
       case "import": html = viewImport(); break;
+      case "integrations": html = viewIntegrations(); break;
       case "customers": html = parts[1] ? viewCustomer(customer(parts[1])) : viewCustomers(); break;
       case "teams": html = parts[1] ? viewTeam(team(parts[1])) : viewTeams(); break;
       case "filters": html = viewFilters(params); break;
@@ -771,6 +772,95 @@ function issueRow(i, extra = "") {
   return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
     <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
 }
+/* ---------- Ansicht: Integrationen (Administration) ---------- */
+async function loadIntegrations() {
+  try { ui.integ = await api("/api/admin/integrations"); } catch (e) { ui.integ = { error: e.message }; }
+  if (route().parts[0] === "integrations") render();
+}
+const dot = (state, label) => `<span class="idot ${state}">${label}</span>`;
+const fmtTs = (v) => (v ? new Date(typeof v === "number" ? v : v).toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" }) : "–");
+function viewIntegrations() {
+  if (me().role !== "ADMIN") return `<div class="empty">Integrationen verwalten nur Administratoren.</div>`;
+  const I = ui.integ; if (!I) { loadIntegrations(); return `<div class="page-head"><h1>Integrationen</h1></div><p class="muted">Lade …</p>`; }
+  if (I.error) return `<div class="page-head"><h1>Integrationen</h1></div><div class="note err">${esc(I.error)}</div>`;
+  if (I.standalone) return `<div class="page-head"><h1>Integrationen</h1></div><div class="card pad"><p style="margin-top:0"><b>Diese Einzeldatei-Version läuft ohne Server.</b> Anbindungen an Microsoft 365, Factorial, die REST-API und Webhooks brauchen die Server-Version (siehe ARCHITEKTUR.md, Kapitel „Integration“).</p>
+    <p>Verfügbar sind hier: <a href="#/import">Daten importieren</a> (Excel/CSV), <a href="#" data-act="export-customers">Kundenstamm als Excel</a>, Excel-Auswertungen und die Sicherung unter Einstellungen.</p></div>`;
+  const M = I.m365, F = I.factorial;
+  const tiles = [
+    ["Microsoft 365 – E-Mail", I.mail.configured ? dot("on", "aktiv") : dot("off", "nicht eingerichtet"), I.mail.sender || "Benachrichtigungen per Mail"],
+    ["Postfach → Vorgänge", M.appConfigured && M.inbox && M.mailIn ? dot("on", "aktiv") : M.inbox && !M.appConfigured ? dot("warn", "Microsoft-Anbindung fehlt") : M.inbox ? dot("warn", "ausgeschaltet") : dot("off", "nicht eingerichtet"), M.inbox || "kein Postfach"],
+    ["Outlook-Kalender", M.appConfigured && M.calendar ? dot("on", "aktiv") : M.calendar ? dot("warn", "Microsoft-Anbindung fehlt") : dot("off", "aus"), "Einsätze im Kalender"],
+    ["Anmeldung mit Microsoft", M.sso ? dot("on", "aktiv") : dot("off", "aus"), "Single Sign-on"],
+    ["Factorial (HR)", F.configured ? dot("on", "verbunden") : dot("off", "nicht eingerichtet"), F.lastSync ? `Abgleich ${fmtTs(F.lastSync)}` : "Mitarbeiter & Abwesenheiten"],
+    ["REST-API", I.apiKeys.some((k) => !k.revoked) ? dot("on", `${I.apiKeys.filter((k) => !k.revoked).length} Schlüssel`) : dot("off", "kein Schlüssel"), "für ERP, Buchhaltung, Power Automate"],
+    ["Webhooks / Teams", I.webhooks.some((h) => h.active) ? dot("on", `${I.webhooks.filter((h) => h.active).length} aktiv`) : dot("off", "keine"), "Ereignisse an andere Systeme"],
+  ];
+  const evs = Object.entries(I.events);
+  return `<div class="page-head"><div><h1>Integrationen &amp; Schnittstellen</h1><p class="muted" style="margin:4px 0 0">Verbindungen zu Microsoft 365, Factorial und Ihren weiteren Programmen – einrichten, testen, überwachen.</p></div><button class="btn" data-act="integ-reload">${icon("clock")} Aktualisieren</button></div>
+    <div class="itiles">${tiles.map(([t, s, d]) => `<div class="card itile"><div class="b">${t}</div>${s}<div class="small muted trunc">${esc(d)}</div></div>`).join("")}</div>
+
+    <div class="card pad isec"><h3 class="h3">Microsoft 365</h3>
+      ${M.appConfigured ? `<p class="small" style="margin:0 0 10px">${dot("on", "App-Registrierung verbunden")} ${I.mail.sender ? `· Absender <b>${esc(I.mail.sender)}</b>` : "· kein Absender (MAIL_SENDER) – es werden keine Mails versendet"}</p>`
+        : `<div class="note warn" style="margin-bottom:10px">Noch nicht verbunden. Die App-Registrierung wird einmalig in Entra ID angelegt und in der Server-Konfiguration hinterlegt (<code>MS_TENANT_ID</code>, <code>MS_CLIENT_ID</code>, <code>MS_CLIENT_SECRET</code>, <code>MAIL_SENDER</code>) – Anleitung unten.</div>`}
+      <form id="integ-m365" class="grid g2" style="gap:12px">
+        <label class="f">Service-Postfach (E-Mail → Vorgang)<input type="email" name="mailInbox" value="${esc(M.inbox || "")}" placeholder="service@druckluft-chemnitz.de"></label>
+        <label class="f">Termindauer im Kalender (Minuten)<input type="number" name="calendarMinutes" value="${M.calendarMinutes}" min="15" max="600" step="15"></label>
+        <label class="row nowrap small"><input type="checkbox" name="mailInEnabled" ${M.mailIn ? "checked" : ""}> E-Mails an das Postfach automatisch als Vorgang anlegen (alle 2 Minuten)</label>
+        <label class="row nowrap small"><input type="checkbox" name="calendarSync" ${M.calendar ? "checked" : ""}> Eingeplante Einsätze im Outlook-Kalender der Techniker eintragen</label>
+        <label class="row nowrap small"><input type="checkbox" name="ssoMicrosoft" ${M.sso ? "checked" : ""} ${M.ssoEnv ? "disabled" : ""}> „Mit Microsoft anmelden“ auf der Anmeldeseite anbieten${M.ssoEnv ? " (per Konfiguration aktiv)" : ""}</label>
+        <div class="row" style="grid-column:1/-1"><button class="btn primary" type="submit">Speichern</button><button type="button" class="btn" data-act="integ-poll" ${M.appConfigured && M.inbox ? "" : "disabled"}>Postfach jetzt abrufen</button><button type="button" class="btn" data-act="mail-test" ${I.mail.configured ? "" : "disabled"}>Test-E-Mail an mich</button><span class="small muted">Letzter Abruf: ${fmtTs(M.lastPoll)}</span></div>
+      </form>
+      <details class="ihelp"><summary>Einrichtung in Microsoft Entra ID (einmalig, ca. 15 Minuten)</summary><ol>
+        <li>entra.microsoft.com → <b>App-Registrierungen</b> → „Neue Registrierung“, Name „GF Tracker“, Konten <i>nur in diesem Organisationsverzeichnis</i>.</li>
+        <li>Unter <b>Authentifizierung</b> Plattform „Web“ hinzufügen, Umleitungs-URI: <code class="copy" data-act="copy" data-v="${esc(M.redirectUri)}">${esc(M.redirectUri)}</code></li>
+        <li><b>Zertifikate &amp; Geheimnisse</b> → neuer geheimer Clientschlüssel → Wert als <code>MS_CLIENT_SECRET</code> eintragen; Anwendungs-ID → <code>MS_CLIENT_ID</code>, Verzeichnis-ID → <code>MS_TENANT_ID</code>.</li>
+        <li><b>API-Berechtigungen</b> → Microsoft Graph → <i>Anwendungsberechtigungen</i>: <code>Mail.Send</code>, <code>Mail.ReadWrite</code> (Postfach), <code>Calendars.ReadWrite</code> (Kalender); <i>Delegiert</i>: <code>openid</code>, <code>email</code>, <code>profile</code> → „Administratorzustimmung erteilen“.</li>
+        <li>Empfohlen: Zugriff per <b>Application Access Policy</b> (Exchange Online PowerShell) auf das Service-Postfach und die Postfächer der Techniker beschränken.</li>
+        <li>Server neu starten. Mitarbeiter melden sich dann mit ihrem Microsoft-Konto an (die E-Mail muss im GF Tracker als Person angelegt sein).</li></ol></details>
+    </div>
+
+    <div class="card pad isec"><h3 class="h3">Factorial (Personal, Urlaub, Krankheit)</h3>
+      ${F.configured ? `<div class="row" style="gap:16px;margin-bottom:8px"><span>${dot("on", "verbunden")} API-Version ${esc(F.version)}</span><span class="small muted">Letzter Abgleich: ${fmtTs(F.lastSync)}</span></div>
+        ${F.lastResult ? `<p class="small" style="margin:0 0 8px">${F.lastResult.employees} Mitarbeiter · ${F.lastResult.created} neu angelegt · ${F.lastResult.absences} Abwesenheiten${F.lastResult.unmatched?.length ? ` · <span style="color:var(--warn)">nicht zugeordnet (ohne E-Mail): ${esc(F.lastResult.unmatched.join(", "))}</span>` : ""}</p>` : ""}
+        <div class="row"><button class="btn primary" data-act="factorial-sync">Jetzt abgleichen</button><label class="row nowrap small"><input type="checkbox" data-act="factorial-create" ${F.createUsers ? "checked" : ""}> Fehlende Mitarbeiter automatisch als Person anlegen</label></div>`
+        : `<p class="small" style="margin:0">Nicht verbunden. In Factorial unter <b>Einstellungen → Entwickler → API-Schlüssel</b> einen Firmenschlüssel erzeugen und als <code>FACTORIAL_API_KEY</code> in der Server-Konfiguration hinterlegen. Danach werden Mitarbeiter (über die E-Mail) und Abwesenheiten stündlich übernommen.</p>`}
+    </div>
+
+    <div class="card pad isec"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">REST-API für Ihre Programme</h3><a class="btn sm" href="/api/v1/openapi.json" target="_blank" rel="noopener">API-Beschreibung (OpenAPI)</a></div>
+      <p class="small muted" style="margin:0 0 10px">Warenwirtschaft, Buchhaltung, Power Automate oder eigene Skripte lesen und schreiben Vorgänge und Kunden über <code>${esc(I.appUrl)}/api/v1</code>. Jedes Programm bekommt einen eigenen Schlüssel – einzeln widerrufbar.</p>
+      ${I.apiKeys.length ? `<div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Schlüssel</th><th>Recht</th><th class="hide-m">Erstellt</th><th>Zuletzt genutzt</th><th></th></tr></thead><tbody>
+        ${I.apiKeys.map((k) => `<tr style="${k.revoked ? "opacity:.5" : ""}"><td class="b">${esc(k.name)}</td><td><code>${esc(k.prefix)}…</code></td><td>${k.scope === "write" ? "lesen + schreiben" : "nur lesen"}</td><td class="small hide-m">${fmtTs(k.created_at)}${k.createdBy ? ` · ${esc(k.createdBy)}` : ""}</td><td class="small">${k.revoked ? "widerrufen" : fmtTs(k.last_used_at)}</td>
+          <td>${k.revoked ? "" : `<button class="btn subtle sm" data-act="apikey-revoke" data-id="${k.id}">Widerrufen</button>`}</td></tr>`).join("")}</tbody></table></div>` : ""}
+      <form id="apikey-form" class="row" style="margin-top:10px"><input type="text" name="name" placeholder="Name, z. B. Warenwirtschaft" required maxlength="80" style="width:auto;flex:1;min-width:200px"><select name="scope" style="width:auto"><option value="read">nur lesen</option><option value="write">lesen + schreiben</option></select><button class="btn primary" type="submit">${icon("plus")} Schlüssel erstellen</button></form>
+    </div>
+
+    <div class="card pad isec"><h3 class="h3">Webhooks – Ereignisse an andere Systeme &amp; Microsoft Teams</h3>
+      <p class="small muted" style="margin:0 0 10px">Bei jedem Ereignis sendet der GF Tracker eine Nachricht an die Adresse – signiert (Header <code>X-GFT-Signature</code>) und mit automatischer Wiederholung. Für einen <b>Teams-Kanal</b>: im Kanal „…“ → <i>Workflows</i> → „Bei Empfang einer Webhookanforderung in einem Kanal posten“ → URL hier mit Format „Microsoft Teams“ eintragen.</p>
+      ${I.webhooks.map((h) => `<div class="hook ${h.active ? "" : "off"}"><div class="row nowrap"><b class="trunc">${esc(h.name)}</b><span class="chip ${h.format === "teams" ? "blue" : "gray"}">${h.format === "teams" ? "Teams" : "JSON"}</span><span class="sp"></span>
+          <label class="row nowrap small"><input type="checkbox" data-act="hook-active" data-id="${h.id}" ${h.active ? "checked" : ""}> aktiv</label><button class="btn subtle sm" data-act="hook-test" data-id="${h.id}">Testen</button><button class="btn subtle sm" data-act="hook-delete" data-id="${h.id}" title="Löschen">${icon("trash")}</button></div>
+        <div class="small muted trunc">${esc(h.url)}</div><div class="row" style="gap:4px;margin-top:4px">${h.events.map((e) => `<span class="chip gray">${esc(I.events[e] || e)}</span>`).join("")}</div>
+        ${h.stats ? `<div class="small" style="margin-top:4px">${h.stats.delivered || 0} zugestellt · ${h.stats.pending || 0} ausstehend${h.stats.failed ? ` · <span style="color:var(--danger)">${h.stats.failed} fehlgeschlagen</span>` : ""}${h.stats.last_error ? ` · <span class="muted">letzter Fehler: ${esc(h.stats.last_error)}</span>` : ""}</div>` : ""}</div>`).join("")}
+      <form id="hook-form" class="grid g2" style="gap:10px;margin-top:10px">
+        <label class="f">Name<input type="text" name="name" placeholder="z. B. Teams Service-Kanal" required maxlength="80"></label><label class="f">Format<select name="format"><option value="json">JSON (Programme, Power Automate)</option><option value="teams">Microsoft Teams (Karte)</option></select></label>
+        <label class="f" style="grid-column:1/-1">Adresse (URL)<input type="url" name="url" placeholder="https://…" required></label>
+        <div class="f" style="grid-column:1/-1"><span class="small b" style="color:var(--fg-2)">Ereignisse</span><div class="row" style="gap:12px">${evs.map(([k, l]) => `<label class="row nowrap small"><input type="checkbox" name="events" value="${k}" ${["issue.created", "issue.resolved"].includes(k) ? "checked" : ""}> ${esc(l)}</label>`).join("")}</div></div>
+        <div><button class="btn primary" type="submit">${icon("plus")} Webhook anlegen</button></div></form>
+    </div>
+
+    <div class="card pad isec"><h3 class="h3">Daten übernehmen &amp; abgleichen</h3>
+      <div class="row"><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Import-Assistent (Excel/CSV)</button><button class="btn" data-act="export-customers">${icon("download")} Kundenstamm als Excel</button><button class="btn" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung</button><button class="btn" data-act="export-json">${icon("download")} Vollständige Sicherung (JSON)</button></div>
+      <p class="small muted" style="margin:8px 0 0">Für den laufenden Abgleich mit der Warenwirtschaft empfiehlt sich die REST-API (Kunden per <code>PUT /api/v1/customers/{Kundennummer}</code>, Vorgänge per <code>POST /api/v1/issues</code> mit <code>externalId</code>) – oder regelmäßige Excel-Exporte über den Import-Assistenten.</p></div>
+
+    <div class="card pad isec"><h3 class="h3">Protokoll</h3>
+      ${I.log.length ? `<div class="tbl-wrap" style="max-height:360px;overflow:auto"><table class="ilog"><tbody>${I.log.map((l) => `<tr><td class="small nowrap">${fmtTs(l.at)}</td><td><span class="chip ${l.level === "error" ? "red" : l.level === "warn" ? "yellow" : "gray"}">${esc(l.source)}</span></td><td class="small">${esc(l.message)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="small muted" style="margin:0">Noch keine Einträge.</p>'}</div>`;
+}
+function secretModal(title, intro, secret, extra = "") {
+  openModal(`<div class="modal-h"><h2>${esc(title)}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <div class="modal-b"><p style="margin:0">${intro}</p><div class="secret"><code id="secret-val">${esc(secret)}</code><button class="btn sm" data-act="copy" data-v="${esc(secret)}">Kopieren</button></div>
+      <div class="note warn">Dieser Wert wird nur jetzt angezeigt. Bitte sicher speichern (z. B. im Passwort-Manager oder direkt im Zielprogramm).</div>${extra}</div>
+    <div class="modal-f"><button class="btn primary" data-act="close">Fertig</button></div>`);
+}
+
 /* ---------- Import-Assistent ---------- */
 const IMPORT_TYPES = {
   customers: { label: "Kunden", desc: "Kundenstamm aus Warenwirtschaft / ERP – optional mit erstem Ansprechpartner", sheet: ["kunden", "customers", "debitoren"], fields: [
@@ -1479,6 +1569,7 @@ function viewSettings() {
     <div class="card pad"><div class="row" style="margin-bottom:6px"><h3 style="font-size:15px;flex:1">Teams</h3>${isAdmin ? `<button class="btn sm" data-act="team-new">${icon("plus")} Team anlegen</button>` : ""}</div>
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
+    ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Integrationen &amp; Schnittstellen</h3><p class="small muted" style="margin:0">Microsoft 365 (E-Mail, Postfach, Kalender, Anmeldung), Factorial, REST-API für Ihre Programme, Webhooks für Teams, Datenimport.</p></div><a class="btn primary" href="#/integrations">Integrationen öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
@@ -2011,6 +2102,13 @@ document.addEventListener("click", (e) => {
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
+    case "integ-reload": ui.integ = null; render(); break;
+    case "copy": navigator.clipboard?.writeText(el.dataset.v).then(() => toast("In die Zwischenablage kopiert.")).catch(() => toast("Bitte markieren und mit Strg+C kopieren.")); break;
+    case "integ-poll": api("/api/admin/mail/poll", { method: "POST" }).then((r) => { toast(r.skipped ? "Abruf ist deaktiviert." : r.error ? `Fehler: ${r.error}` : `Postfach abgerufen: ${r.created} neue Vorgänge, ${r.replies} Antworten.`); loadIntegrations(); }).catch((err) => toast(err.message)); break;
+    case "factorial-sync": el.disabled = true; el.textContent = "Gleiche ab …"; api("/api/admin/factorial/sync", { method: "POST" }).then((r) => { toast(`Factorial: ${r.employees} Mitarbeiter, ${r.created} neu, ${r.absences} Abwesenheiten.`); loadIntegrations(); }).catch((err) => { toast(err.message); loadIntegrations(); }); break;
+    case "apikey-revoke": if (!confirm("Schlüssel widerrufen? Programme, die ihn nutzen, verlieren sofort den Zugriff.")) return; api(`/api/admin/api-keys/${id}`, { method: "DELETE" }).then(loadIntegrations).catch((err) => toast(err.message)); break;
+    case "hook-test": el.disabled = true; api(`/api/admin/webhooks/${id}/test`, { method: "POST" }).then((r) => toast(`Test erfolgreich (HTTP ${r.status}).`)).catch((err) => toast(err.message)).finally(loadIntegrations); break;
+    case "hook-delete": if (!confirm("Webhook löschen?")) return; api(`/api/admin/webhooks/${id}`, { method: "DELETE" }).then(loadIntegrations).catch((err) => toast(err.message)); break;
     case "imp-type": ui.imp = { step: 2, update: true, type: el.dataset.v }; render(); break;
     case "imp-template": e.preventDefault(); importTemplate(ui.imp.type); break;
     case "imp-reset": ui.imp = null; render(); break;
@@ -2095,6 +2193,8 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
+  if (el.dataset.act === "hook-active") { api(`/api/admin/webhooks/${el.dataset.id}`, { method: "PATCH", body: { active: el.checked } }).then(loadIntegrations).catch((err) => toast(err.message)); return; }
+  if (el.dataset.act === "factorial-create") { api("/api/admin/integrations/settings", { method: "POST", body: { factorialCreateUsers: el.checked } }).then((r) => { ui.integ = r; render(); }).catch((err) => toast(err.message)); return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
   if (el.dataset.act === "imp-map") { ui.imp.map[el.dataset.k] = Number(el.value); ui.imp.plan = null; render(); return; }
@@ -2209,6 +2309,21 @@ async function handleSubmit(e, f) {
         intervalMonths: num("intervalMonths"), lastMaintenance: fd.get("lastMaintenance") || null, nextMaintenance: fd.get("nextMaintenance") || null, active: fd.get("active") === "on" };
       const a = assetOf(c, f.dataset.k); if (a) Object.assign(a, data); else c.assets.push({ id: uid(), ...data });
       c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); toast(`Anlage „${data.name}“ gespeichert`); break; }
+    case "integ-m365": {
+      const body = { mailInbox: fd.get("mailInbox"), calendarMinutes: Number(fd.get("calendarMinutes")), mailInEnabled: fd.get("mailInEnabled") === "on", calendarSync: fd.get("calendarSync") === "on", ...(f.ssoMicrosoft.disabled ? {} : { ssoMicrosoft: fd.get("ssoMicrosoft") === "on" }) };
+      ui.integ = await api("/api/admin/integrations/settings", { method: "POST", body }); render(); toast("Gespeichert"); break; }
+    case "apikey-form": {
+      const r = await api("/api/admin/api-keys", { method: "POST", body: { name: fd.get("name"), scope: fd.get("scope") } }); f.reset(); await loadIntegrations();
+      const base = location.origin;
+      secretModal("API-Schlüssel erstellt", `Schlüssel für <b>${esc(String(fd.get("name")))}</b> (${fd.get("scope") === "write" ? "lesen + schreiben" : "nur lesen"}):`, r.token,
+        `<details open><summary class="small b">Beispiel</summary><pre class="code">curl -H "Authorization: Bearer ${esc(r.token)}" \\
+  "${esc(base)}/api/v1/issues?project=SD&statusCategory=progress"</pre></details>`);
+      break; }
+    case "hook-form": {
+      const h = await api("/api/admin/webhooks", { method: "POST", body: { name: fd.get("name"), url: fd.get("url"), format: fd.get("format"), events: fd.getAll("events") } }); f.reset(); await loadIntegrations();
+      secretModal("Webhook angelegt", `Signaturschlüssel für <b>${esc(h.name)}</b> – damit kann das Zielsystem prüfen, dass Nachrichten wirklich vom GF Tracker kommen (HMAC-SHA256 über den Nachrichtentext, Header <code>X-GFT-Signature</code>):`, h.secret,
+        `<p class="small muted" style="margin:0">Tipp: Mit „Testen“ eine Probenachricht senden.</p>`);
+      break; }
     case "absence-form": {
       const a = { id: uid(), userId: fd.get("userId"), start: fd.get("start"), end: fd.get("end"), type: fd.get("type"), note: String(fd.get("note") || "").trim(), source: "manual" };
       if (a.end < a.start) return toast("„Bis“ liegt vor „Von“.");

@@ -71,3 +71,11 @@ Kundenportal (`?portal`). Daten liegen im localStorage dieses Browsers; jeder Ta
 kann als andere Person angemeldet sein. Kein Passwortschutz, kein E-Mail-Versand,
 kein gemeinsames Arbeiten über mehrere Geräte – dafür die Server-Version nutzen.
 
+
+## Integrationen
+
+Unter **Einstellungen → Integrationen** (Administratoren): Microsoft 365 (E-Mail-Versand,
+Service-Postfach → Vorgänge, Outlook-Kalender, Anmeldung mit Microsoft), Factorial
+(Mitarbeiter, Abwesenheiten), REST-API mit API-Schlüsseln (`/api/v1`, Beschreibung unter
+`/api/v1/openapi.json`), Webhooks (JSON oder Microsoft-Teams-Karte) und der
+Import-Assistent für Excel/CSV. Details: [ARCHITEKTUR.md, Abschnitt 13](ARCHITEKTUR.md).

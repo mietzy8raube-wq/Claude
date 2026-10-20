@@ -156,6 +156,7 @@ function canWrite(user, type, op, cur, data) {
     const target = (cur || data)?.userId; const lead = (store.all("teams")).some((t) => t.leadId === user.id && t.memberIds.includes(target));
     if (cur?.source === "factorial") return "Abwesenheiten aus Factorial werden dort gepflegt.";
     if (target !== user.id && !lead) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren.";
+    const moved = data?.set?.userId; if (moved && moved !== target) { const lead2 = (store.all("teams")).some((t) => t.leadId === user.id && t.memberIds.includes(moved)); if (moved !== user.id && !lead2) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren."; }
   }
   if (type === "teams" && !admin) {
     if (op !== "patch" || !cur || cur.leadId !== user.id) return "Teams verwalten Administratoren; die Teamleitung kann Mitglieder ändern.";
