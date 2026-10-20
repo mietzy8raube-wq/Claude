@@ -386,6 +386,7 @@ window.fetch = function (input, init = {}) {
   const url = new URL(raw, location.href);
   if (!/\/api\//.test(url.pathname) || (url.origin !== location.origin && url.protocol !== "file:")) return realFetch(input, init);
   const method = (init.method || "GET").toUpperCase();
+  if (/\/attachments$|\/api\/files\//.test(url.pathname)) return Promise.resolve(new Response(JSON.stringify({ error: "Dateianhänge gibt es nur in der Server-Version (die Einzeldatei speichert nur im Browser)." }), { status: 501, headers: { "Content-Type": "application/json" } }));
   let status = 200, out;
   try { out = handle(method, url, init.body ? JSON.parse(init.body) : undefined); }
   catch (e) { status = e instanceof HttpError ? e.status : 500; out = { error: e instanceof HttpError ? e.message : `Interner Fehler: ${e.message}` }; if (!(e instanceof HttpError)) console.error(e); }

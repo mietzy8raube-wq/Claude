@@ -13,7 +13,7 @@ const AUTO_REPLY = /^(automatische antwort|automatic reply|abwesenheitsnotiz|abw
 const INCIDENT_WORDS = /störung|stoerung|defekt|ausfall|ausgefallen|fehler|alarm|steht still|leck|undicht|notfall|dringend/i;
 
 export function createM365(ctx) {
-  const { store, S, mailer, cfg, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue } = ctx;
+  const { store, S, mailer, cfg, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue, addAttachment, maxFile } = ctx;
   const meta = (k, v) => store.meta(k, v);
   const settings = () => ({
     inbox: (meta("mailInbox") || env.MAIL_INBOX || "").trim().toLowerCase(),
@@ -51,7 +51,22 @@ export function createM365(ctx) {
         const mid = msg.internetMessageId || msg.id;
         if (mapGet("mail", mid)) { await markRead(); continue; }
         if (!from || from === st.inbox || from === String(env.MAIL_SENDER || "").toLowerCase() || AUTO_REPLY.test(subject)) { mapSet("mail", mid, msg.id); await markRead(); continue; }
-        const text = cleanBody(msg.body?.content) + (msg.hasAttachments ? "\n\n📎 Die E-Mail enthält Anhänge – siehe Postfach." : "");
+        const text = cleanBody(msg.body?.content);
+        /** Anhänge der Mail am Vorgang speichern (Signatur-Logos u. ä. werden übersprungen). */
+        const saveAttachments = async (issueId) => {
+          if (!msg.hasAttachments || !addAttachment) return 0; let n = 0;
+          try {
+            const list = await mailer.graph("GET", `/users/${encodeURIComponent(st.inbox)}/messages/${encodeURIComponent(msg.id)}/attachments`);
+            for (const a of list?.value || []) {
+              if (a["@odata.type"] !== "#microsoft.graph.fileAttachment" || !a.contentBytes) continue;
+              if (a.isInline && (a.size || 0) < 20480) continue;
+              const data = Buffer.from(a.contentBytes, "base64");
+              if (data.length > maxFile) { ilog("mail", "warn", `Anhang „${a.name}“ (${Math.round(data.length / 1048576)} MB) zu groß – bleibt im Postfach`); continue; }
+              try { addAttachment(issueId, { name: a.name, type: a.contentType, data, by: fromName, source: "email" }); n++; } catch (e) { ilog("mail", "warn", `Anhang „${a.name}“ nicht übernommen: ${e.message}`); }
+            }
+          } catch (e) { ilog("mail", "warn", `Anhänge nicht abrufbar: ${e.message}`); }
+          return n;
+        };
         const keyMatch = subject.match(/\[([A-Z][A-Z0-9]{1,9})-(\d+)\]/);
         const target = keyMatch && (() => { const p = store.all("projects").find((x) => x.key === keyMatch[1]); return p && store.all("issues").find((i) => i.projectId === p.id && i.no === Number(keyMatch[2])); })();
         if (target && target.status !== "CLOSED") {
@@ -66,7 +81,7 @@ export function createM365(ctx) {
             const who = target.assigneeId || p.leadId; if (who) createNotification(who, "comment", `Antwort per E-Mail: ${issueKey(target)}`, `${fromName}: ${text.slice(0, 120)}`, target.id);
             mapSet("mail", mid, msg.id, { issue: target.id });
           });
-          replies++;
+          await saveAttachments(target.id); replies++;
         } else {
           const cust = findCustomerByEmail(from);
           const contact = cust ? (cust.contacts || []).find((k) => (k.email || "").toLowerCase() === from) : null;
@@ -81,7 +96,7 @@ export function createM365(ctx) {
             mapSet("mail", mid, msg.id, { issue: i.id });
             return i;
           });
-          confirmReceipt(issue, from, fromName); created++;
+          await saveAttachments(issue.id); confirmReceipt(issue, from, fromName); created++;
         }
         await markRead();
       }

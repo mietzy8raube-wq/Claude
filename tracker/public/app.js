@@ -1063,6 +1063,26 @@ function importSheet(n) {
   render();
 }
 
+/* ---------- Anhänge ---------- */
+const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const isImg = (a) => /^image\/(png|jpeg|gif|webp)$/.test(a.type);
+function attTile(i, a) {
+  const src = `/api/files/${a.id}`; const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
+  return `<div class="att">${isImg(a) ? `<a href="${src}?inline=1" target="_blank" rel="noopener" class="att-thumb"><img src="${src}?inline=1" alt="${esc(a.name)}" loading="lazy"></a>` : `<a href="${src}${a.type === "application/pdf" ? "?inline=1" : ""}" target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
+    <div class="att-meta"><a href="${src}" class="trunc b" title="${esc(a.name)}" download>${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
+    ${canDel && a.source === "upload" ? `<button class="btn subtle sm icon" data-act="att-delete" data-id="${i.id}" data-k="${a.id}" title="Entfernen" aria-label="Entfernen">${icon("trash")}</button>` : ""}</div>`;
+}
+async function uploadFiles(issueId, files) {
+  let ok = 0;
+  for (const f of files) {
+    try {
+      const res = await fetch(`/api/issues/${issueId}/attachments`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
+      const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ok++;
+    } catch (e) { toast(`${f.name}: ${e.message}`); }
+  }
+  if (ok) { toast(`${ok} Datei${ok > 1 ? "en" : ""} hochgeladen`); await pull(); if (ui.openIssue === issueId) renderIssue(); }
+}
+
 /* ---------- Ansicht: Kunden & Anlagen ---------- */
 const customer = (id) => (id ? db.customers.find((c) => c.id === id) || null : null);
 const assetOf = (c, id) => (c && id ? (c.assets || []).find((a) => a.id === id) || null : null);
@@ -1652,6 +1672,8 @@ function renderIssue() {
         ${i.links.length || ui.addingLink ? `<div class="sec-title" style="margin-top:18px">Verknüpfte Vorgänge</div>
           <div>${i.links.map((l, k) => { const o = issue(l.issueId); return o ? `<div class="linkrow" data-act="open" data-id="${o.id}"><span class="small muted" style="width:150px">${LINK_LABEL[l.type]}</span>${typeIcon(o.type)}<span class="key">${keyOf(o)}</span><span class="trunc" style="flex:1">${esc(o.summary)}</span>${lozenge(o)}<button class="btn subtle sm icon" data-act="unlink" data-v="${k}" aria-label="Verknüpfung entfernen">${icon("x")}</button></div>` : ""; }).join("")}</div>
           ${ui.addingLink ? `<form id="link-form" class="row nowrap" style="margin-top:6px"><select name="type" style="width:190px">${Object.entries(LINK_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input type="text" name="key" list="issue-keys" placeholder="Schlüssel, z. B. DIG-3" required><datalist id="issue-keys">${db.issues.filter((x) => x.id !== i.id).map((x) => `<option value="${keyOf(x)}">${esc(x.summary)}</option>`).join("")}</datalist><button class="btn primary" type="submit">Verknüpfen</button></form>` : ""}` : ""}
+        <div class="sec-title row" style="margin-top:20px">Anhänge${(i.attachments || []).length ? ` <span class="badge-count">${i.attachments.length}</span>` : ""}<span class="sp"></span><label class="btn subtle sm" style="cursor:pointer">${icon("upload")} Datei hinzufügen<input type="file" id="att-input" data-id="${i.id}" multiple hidden></label></div>
+        <div class="att-drop" data-att-drop="${i.id}">${(i.attachments || []).length ? `<div class="att-grid">${i.attachments.map((a) => attTile(i, a)).join("")}</div>` : '<p class="small muted" style="margin:0">Keine Anhänge – Dateien hierher ziehen. Anhänge aus E-Mails an das Service-Postfach werden automatisch übernommen.</p>'}</div>
         <div class="sec-title" style="margin-top:22px">Aktivität</div>
         <div class="tabs"><button class="${tab === "comments" ? "on" : ""}" data-act="issue-tab" data-v="comments">Kommentare (${i.comments.length})</button><button class="${tab === "history" ? "on" : ""}" data-act="issue-tab" data-v="history">Verlauf</button></div>
         ${tab === "comments" ? `<form id="comment-form" class="grid" style="gap:6px;margin-bottom:10px"><textarea name="text" id="comment-text" rows="2" placeholder="Kommentar hinzufügen … (@Name erwähnt Personen)"></textarea>
@@ -2115,6 +2137,7 @@ document.addEventListener("click", (e) => {
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
     case "integ-reload": ui.integ = null; render(); break;
+    case "att-delete": if (!confirm("Anhang entfernen?")) return; api(`/api/issues/${id}/attachments/${el.dataset.k}`, { method: "DELETE" }).then(() => pull()).then(() => renderIssue()).catch((err) => toast(err.message)); break;
     case "cal-reset": if (!confirm("Neuen Kalender-Link erzeugen? Der bisherige Link funktioniert dann nicht mehr – das Abo in Outlook muss mit dem neuen Link neu eingerichtet werden.")) return;
       api("/api/me/calendar", { method: "POST" }).then((r) => { ui.calFeed = r; render(); toast("Neuer Link erzeugt."); }).catch((err) => toast(err.message)); break;
     case "copy": navigator.clipboard?.writeText(el.dataset.v).then(() => toast("In die Zwischenablage kopiert.")).catch(() => toast("Bitte markieren und mit Strg+C kopieren.")); break;
@@ -2209,6 +2232,7 @@ document.addEventListener("change", (e) => {
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
   if (el.dataset.act === "hook-active") { api(`/api/admin/webhooks/${el.dataset.id}`, { method: "PATCH", body: { active: el.checked } }).then(loadIntegrations).catch((err) => toast(err.message)); return; }
   if (el.dataset.act === "factorial-create") { api("/api/admin/integrations/settings", { method: "POST", body: { factorialCreateUsers: el.checked } }).then((r) => { ui.integ = r; render(); }).catch((err) => toast(err.message)); return; }
+  if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
   if (el.dataset.act === "imp-map") { ui.imp.map[el.dataset.k] = Number(el.value); ui.imp.plan = null; render(); return; }
@@ -2383,6 +2407,10 @@ document.addEventListener("click", (e) => { const th = e.target.closest("th[data
   const cur = $("#jql")?.value || ""; const base = cur.replace(/\s*ORDER\s+BY[\s\S]*$/i, "").trim(); let dir = "ASC";
   try { const o = parseJql(cur).order[0]; if (o && o.f === th.dataset.sort && o.dir === "ASC") dir = "DESC"; } catch {}
   go(`#/filters?jql=${encodeURIComponent(`${base}${base ? " " : ""}ORDER BY ${th.dataset.sort} ${dir}`)}`); });
+// Dateien auf den geöffneten Vorgang ziehen = hochladen
+$("#modal").addEventListener("dragover", (e) => { if (ui.modal === "issue" && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#modal .att-drop")?.classList.add("drop-on"); } });
+$("#modal").addEventListener("dragleave", (e) => { if (!$("#modal").contains(e.relatedTarget)) $("#modal .att-drop")?.classList.remove("drop-on"); });
+$("#modal").addEventListener("drop", (e) => { if (ui.modal !== "issue" || !e.dataTransfer?.files?.length) return; e.preventDefault(); $("#modal .att-drop")?.classList.remove("drop-on"); uploadFiles(ui.openIssue, [...e.dataTransfer.files]); });
 // Nur schließen, wenn der Klick auch auf dem Hintergrund begonnen hat (nicht beim Markieren von Text im Fenster)
 let overlayDown = false;
 $("#overlay").addEventListener("mousedown", (e) => (overlayDown = e.target === e.currentTarget));

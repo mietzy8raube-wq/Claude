@@ -210,6 +210,28 @@ test("REST-API v1 und Webhooks: Schlüssel, Rechte, Anlegen/Ändern/Kommentieren
   } finally { recv.close(); }
 });
 
+test("Anhänge: hochladen, sicher ausliefern, Rechte beim Löschen, Portal-Upload nur für den eigenen Vorgang", async () => {
+  const st = (await anna.req("/api/state")).data; const issue = st.issues.find((i) => i.summary === "Druckabfall im Leitungsnetz");
+  const up = (c, name, type, body, issueId = issue.id) => fetch(`${BASE}/api/issues/${issueId}/attachments`, { method: "POST", headers: { cookie: c.cookie, "X-GFT": "1", "Content-Type": type, "X-Filename": encodeURIComponent(name) }, body }).then(async (r) => ({ status: r.status, data: await r.json() }));
+  const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a5d90000000049454e44ae426082", "hex");
+  const a1 = await up(anna, "Fehlercode E42.png", "image/png", png); assert.equal(a1.status, 200); assert.equal(a1.data.name, "Fehlercode E42.png");
+  assert.equal((await up(anna, "virus.exe", "application/octet-stream", Buffer.from("MZ"))).status, 415, "ausführbare Dateien gesperrt");
+  const html = await up(lisa, "seite.html", "text/html", Buffer.from("<script>alert(1)</script>")); assert.equal(html.status, 200);
+  const dl = await fetch(`${BASE}/api/files/${html.data.id}?inline=1`, { headers: { cookie: anna.cookie } });
+  assert.equal(dl.headers.get("content-type"), "application/octet-stream", "HTML nie als Seite ausliefern"); assert.match(dl.headers.get("content-disposition"), /^attachment/); assert.match(dl.headers.get("content-security-policy"), /sandbox/);
+  const img = await fetch(`${BASE}/api/files/${a1.data.id}?inline=1`, { headers: { cookie: anna.cookie } }); assert.equal(img.headers.get("content-type"), "image/png"); assert.equal(Buffer.from(await img.arrayBuffer()).length, png.length);
+  assert.equal((await fetch(`${BASE}/api/files/${a1.data.id}`)).status, 401, "nur angemeldet");
+  const del = await fetch(`${BASE}/api/issues/${issue.id}/attachments/${a1.data.id}`, { method: "DELETE", headers: { cookie: lisa.cookie, "X-GFT": "1" } }); assert.equal(del.status, 403, "fremde Datei nicht löschbar");
+  const after = (await anna.req("/api/state")).data.issues.find((i) => i.id === issue.id); assert.equal(after.attachments.length, 2); assert.ok(after.history.some((h) => h.field === "Anhang" && h.to === "Fehlercode E42.png"));
+  // Portal: Kunde lädt Foto zu seinem Vorgang hoch
+  const r = await new Client().req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "Foto Kunde", company: "F GmbH", email: "foto@kunde.de", summary: "Mit Foto", description: "x" } });
+  const pu = await fetch(`${BASE}/api/portal/requests/${r.data.token}/attachments`, { method: "POST", headers: { "Content-Type": "image/png", "X-Filename": "display.png", "X-GFT": "1" }, body: png }); assert.equal(pu.status, 200);
+  assert.equal((await fetch(`${BASE}/api/portal/requests/${r.data.token}/attachments`, { method: "POST", headers: { "Content-Type": "text/html", "X-GFT": "1" }, body: "x" })).status, 415);
+  const view = (await new Client().req(`/api/portal/requests/${r.data.token}`)).data; assert.equal(view.attachments.length, 1);
+  assert.equal((await fetch(`${BASE}/api/portal/requests/${r.data.token}/files/${view.attachments[0].id}`)).status, 200);
+  assert.equal((await fetch(`${BASE}/api/portal/requests/${r.data.token}/files/${a1.data.id}`)).status, 404, "fremde/interne Dateien nicht über das Portal");
+});
+
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {
   const st = (await lisa.req("/api/state")).data;
   const ctrl = new AbortController();

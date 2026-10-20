@@ -113,6 +113,41 @@ function serveFile(req, res, file, extraHeaders = {}) {
   send(res, 200, fs.readFileSync(full), { "Content-Type": MIME[path.extname(full)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag, ...extraHeaders });
 }
 
+/* ---------- Anhänge (Dateien im Datenordner, Metadaten am Vorgang) ---------- */
+const FILES = path.join(CFG.dataDir, "files"); fs.mkdirSync(FILES, { recursive: true });
+const MAX_FILE = Number(env.MAX_UPLOAD_MB || 15) * 1024 * 1024;
+const BLOCKED = /\.(exe|bat|cmd|com|scr|js|jse|vbs|vbe|ps1|msi|msp|dll|jar|hta|cpl|lnk|reg)$/i;
+const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]);
+async function readRaw(req, limit) {
+  let size = 0; const chunks = [];
+  for await (const c of req) { size += c.length; if (size > limit) throw new HttpError(413, `Datei zu groß (höchstens ${Math.round(limit / 1048576)} MB).`); chunks.push(c); }
+  return Buffer.concat(chunks);
+}
+const cleanName = (n) => String(n || "datei").normalize("NFC").replace(/[\\/\x00-\x1f"<>|:*?]/g, "_").replace(/^\.+/, "").slice(0, 150) || "datei";
+/** Datei speichern und am Vorgang vermerken; gibt die Metadaten zurück. */
+function addAttachment(issueId, { name, type, data, userId = null, by = null, source = "upload" }) {
+  const fname = cleanName(name); if (BLOCKED.test(fname)) throw new HttpError(415, "Ausführbare Dateien sind aus Sicherheitsgründen nicht erlaubt.");
+  if (!data?.length) throw new HttpError(400, "Leere Datei."); if (data.length > MAX_FILE) throw new HttpError(413, `Datei zu groß (höchstens ${Math.round(MAX_FILE / 1048576)} MB).`);
+  const meta = { id: S.uid(), name: fname, size: data.length, type: String(type || "application/octet-stream").split(";")[0].trim().toLowerCase().slice(0, 100), at: new Date().toISOString(), userId, by, source };
+  fs.writeFileSync(path.join(FILES, meta.id), data);
+  store.tx(() => {
+    const i = store.get("issues", issueId); if (!i) throw new HttpError(404, "Vorgang nicht gefunden.");
+    i.attachments = [...(i.attachments || []), meta];
+    i.history.unshift({ id: S.uid(), at: meta.at, userId, by: userId ? null : by, field: "Anhang", from: "", to: fname });
+    i.updatedAt = meta.at; store.put("issues", i);
+  });
+  return meta;
+}
+const findAttachment = (fileId) => { for (const i of store.all("issues")) { const a = (i.attachments || []).find((x) => x.id === fileId); if (a) return { issue: i, a }; } return null; };
+function sendAttachment(req, res, a, url) {
+  const full = path.join(FILES, a.id); if (!/^[A-Za-z0-9_-]+$/.test(a.id) || !fs.existsSync(full)) return send(res, 404, { error: "Datei nicht gefunden." });
+  const inline = url.searchParams.get("inline") === "1" && INLINE_TYPES.has(a.type);
+  res.writeHead(200, { "Content-Type": inline ? a.type : INLINE_TYPES.has(a.type) ? a.type : "application/octet-stream", "Content-Length": fs.statSync(full).size,
+    "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(a.name)}`, "X-Content-Type-Options": "nosniff",
+    "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox", "Cache-Control": "private, max-age=3600" });
+  fs.createReadStream(full).pipe(res);
+}
+
 /* ---------- Live-Aktualisierung (Server-Sent Events) ---------- */
 const clients = new Set();
 function broadcast() { const rev = store.rev(); for (const c of clients) c.res.write(`event: rev\ndata: ${rev}\n\n`); }
@@ -360,7 +395,7 @@ function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try {
 const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification });
 const webhooks = createWebhooks({ store, cfg: CFG, issueDto: apiV1.issueDto, customerDto: apiV1.customerDto, ilog, log });
 onEvent((type, obj, extra) => webhooks.enqueue(type, obj, extra));
-const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue });
+const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue, addAttachment, maxFile: MAX_FILE });
 setInterval(() => m365.pullCalendarChanges(), Number(env.CAL_PULL_INTERVAL_MS) || 5 * 60e3).unref();
 setTimeout(() => m365.pollMailbox(), 5e3).unref();
 setInterval(() => m365.pollMailbox(), Number(env.MAILIN_INTERVAL_MS) || 120e3).unref();
@@ -410,6 +445,7 @@ function backupJob() {
 function portalView(issue) {
   const p = projectById(issue.projectId); const st = S.statusInfo(p, issue.status);
   return { key: issueKey(issue), summary: issue.summary, description: issue.description, type: issue.type, status: st.name, statusCat: st.cat, closed: issue.status === "CLOSED", createdAt: issue.createdAt,
+    attachments: (issue.attachments || []).filter((a) => a.source === "portal" || a.source === "email" || a.public).map((a) => ({ id: a.id, name: a.name, size: a.size, type: a.type, fromCustomer: a.source !== "upload" })),
     appointmentAt: ["SCHEDULED", "WORKING"].includes(issue.status) ? issue.appointmentAt || null : null, technician: issue.assigneeId ? userById(issue.assigneeId)?.name || null : null,
     report: issue.resolution && st.cat === "done" ? { cause: issue.resolution.cause, action: issue.resolution.action, parts: issue.resolution.parts, hours: issue.resolution.hours, at: issue.resolution.at } : null,
     comments: issue.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, text: c.text, fromCustomer: !c.userId, author: c.userId ? `${userById(c.userId)?.name || "Service"} (Service)` : c.author || "Sie" })) };
@@ -547,12 +583,43 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/portal/requests" && m === "POST") return await portalCreate(req);
   let pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})$/);
   if (pm && m === "GET") return portalView(portalIssue(pm[1]));
+  pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})\/attachments$/);
+  if (pm && m === "POST") {
+    const ip = clientIp(req); if (!portalLimiter.check(`f:${ip}`)) throw new HttpError(429, "Zu viele Dateien. Bitte später erneut versuchen.");
+    const issue = portalIssue(pm[1]); if (issue.status === "CLOSED") throw new HttpError(409, "Diese Anfrage ist abgeschlossen.");
+    if ((issue.attachments || []).filter((a) => a.source === "portal").length >= 10) throw new HttpError(409, "Höchstens 10 Dateien je Anfrage.");
+    const type = String(req.headers["content-type"] || ""); if (!/^(image\/(png|jpeg|gif|webp|heic|heif)|application\/pdf)/.test(type)) throw new HttpError(415, "Bitte Fotos (JPG, PNG) oder PDF hochladen.");
+    portalLimiter.hit(`f:${ip}`);
+    const data = await readRaw(req, Math.min(MAX_FILE, 10 * 1048576));
+    const meta = addAttachment(issue.id, { name: decodeURIComponent(String(req.headers["x-filename"] || "foto")), type, data, by: issue.customer?.name || "Kunde", source: "portal" });
+    const who = issue.assigneeId || projectById(issue.projectId)?.leadId; if (who) createNotification(who, "comment", `Kunde hat eine Datei geschickt: ${issueKey(issue)}`, meta.name, issue.id);
+    broadcast(); return { ok: true, id: meta.id };
+  }
+  pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})\/files\/([A-Za-z0-9_-]+)$/);
+  if (pm && m === "GET") { const issue = portalIssue(pm[1]); const a = (issue.attachments || []).find((x) => x.id === pm[2] && (x.source !== "upload" || x.public)); if (!a) throw new HttpError(404, "Datei nicht gefunden."); return { __file: a }; }
   pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})\/comments$/);
   if (pm && m === "POST") return await portalReply(req, pm[1]);
 
   // Ab hier nur angemeldet
   needUser();
   if (p === "/api/me" && m === "GET") return { user: publicUser(user), mail: mailer.configured, company: CFG.company, appUrl: CFG.appUrl };
+  pm = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments$/);
+  if (pm && m === "POST") {
+    if (!store.get("issues", pm[1])) throw new HttpError(404, "Vorgang nicht gefunden.");
+    const data = await readRaw(req, MAX_FILE);
+    const meta = addAttachment(pm[1], { name: decodeURIComponent(String(req.headers["x-filename"] || "datei")), type: req.headers["content-type"], data, userId: user.id, source: "upload" });
+    broadcast(); return meta;
+  }
+  pm = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments\/([A-Za-z0-9_-]+)$/);
+  if (pm && m === "DELETE") {
+    const i = store.get("issues", pm[1]); const a = i && (i.attachments || []).find((x) => x.id === pm[2]); if (!a) throw new HttpError(404, "Anhang nicht gefunden.");
+    if (a.userId !== user.id && user.role !== "ADMIN") throw new HttpError(403, "Nur wer die Datei hochgeladen hat oder Administratoren dürfen sie löschen.");
+    store.tx(() => { const cur = store.get("issues", pm[1]); cur.attachments = (cur.attachments || []).filter((x) => x.id !== a.id);
+      cur.history.unshift({ id: S.uid(), at: new Date().toISOString(), userId: user.id, field: "Anhang entfernt", from: a.name, to: "" }); cur.updatedAt = new Date().toISOString(); store.put("issues", cur); });
+    fs.rmSync(path.join(FILES, a.id), { force: true }); broadcast(); return { ok: true };
+  }
+  pm = p.match(/^\/api\/files\/([A-Za-z0-9_-]+)$/);
+  if (pm && m === "GET") { const hit = findAttachment(pm[1]); if (!hit) throw new HttpError(404, "Datei nicht gefunden."); return { __file: hit.a }; }
   if (p === "/api/me/calendar" && (m === "GET" || m === "POST")) {
     if (m === "POST") store.db.prepare("DELETE FROM sync_map WHERE kind = 'icstoken' AND local_id = ?").run(user.id);
     let row = store.db.prepare("SELECT remote_id FROM sync_map WHERE kind = 'icstoken' AND local_id = ?").get(user.id);
@@ -682,6 +749,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (out && out.__status) return send(res, out.__status, out.body, extra);
+      if (out && out.__file) return sendAttachment(req, res, out.__file, url);
       if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });
       if (out && out.__download) return send(res, 200, JSON.stringify(out.body, null, 2), { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${out.__download}"`, "Cache-Control": "no-store", ...extra });
       return send(res, 200, out, extra);

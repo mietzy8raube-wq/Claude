@@ -172,6 +172,7 @@ const KEYED = {
   links: { key: (x) => `${x.type}|${x.issueId}` },
   contacts: { key: (x) => x.id },
   assets: { key: (x) => x.id },
+  attachments: { key: (x) => x.id, sort: (a, b) => String(a.at).localeCompare(String(b.at)) },
 };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function diffEntity(base, next) {

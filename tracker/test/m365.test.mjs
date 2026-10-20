@@ -44,7 +44,9 @@ function startMock() {
         }
         if (req.headers.authorization !== "Bearer app-token") return json(401, { error: "unauthorized" });
         if (req.method === "GET" && u.pathname === `/v1.0/users/${INBOX}/mailFolders/inbox/messages`) return json(200, { value: M.messages.filter((m) => !M.read.has(m.id)) });
-        let m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/messages\/([^/]+)$/);
+        let m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/messages\/([^/]+)\/attachments$/);
+        if (m && req.method === "GET") return json(200, { value: (M.messages.find((x) => x.id === m[2])?.files || []) });
+        m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/messages\/([^/]+)$/);
         if (m && req.method === "PATCH") { M.read.add(decodeURIComponent(m[2])); return json(200, {}); }
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/sendMail$/);
         if (m && req.method === "POST") { const b = JSON.parse(body); M.sent.push({ from: decodeURIComponent(m[1]), ...b.message, saveToSentItems: b.saveToSentItems }); return json(202); }
@@ -88,12 +90,16 @@ const issues = async () => (await anna.req("/api/state")).data.issues;
 
 test("Postfach → Vorgang: neue Mail wird Vorgang (Kunde erkannt, Zitat entfernt), Bestätigung geht raus, Antwort landet im Vorgang", async () => {
   assert.equal((await anna.req("/api/login", { method: "POST", body: { email: "anna.mueller@druckluft-chemnitz.de", password: "Passwort123!" } })).status, 200);
-  M.messages.push(msg("m1", "p.kunze@kunze-metallbau.de", "Peter Kunze", "Störung Kompressor Halle 2", "Hallo,\nder Kompressor zeigt Alarm.\n\nGruß Kunze\n\n-----Ursprüngliche Nachricht-----\nVon: alt\nalter Text"));
+  const big = Buffer.alloc(30000, 7).toString("base64");
+  M.messages.push(msg("m1", "p.kunze@kunze-metallbau.de", "Peter Kunze", "Störung Kompressor Halle 2", "Hallo,\nder Kompressor zeigt Alarm.\n\nGruß Kunze\n\n-----Ursprüngliche Nachricht-----\nVon: alt\nalter Text",
+    { hasAttachments: true, files: [{ "@odata.type": "#microsoft.graph.fileAttachment", name: "display.jpg", contentType: "image/jpeg", size: 30000, isInline: false, contentBytes: big }, { "@odata.type": "#microsoft.graph.fileAttachment", name: "logo.png", contentType: "image/png", size: 900, isInline: true, contentBytes: Buffer.alloc(900).toString("base64") }] }));
   M.messages.push(msg("m2", "chef@neukunde.de", "Hans Neu", "Anfrage Wartungsvertrag", "Bitte um Angebot."));
   M.messages.push(msg("m3", "x@y.de", "X", "Automatische Antwort: Urlaub", "Bin weg"));
   const i1 = await until(async () => (await issues()).find((i) => i.summary === "Störung Kompressor Halle 2"));
   assert.ok(i1, "Vorgang angelegt"); assert.equal(i1.type, "INCIDENT"); assert.equal(i1.customerId, "c1"); assert.ok(i1.labels.includes("e-mail"));
   assert.ok(!i1.description.includes("alter Text"), "Zitat entfernt"); assert.match(i1.description, /zeigt Alarm/);
+  const withAtt = await until(async () => { const x = (await issues()).find((i) => i.id === i1.id); return x.attachments?.length && x; });
+  assert.deepEqual(withAtt.attachments.map((a) => [a.name, a.source, a.size]), [["display.jpg", "email", 30000]], "Anhang übernommen, Signatur-Logo übersprungen");
   const i2 = await until(async () => (await issues()).find((i) => i.summary === "Anfrage Wartungsvertrag")); assert.equal(i2.type, "SERVICE"); assert.equal(i2.customer.email, "chef@neukunde.de"); assert.equal(i2.customerId, null);
   assert.ok(!(await issues()).some((i) => i.summary.startsWith("Automatische Antwort")), "Abwesenheitsnotiz ignoriert");
   await until(() => M.read.has("m1") && M.read.has("m2") && M.read.has("m3")); assert.ok(M.read.has("m3"));

@@ -65,6 +65,8 @@ async function renderRequest(token) {
       ${v.report ? `<div class="card pad" style="margin-top:12px;border-left:4px solid var(--ok)"><b>Servicebericht</b> <span class="small muted">· ${fmtDT(v.report.at)}</span>
         ${v.report.cause ? `<div style="margin-top:6px"><span class="small muted">Ursache:</span> ${esc(v.report.cause)}</div>` : ""}<div style="white-space:pre-wrap"><span class="small muted">Durchgeführte Arbeiten:</span> ${esc(v.report.action)}</div>
         ${v.report.parts ? `<div style="white-space:pre-wrap"><span class="small muted">Material/Ersatzteile:</span> ${esc(v.report.parts)}</div>` : ""}${v.report.hours ? `<div><span class="small muted">Arbeitszeit:</span> ${String(v.report.hours).replace(".", ",")} h</div>` : ""}</div>` : ""}
+      ${(v.attachments || []).length ? `<h3 style="font-size:15px;margin:18px 0 6px">Dateien</h3><div class="row" style="gap:6px">${v.attachments.map((a) => `<a class="chip gray" href="/api/portal/requests/${token}/files/${a.id}" download>📎 ${esc(a.name)}</a>`).join("")}</div>` : ""}
+      ${v.closed ? "" : `<label class="btn sm" style="margin-top:10px;cursor:pointer">📷 Foto oder PDF hinzufügen<input type="file" id="pfile" accept="image/*,application/pdf" multiple hidden></label>`}
       <h3 style="font-size:15px;margin:18px 0 6px">Verlauf</h3>
       ${v.comments.map((c) => `<div class="comment"><span class="avatar" style="background:${c.fromCustomer ? "#5b6b8a" : "#0c66e4"}">${c.fromCustomer ? "Sie" : "S"}</span><div class="body"><div class="small"><b>${esc(c.fromCustomer ? "Sie" : c.author)}</b> · <span class="muted">${fmtDT(c.at)}</span></div><div class="text">${esc(c.text)}</div></div></div>`).join("") || '<p class="muted small">Noch keine Nachrichten – wir melden uns schnellstmöglich.</p>'}
       ${v.closed ? '<p class="note info">Diese Anfrage ist abgeschlossen. Für ein neues Anliegen stellen Sie bitte eine neue Anfrage.</p>' : `<form id="reply" class="grid" style="gap:8px;margin-top:10px"><label class="f">Nachricht an den Service<textarea name="text" rows="3" required maxlength="8000"></textarea></label><div><button class="btn primary" type="submit">${icon("send")} Senden</button></div></form>`}
@@ -75,7 +77,17 @@ document.addEventListener("click", (e) => {
   state.type = t.dataset.type || null; renderHome();
   if (state.type) setTimeout(() => $("#req input")?.focus(), 0);
 });
-document.addEventListener("change", (e) => { if (e.target.id === "proj") { state.project = e.target.value; renderHome(); } });
+document.addEventListener("change", async (e) => {
+  if (e.target.id === "proj") { state.project = e.target.value; renderHome(); }
+  if (e.target.id === "pfile" && e.target.files.length) {
+    const token = tokenFromPath(); let ok = 0;
+    for (const f of e.target.files) {
+      try { const res = await fetch(`/api/portal/requests/${token}/attachments`, { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
+        const d = await res.json().catch(() => ({})); if (!res.ok) throw new Error(d.error || `Fehler ${res.status}`); ok++; } catch (ex) { toast(`${f.name}: ${ex.message}`); }
+    }
+    if (ok) { toast(`${ok} Datei${ok > 1 ? "en" : ""} gesendet – vielen Dank.`); renderRequest(token); }
+  }
+});
 document.addEventListener("submit", async (e) => {
   e.preventDefault(); const f = e.target; const btn = f.querySelector("button[type=submit]"); btn.disabled = true;
   try {
