@@ -1384,8 +1384,102 @@ function exportCsv(list, name) {
   download(name, "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n"), "text/csv;charset=utf-8");
 }
 
+/** Dashboard-Blatt für die Excel-Auswertung: Kennzahlen, native Excel-Diagramme, Listen „Überfällig“ und „Nächste Termine“.
+    Die Diagrammdaten stehen im Blatt „Diagrammdaten“, damit die Diagramme in Excel bearbeitbar bleiben. */
+function xlsxDashboard(list, title, svc) {
+  // Farben: Kategorien in fester Reihenfolge, Status (überfällig) nur für Verzug
+  const C = { blue: "#2A78D6", orange: "#EB6834", aqua: "#1BAF7A", critical: "#D03B3B", ink: "#1F2328", muted: "#5B6270", line: "#E3E5E8", tile: "#F4F6F8", navy: "#1F3A5F" };
+  const tk = today(); const open = list.filter((i) => !isDone(i) && i.type !== "EPIC"); const overdue = open.filter(isOverdue);
+  const since30 = addDays(tk, -29); const done30 = list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) >= since30); const created30 = list.filter((i) => dayKey(i.createdAt) >= since30);
+  const doneAll = list.filter((i) => i.resolvedAt); const avgDays = doneAll.length ? doneAll.reduce((s, i) => s + (new Date(i.resolvedAt) - new Date(i.createdAt)) / 864e5, 0) / doneAll.length : null;
+  const sla = svc.map((i) => slaInfo(i, "resolve")).filter((x) => x && x.stopped); const slaQ = sla.length ? sla.filter((x) => x.met).length / sla.length : null;
+  const hours = svc.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0);
+  const inbox = open.filter((i) => !i.assigneeId && i.type !== "SUBTASK");
+
+  /* --- Diagrammdaten --- */
+  const DS = "Diagrammdaten"; const data = []; let dc = 0;
+  const block = (head, rows) => { // rows: [[label, v1, v2...]]
+    const c0 = dc; head.forEach((h, k) => data.push({ r: 0, c: c0 + k, v: h, s: { b: true, color: "#FFFFFF", fill: C.navy } }));
+    rows.forEach((row, ri) => row.forEach((v, k) => data.push({ r: ri + 1, c: c0 + k, v, t: k ? "n" : "s" })));
+    dc += head.length + 1; const n = Math.max(rows.length, 1);
+    return { cats: { ref: XLSX.ref(DS, c0, 1, c0, n), vals: rows.map((r) => String(r[0])) }, ser: (k, name, color) => ({ name, nameRef: XLSX.ref(DS, c0 + k, 0), ref: XLSX.ref(DS, c0 + k, 1, c0 + k, n), vals: rows.map((r) => r[k]), color }) };
+  };
+  const weeks = Array.from({ length: 12 }, (_, k) => { const end = addDays(tk, -7 * (11 - k)); return { start: addDays(end, -6), end }; });
+  const trend = block(["Woche", "Erstellt", "Erledigt"], weeks.map((w) => [`KW ${isoWeek(w.end)}`, list.filter((i) => { const d = dayKey(i.createdAt); return d >= w.start && d <= w.end; }).length, list.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) >= w.start && dayKey(i.resolvedAt) <= w.end).length]));
+  const stNames = []; open.forEach((i) => { const n = statusOf(i).name; if (!stNames.includes(n)) stNames.push(n); });
+  const byStatus = block(["Status", "Offen"], stNames.map((n) => [n, open.filter((i) => statusOf(i).name === n).length]).sort((a, b) => b[1] - a[1]));
+  const ppl = activeUsers().map((u) => { const l = open.filter((i) => i.assigneeId === u.id); const od = l.filter(isOverdue).length; return [u.name, l.length - od, od]; }).filter((r) => r[1] + r[2] > 0).sort((a, b) => b[1] + b[2] - (a[1] + a[2])).slice(0, 10);
+  const load = block(["Person", "Offen im Plan", "Überfällig"], ppl);
+  const teamRows = db.teams.map((t) => [t.name, open.filter((i) => i.teamId === t.id).length]).filter((r) => r[1] > 0);
+  const noTeam = open.filter((i) => !team(i.teamId)).length; if (noTeam) teamRows.push(["Ohne Team", noTeam]);
+  const byTeam = block(["Team", "Offen"], teamRows.sort((a, b) => b[1] - a[1]));
+  const prioRows = Object.entries(PRIOS).sort((a, b) => b[1].rank - a[1].rank).map(([k, p]) => [p.label, open.filter((i) => i.priority === k).length]);
+  const byPrio = block(["Priorität", "Offen"], prioRows);
+  let sixth;
+  if (svc.length) {
+    const firms = {}; svc.forEach((i) => { const f = i.customer?.company || i.customer?.name || "Unbekannt"; firms[f] = (firms[f] || 0) + 1; });
+    sixth = { title: "Top-Kunden nach Serviceanfragen", sub: "Anzahl Anfragen in dieser Auswertung", b: block(["Kunde", "Anfragen"], Object.entries(firms).sort((a, b) => b[1] - a[1]).slice(0, 8)), name: "Anfragen", fmt: "0" };
+  } else {
+    sixth = { title: "Erfasste Stunden je Person", sub: "Zeiterfassung in dieser Auswertung", b: block(["Person", "Stunden"], activeUsers().map((u) => [u.name, Math.round(list.filter((i) => i.assigneeId === u.id).reduce((s, i) => s + (Number(i.loggedH) || 0), 0) * 10) / 10]).filter((r) => r[1] > 0).sort((a, b) => b[1] - a[1]).slice(0, 8)), name: "Stunden", fmt: "0.0" };
+  }
+
+  /* --- Layout: Spalte A Rand, 6 Kacheln à 2 Spalten mit schmalen Abständen (B…R) --- */
+  const cols = [{ w: 2 }]; for (let k = 0; k < 6; k++) { cols.push({ w: 11 }, { w: 11 }); if (k < 5) cols.push({ w: 1.6 }); }
+  const tileCol = (k) => 1 + k * 3; const LAST = 17; const MID = 9; // Spalte J trennt die Diagrammhälften
+  const cells = [], merges = [], heights = { 0: 10, 1: 32, 2: 18, 3: 10, 4: 20, 5: 40, 6: 20, 7: 14 };
+  const put = (r, c, v, s, t) => cells.push({ r, c, v, s, t });
+  const box = (r1, c1, r2, c2, v, s, t) => { for (let r = r1; r <= r2; r++) for (let c = c1; c <= c2; c++) put(r, c, r === r1 && c === c1 ? v : null, s, t); if (r1 !== r2 || c1 !== c2) merges.push(`${XLSX.colName(c1)}${r1 + 1}:${XLSX.colName(c2)}${r2 + 1}`); };
+  box(1, 1, 1, LAST, `Dashboard · ${title}`, { b: true, sz: 20, color: C.ink, valign: "center" });
+  box(2, 1, 2, LAST, `Stand ${fmtDT(new Date().toISOString())} · erstellt von ${uname(db.currentUserId)} · ${list.length} Vorgänge · Details in den folgenden Tabellenblättern`, { sz: 10, color: C.muted });
+  const tiles = [
+    ["Offene Vorgänge", open.length, "0", inbox.length ? `davon ${inbox.length} nicht verteilt` : "alle verteilt", C.blue],
+    ["Überfällig", overdue.length, "0", overdue.length ? "Fälligkeit überschritten" : "nichts überfällig ✓", overdue.length ? C.critical : C.aqua],
+    ["Erledigt (30 Tage)", done30.length, "0", `${created30.length} neu erstellt`, C.aqua],
+    ["Ø Durchlaufzeit", avgDays, '0.0" Tage"', "von Erstellung bis erledigt", C.blue],
+    ["SLA eingehalten", slaQ, "0%", sla.length ? `${sla.length} gelöste Serviceanfragen` : "noch keine Serviceanfragen", slaQ != null && slaQ < 0.9 ? C.orange : C.aqua],
+    ["Einsatzstunden", Math.round(hours * 10) / 10, '0.0" h"', "laut Serviceberichten", C.orange],
+  ];
+  tiles.forEach(([label, v, fmt, hint, accent], k) => {
+    const c = tileCol(k); const base = { fill: C.tile };
+    box(4, c, 4, c + 1, label.toUpperCase(), { ...base, b: true, sz: 9, color: C.muted, indent: 1, border: { top: { color: accent, style: "thick" } } });
+    box(5, c, 5, c + 1, v ?? "–", { ...base, b: true, sz: 26, color: label === "Überfällig" && v ? C.critical : C.ink, indent: 1, numFmt: fmt, align: "left" }, typeof v === "number" ? "n" : "s");
+    box(6, c, 6, c + 1, hint, { ...base, sz: 9, color: C.muted, indent: 1 });
+  });
+  // Diagramme: 2 je Reihe, je 17 Zeilen hoch
+  const charts = []; const H = 17; let row = 8;
+  const pair = (left, right) => { if (left) charts.push({ ...left, at: [1, row, MID, row + H] }); if (right) charts.push({ ...right, at: [MID + 1, row, LAST + 1, row + H] }); row += H + 1; };
+  pair({ type: "col", title: "Erstellt vs. erledigt", subtitle: "je Kalenderwoche, letzte 12 Wochen", cats: trend.cats, series: [trend.ser(1, "Erstellt", C.blue), trend.ser(2, "Erledigt", C.orange)], labels: false, gap: 80 },
+    { type: "bar", title: "Offene Vorgänge nach Status", subtitle: "Anzahl", cats: byStatus.cats, series: [byStatus.ser(1, "Offen", C.blue)], hideValAx: true });
+  pair(ppl.length ? { type: "bar", stacked: true, title: "Arbeitslast je Person", subtitle: "offene Vorgänge – rot: überfällig", cats: load.cats, series: [load.ser(1, "Offen im Plan", C.blue), load.ser(2, "Überfällig", C.critical)], labels: true, gap: 50 } : null,
+    teamRows.length ? { type: "bar", title: "Offene Vorgänge je Team", subtitle: "Anzahl", cats: byTeam.cats, series: [byTeam.ser(1, "Offen", C.blue)], hideValAx: true } : null);
+  pair({ type: "col", title: "Offene Vorgänge nach Priorität", subtitle: "Anzahl", cats: byPrio.cats, series: [byPrio.ser(1, "Offen", C.blue)], hideValAx: true, gap: 90 },
+    sixth.b.cats.vals.length ? { type: "bar", title: sixth.title, subtitle: sixth.sub, cats: sixth.b.cats, series: [sixth.b.ser(1, sixth.name, C.blue)], hideValAx: true, numFmt: sixth.fmt } : null);
+  for (let r = 8; r < row; r++) heights[r] = 15;
+
+  // Listen: Überfällig (links) und nächste Termine (rechts)
+  const hd = { b: true, color: "#FFFFFF", fill: C.navy, sz: 10, indent: 1 }; const td = (z) => ({ sz: 10, color: C.ink, indent: 1, fill: z ? "#FAFBFC" : "#FFFFFF", border: { bottom: { color: C.line } } });
+  const listTitle = (c1, c2, text) => box(row, c1, row, c2, text, { b: true, sz: 13, color: C.ink });
+  listTitle(1, MID - 1, `Überfällig – sofort klären (${overdue.length})`); listTitle(MID + 1, LAST, "Nächste Termine (7 Tage)"); heights[row] = 24; row++;
+  box(row, 1, row, 1, "Vorgang", hd); box(row, 2, row, 5, "Zusammenfassung", hd); box(row, 6, row, 7, "Verantwortlich", hd); box(row, 8, row, 8, "Tage", { ...hd, align: "right" });
+  box(row, MID + 1, row, MID + 2, "Termin", hd); box(row, MID + 3, row, MID + 6, "Vorgang", hd); box(row, MID + 7, row, LAST, "Techniker/in", hd); heights[row] = 20; row++;
+  const ov = [...overdue].sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 12);
+  const appts = open.filter((i) => i.appointmentAt && ACTIVE_APPT.includes(i.status) && dayKey(i.appointmentAt) >= tk && dayKey(i.appointmentAt) <= addDays(tk, 6)).sort((a, b) => a.appointmentAt.localeCompare(b.appointmentAt)).slice(0, 12);
+  const n = Math.max(ov.length, appts.length, 1);
+  for (let k = 0; k < n; k++) {
+    const z = k % 2; const i = ov[k], a = appts[k];
+    if (i) { box(row, 1, row, 1, keyOf(i), { ...td(z), b: true }); box(row, 2, row, 5, i.summary, td(z)); box(row, 6, row, 7, i.assigneeId ? uname(i.assigneeId) : "nicht zugewiesen", td(z)); box(row, 8, row, 8, daysBetween(i.dueDate, tk), { ...td(z), b: true, color: C.critical, align: "right", numFmt: "0" }, "n"); }
+    else if (k === 0) box(row, 1, row, 8, "Nichts überfällig. ✓", { sz: 10, color: C.muted, indent: 1 });
+    if (a) { box(row, MID + 1, row, MID + 2, a.appointmentAt, { ...td(z), numFmt: "dd.mm. hh:mm \"Uhr\"" }, "dt"); box(row, MID + 3, row, MID + 6, `${keyOf(a)} · ${a.customer?.company ? a.customer.company + " – " : ""}${a.summary}`, td(z)); box(row, MID + 7, row, LAST, a.assigneeId ? uname(a.assigneeId) : "–", td(z)); }
+    else if (k === 0) box(row, MID + 1, row, LAST, "Keine Termine in den nächsten 7 Tagen.", { sz: 10, color: C.muted, indent: 1 });
+    heights[row] = 18; row++;
+  }
+  const dash = { name: "Dashboard", free: true, grid: false, portrait: true, columns: cols, cells, merges, heights, charts, zoom: 90 };
+  const dataSheet = { name: DS, free: true, columns: Array.from({ length: dc }, () => ({ w: 16 })), cells: data };
+  return { dash, dataSheet };
+}
+
 /* ---------- Excel-Auswertung (.xlsx) ---------- */
-/** Erstellt eine Excel-Mappe mit Übersicht, Vorgängen, Serviceeinsätzen, Personen, Monaten, Verlauf und Kommentaren. */
+/** Erstellt eine Excel-Mappe mit Dashboard (Kennzahlen und Diagramme), Übersicht, Vorgängen, Serviceeinsätzen, Personen, Monaten, Verlauf und Kommentaren. */
 function exportXlsx(list, name, title) {
   list = list.filter(Boolean);
   const days = (a, b) => (a && b ? Math.round(((new Date(b) - new Date(a)) / 864e5) * 10) / 10 : null);
@@ -1451,7 +1545,8 @@ function exportXlsx(list, name, title) {
     ["SLA Lösung eingehalten (%)", slr.length ? Math.round(quota(slr) * 1000) / 10 : null, "Anteil der gelösten Serviceanfragen innerhalb der Zielzeit"],
     ["Erfasste Stunden gesamt", r2(list.reduce((s, i) => s + hoursOf(i), 0)), ""],
     ["Tabellenblätter", null, "Vorgänge · Serviceeinsätze · Teams · Personen · Monate · Statusverlauf · Kommentare – mit Filter in der Kopfzeile, direkt für Pivot-Tabellen nutzbar"]] };
-  const sheets = [info, vorg, ...(reports.length ? [eins] : []), ...(tms.rows.length ? [tms] : []), pers, mon, hist, comm];
+  const { dash, dataSheet } = xlsxDashboard(list, title, svc);
+  const sheets = [dash, vorg, ...(reports.length ? [eins] : []), ...(tms.rows.length ? [tms] : []), pers, mon, hist, comm, info, dataSheet];
   download(name, XLSX.build(sheets, { title, author: sync.company || "GF Tracker" }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   toast(`Excel-Datei „${name}“ mit ${list.length} Vorgängen erstellt.`);
 }
