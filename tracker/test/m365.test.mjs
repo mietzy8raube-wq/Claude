@@ -33,6 +33,15 @@ function startMock() {
             return json(200, { id_token: `x.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`, access_token: "user" });
           }
         }
+        if (u.pathname.startsWith("/api/2026-10-01/resources/")) {
+          if (req.headers["x-api-key"] !== "fact-key") return json(401, { error: "bad key" });
+          const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+          if (u.pathname.endsWith("/employees/employees")) {
+            if (!u.searchParams.get("after_id")) return json(200, { data: [{ id: 1, full_name: "Mehmet Yilmaz", login_email: "Mehmet.Yilmaz@druckluft-chemnitz.de", active: true }, { id: 2, full_name: "Neu Monteur", email: "neu.monteur@druckluft-chemnitz.de", active: true }], meta: { has_next_page: true, end_cursor: "p2" } });
+            return json(200, { data: [{ id: 3, full_name: "Ohne Mail", active: true }], meta: { has_next_page: false } });
+          }
+          if (u.pathname.endsWith("/timeoff/leaves")) return json(200, { data: [{ id: 10, employee_id: 1, start_on: day(3), finish_on: day(5), leave_type_name: "Urlaub", approved: true }, { id: 11, employee_id: 2, start_on: day(0), finish_on: day(0), leave_type_name: "Krankheit", approved: true }, { id: 12, employee_id: 1, start_on: day(20), finish_on: day(21), leave_type_name: "Urlaub", approved: false }], meta: { has_next_page: false } });
+        }
         if (req.headers.authorization !== "Bearer app-token") return json(401, { error: "unauthorized" });
         if (req.method === "GET" && u.pathname === `/v1.0/users/${INBOX}/mailFolders/inbox/messages`) return json(200, { value: M.messages.filter((m) => !M.read.has(m.id)) });
         let m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/messages\/([^/]+)$/);
@@ -58,7 +67,7 @@ before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gft-m365-"));
   proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server.mjs"], { cwd: ROOT, stdio: "ignore", env: { ...process.env, PORT: String(PORT), HOST: "127.0.0.1", DATA_DIR: dataDir, SEED_DEMO: "1", APP_URL: BASE,
     MS_TENANT_ID: "tenant1", MS_CLIENT_ID: "client1", MS_CLIENT_SECRET: "secret1", MAIL_SENDER: "noreply@druckluft-chemnitz.de", MS_LOGIN_HOST: MOCK, MS_GRAPH_BASE: `${MOCK}/v1.0`,
-    MAIL_INBOX: INBOX, MAILIN_INTERVAL_MS: "300", SSO_MICROSOFT: "1", TZ: "Europe/Berlin" } });
+    MAIL_INBOX: INBOX, MAILIN_INTERVAL_MS: "300", SSO_MICROSOFT: "1", TZ: "Europe/Berlin", FACTORIAL_API_KEY: "fact-key", FACTORIAL_BASE_URL: MOCK, FACTORIAL_API_VERSION: "2026-10-01" } });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {} await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
@@ -136,4 +145,21 @@ test("Anmeldung mit Microsoft: bekannte Person wird angemeldet, unbekannte abgew
   // falsche Nonce
   const s3 = new URL((await fetch(`${BASE}/auth/microsoft`, { redirect: "manual" })).headers.get("location")); M.nonce = "falsch"; M.email = "lisa.schmidt@druckluft-chemnitz.de";
   const cb3 = await fetch(`${BASE}/auth/microsoft/callback?code=good-code&state=${s3.searchParams.get("state")}`, { redirect: "manual" }); assert.match(decodeURIComponent(cb3.headers.get("location")), /Nonce/);
+});
+
+test("Factorial: Mitarbeiter werden zugeordnet bzw. angelegt, Abwesenheiten übernommen und abgeglichen", async () => {
+  const r = await anna.req("/api/admin/factorial/sync", { method: "POST" }); assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.employees, 3); assert.equal(r.data.created, 1); assert.deepEqual(r.data.unmatched, ["Ohne Mail"]); assert.equal(r.data.absences, 2, "abgelehnte Abwesenheit ausgelassen");
+  const st = (await anna.req("/api/state")).data;
+  const neu = st.users.find((u) => u.email === "neu.monteur@druckluft-chemnitz.de"); assert.ok(neu && neu.active);
+  const abs = st.absences.filter((a) => a.source === "factorial"); assert.equal(abs.length, 2);
+  assert.ok(abs.some((a) => a.userId === "u5" && a.type === "Urlaub")); assert.ok(abs.some((a) => a.userId === neu.id && a.type === "Krankheit"));
+  // erneuter Abgleich ändert nichts; Factorial-Abwesenheiten sind für Nutzer schreibgeschützt
+  const r2 = await anna.req("/api/admin/factorial/sync", { method: "POST" }); assert.equal(r2.data.changed, 0); assert.equal(r2.data.created, 0);
+  const mehmet = new Client(); await mehmet.req("/api/login", { method: "POST", body: { email: "mehmet.yilmaz@druckluft-chemnitz.de", password: "Passwort123!" } });
+  const a = abs.find((x) => x.userId === "u5");
+  const del = await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: a.id, op: "delete" }] } }); assert.match(del.data.results[0].error, /Factorial/);
+  const own = await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: "m1", op: "put", data: { id: "m1", userId: "u5", start: "2026-12-01", end: "2026-12-02", type: "Schulung" } }] } }); assert.ok(!own.data.results[0].error, "eigene Abwesenheit erlaubt");
+  const other = await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: "m2", op: "put", data: { id: "m2", userId: "u1", start: "2026-12-01", end: "2026-12-02", type: "Urlaub" } }] } }); assert.ok(other.data.results[0].error, "fremde nur Teamleitung/Admin");
+  const status = (await anna.req("/api/admin/integrations")).data.factorial; assert.equal(status.configured, true); assert.ok(status.lastSync);
 });

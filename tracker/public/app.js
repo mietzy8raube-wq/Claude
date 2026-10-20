@@ -193,6 +193,10 @@ const teamMembers = (t) => t.memberIds.map(user).filter((u) => u && u.active);
 const teamIssues = (t) => db.issues.filter((i) => i.teamId === t.id || (!i.teamId && i.assigneeId && t.memberIds.includes(i.assigneeId)));
 const teamOpts = (sel) => `<option value="">Kein Team</option>` + db.teams.map((t) => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.name)}</option>`).join("");
 const teamBadge = (t) => (t ? `<span class="tbadge" style="--tc:${t.color}">${esc(t.name)}</span>` : "");
+/** Abwesenheit einer Person an einem Tag (Urlaub, Krankheit … – aus Factorial oder manuell). */
+const absenceOn = (userId, k) => db.absences.find((a) => a.userId === userId && a.start <= k && a.end >= k) || null;
+const absenceText = (a) => `${a.type}${a.start === a.end ? ` am ${fmtDay(a.start)}` : ` ${fmtDay(a.start)} – ${fmtDay(a.end)}`}${a.note ? ` (${a.note})` : ""}`;
+const canEditAbsenceFor = (userId) => me().role === "ADMIN" || userId === db.currentUserId || db.teams.some((t) => t.leadId === db.currentUserId && t.memberIds.includes(userId));
 const teamInitials = (n) => initials(String(n).split(/[\s&+\/-]+/).filter((w) => /\p{L}/u.test(w)).join(" "));
 /** Team-Eingang: dem Team zugeordnet, niemandem zugewiesen und jetzt fällig zu bearbeiten (kein Scrum-Backlog). */
 const inTeamInbox = (i) => !!i.teamId && !i.assigneeId && !isDone(i) && i.type !== "EPIC" && i.type !== "SUBTASK" && !(proj(i.projectId)?.type === "software" && sprint(i.sprintId)?.state !== "active");
@@ -1091,14 +1095,17 @@ function viewTeam(t) {
   const cols = mem.map((u) => {
     const l = openAll.filter((i) => i.assigneeId === u.id).sort(sortW); const od = l.filter(isOverdue).length, td = l.filter(isToday).length;
     return `<div class="tcol" data-drop-assign="${u.id}"><div class="tcol-h">${avatar(u.id, true)}<div style="min-width:0"><div class="b trunc">${esc(u.name)}${u.id === t.leadId ? ' <span class="small muted">· Leitung</span>' : ""}</div>
-      <div class="small muted">${l.length} offen${td ? ` · ${td} heute` : ""}${od ? ` · <span style="color:var(--danger)">${od} überfällig</span>` : ""}</div></div></div>
+      <div class="small muted">${l.length} offen${td ? ` · ${td} heute` : ""}${od ? ` · <span style="color:var(--danger)">${od} überfällig</span>` : ""}</div>
+      ${(() => { const ab = absenceOn(u.id, tk) || db.absences.filter((a) => a.userId === u.id && a.start > tk && a.start <= addDays(tk, 7)).sort((a, b) => a.start.localeCompare(b.start))[0]; return ab ? `<div class="abs-chip ${ab.start <= tk ? "now" : ""}" title="${esc(absenceText(ab))}">${ab.start <= tk ? "heute abwesend" : "ab " + fmtShort(ab.start)}: ${esc(ab.type)}${ab.start <= tk ? ` bis ${fmtShort(ab.end)}` : ""}</div>` : ""; })()}</div></div>
       ${l.slice(0, 12).map(card).join("") || '<p class="small muted" style="margin:8px 4px">Nichts offen – hat Kapazität.</p>'}
       ${l.length > 12 ? `<a class="small" href="#/filters?jql=${encodeURIComponent(`assignee = "${u.name}" AND statusCategory != Done ORDER BY due ASC`)}">+ ${l.length - 12} weitere</a>` : ""}</div>`;
   }).join("");
   const rel = openAll.filter((i) => i.teamId === t.id || memIds.has(i.assigneeId));
   const agenda = Array.from({ length: 7 }, (_, k) => addDays(tk, k)).map((k) => {
     const l = rel.filter((i) => i.dueDate === k || (i.appointmentAt && dayKey(i.appointmentAt) === k && ACTIVE_APPT.includes(i.status))).sort((a, b) => (a.appointmentAt || "9").localeCompare(b.appointmentAt || "9"));
-    return l.length ? `<div class="ag-day"><div class="ag-h ${k === tk ? "today" : ""}">${k === tk ? "Heute" : parseDay(k).toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit" })}</div>
+    const abs = mem.map((u) => [u, absenceOn(u.id, k)]).filter(([, a]) => a);
+    return l.length || abs.length ? `<div class="ag-day"><div class="ag-h ${k === tk ? "today" : ""}">${k === tk ? "Heute" : parseDay(k).toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit" })}</div>
+      ${abs.map(([u, a]) => `<div class="ag-row abs"><span class="ag-t">—</span>${avatar(u.id)}<span class="trunc">${esc(u.name)} · ${esc(a.type)}</span></div>`).join("")}
       ${l.map((i) => `<div class="ag-row" data-act="open" data-id="${i.id}"><span class="ag-t">${i.appointmentAt && dayKey(i.appointmentAt) === k ? fmtTime(i.appointmentAt) : "Frist"}</span><span class="key">${keyOf(i)}</span><span class="trunc">${esc(i.summary)}</span><span class="sp"></span>${i.assigneeId ? avatar(i.assigneeId) : '<span class="chip yellow">offen</span>'}</div>`).join("")}</div>` : "";
   }).join("");
   const activity = teamIssues(t).flatMap((i) => i.history.slice(0, 5).map((h) => ({ ...h, i }))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10);
@@ -1108,14 +1115,27 @@ function viewTeam(t) {
   const tiles = [["Offen", s.open.length, ""], ["Noch nicht verteilt", s.inbox.length, s.inbox.length ? "var(--warn)" : ""], ["Überfällig", s.overdue.length, s.overdue.length ? "var(--danger)" : ""], ["Erledigt (7 Tage)", s.doneWeek.length, "var(--ok)"]];
   return `<div class="page-head"><div><div class="crumbs"><a href="#/teams">Teams</a></div><h1 class="row nowrap"><span class="tavatar" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span>${esc(t.name)}</h1>
       <p class="muted small" style="margin:4px 0 0">${esc(t.desc || "")}${t.leadId ? `${t.desc ? " · " : ""}Leitung: ${esc(uname(t.leadId))}` : ""} · ${mem.length} ${mem.length === 1 ? "Person" : "Personen"}</p></div>
-    <div class="row"><button class="btn primary" data-act="create" data-team="${t.id}">${icon("plus")} Vorgang fürs Team</button><button class="btn" data-act="export-team-xlsx" data-id="${t.id}">${icon("download")} Excel</button>${canManageTeam(t) ? `<button class="btn" data-act="team-edit" data-id="${t.id}">${icon("gear")} Team bearbeiten</button>` : ""}</div></div>
+    <div class="row"><button class="btn primary" data-act="create" data-team="${t.id}">${icon("plus")} Vorgang fürs Team</button><button class="btn" data-act="absence-new" data-id="${t.id}">${icon("clock")} Abwesenheit</button><button class="btn" data-act="export-team-xlsx" data-id="${t.id}">${icon("download")} Excel</button>${canManageTeam(t) ? `<button class="btn" data-act="team-edit" data-id="${t.id}">${icon("gear")} Team bearbeiten</button>` : ""}</div></div>
     <div class="grid g4" style="margin-bottom:6px">${tiles.map(([l, v, c]) => `<div class="card stat"><div class="v" style="${c ? `color:${c}` : ""}">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
     <section class="wsec ${s.inbox.length ? "danger" : ""}"><h2>Team-Eingang – noch nicht verteilt <span class="count">${s.inbox.length}</span></h2>${inbox ? `<div class="card wlist">${inbox}</div>` : '<p class="small muted" style="margin:0 0 6px">Alles verteilt. ✓</p>'}</section>
     <section class="wsec"><h2>Wer macht was? <span class="small muted" style="font-weight:400">Karte auf eine andere Person ziehen, um neu zu verteilen</span></h2>
       ${mem.length ? `<div class="tcols" style="grid-template-columns:repeat(${mem.length}, minmax(230px, 1fr))">${cols}</div>` : '<p class="muted">Dem Team sind noch keine Personen zugeordnet.</p>'}</section>
     <div class="grid g2" style="align-items:start">
-      <section class="wsec"><h2>Termine &amp; Fristen – nächste 7 Tage</h2><div class="card pad">${agenda || '<p class="small muted" style="margin:0">Keine Termine oder Fristen in den nächsten 7 Tagen.</p>'}</div></section>
+      <section class="wsec"><h2>Termine, Fristen &amp; Abwesenheiten – nächste 7 Tage</h2><div class="card pad">${agenda || '<p class="small muted" style="margin:0">Keine Termine oder Fristen in den nächsten 7 Tagen.</p>'}</div></section>
+      <section class="wsec"><h2>Abwesenheiten (30 Tage)</h2><div class="card pad">${(() => { const list = db.absences.filter((a) => memIds.has(a.userId) && a.end >= tk && a.start <= addDays(tk, 30)).sort((a, b) => a.start.localeCompare(b.start));
+        return list.map((a) => `<div class="row nowrap" style="padding:6px 0;border-bottom:1px solid var(--border)">${avatar(a.userId)}<span class="b trunc">${esc(uname(a.userId))}</span><span class="small muted trunc" style="flex:1">${esc(absenceText(a))}</span>${a.source === "factorial" ? '<span class="chip gray" title="Wird in Factorial gepflegt">Factorial</span>' : canEditAbsenceFor(a.userId) ? `<button class="btn subtle sm" data-act="absence-delete" data-id="${a.id}" title="Entfernen">${icon("trash")}</button>` : ""}</div>`).join("") || '<p class="small muted" style="margin:0">Keine Abwesenheiten eingetragen.</p>'; })()}</div></section>
       <section class="wsec"><h2>Zuletzt im Team</h2><div class="card pad">${activity.map((h) => `<div class="hist" data-act="open" data-id="${h.i.id}" style="cursor:pointer">${avatar(h.userId)} <b>${esc(h.userId ? uname(h.userId) : "Kunde")}</b> · <span class="key">${keyOf(h.i)}</span> ${h.to === "erstellt" ? "erstellt" : `${esc(h.field)} → „${esc(String(h.to).slice(0, 40))}“`} <span class="muted small">· ${ago(h.at)}</span></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Aktivität.</p>'}</div></section></div>`;
+}
+function absenceForm(t) {
+  const people = (t ? teamMembers(t) : activeUsers()).filter((u) => canEditAbsenceFor(u.id));
+  if (!people.length) return toast("Sie können nur Ihre eigenen Abwesenheiten eintragen.");
+  openModal(`<div class="modal-h"><h2>Abwesenheit eintragen</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="absence-form"><div class="modal-b"><div class="grid g2" style="gap:12px">
+      <label class="f" style="grid-column:1/-1">Person<select name="userId">${people.map((u) => `<option value="${u.id}" ${u.id === db.currentUserId ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></label>
+      <label class="f"><span>Von <span class="req">*</span></span><input type="date" name="start" value="${today()}" required></label><label class="f"><span>Bis <span class="req">*</span></span><input type="date" name="end" value="${today()}" required></label>
+      <label class="f">Art<select name="type">${["Urlaub", "Krankheit", "Schulung", "Dienstreise", "Berufsschule", "Sonstiges"].map((x) => `<option>${x}</option>`).join("")}</select></label><label class="f">Notiz<input type="text" name="note" maxlength="120"></label></div>
+      <p class="small muted" style="margin:0">Abwesenheiten erscheinen in der Einsatzplanung und auf der Teamseite. Mit Factorial-Anbindung werden Urlaube automatisch übernommen.</p></div>
+    <div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Eintragen</button></div></form>`);
 }
 function teamForm(t) {
   const admin = me().role === "ADMIN"; const isNew = !t; const dis = admin ? "" : "disabled";
@@ -1318,7 +1338,7 @@ function viewDispatch(p) {
       <div class="card dgrid-wrap"><div class="dgrid" style="grid-template-columns:150px repeat(${days.length}, minmax(140px, 1fr))">
         <div class="dhead"></div>${days.map((k) => `<div class="dhead ${k === t ? "today" : ""}">${fmtHead(k)}</div>`).join("")}
         ${techs.length ? techs.map((u) => `<div class="dtech">${avatar(u.id)} <span class="trunc">${esc(u.name)}</span><span class="small muted">${planned.filter((i) => i.assigneeId === u.id && !isDone(i)).length} offen</span></div>
-          ${days.map((k) => `<div class="dcell ${k === t ? "today" : ""} ${k < t ? "past" : ""}" data-drop-appt="${u.id}|${k}">${planned.filter((i) => i.assigneeId === u.id && dayKey(i.appointmentAt) === k).sort((a, b) => a.appointmentAt.localeCompare(b.appointmentAt)).map(card).join("")}</div>`).join("")}`).join("")
+          ${days.map((k) => { const ab = absenceOn(u.id, k); return `<div class="dcell ${k === t ? "today" : ""} ${k < t ? "past" : ""} ${ab ? "absent" : ""}" data-drop-appt="${u.id}|${k}">${ab ? `<div class="dabs" title="${esc(absenceText(ab))}">${esc(ab.type)}</div>` : ""}${planned.filter((i) => i.assigneeId === u.id && dayKey(i.appointmentAt) === k).sort((a, b) => a.appointmentAt.localeCompare(b.appointmentAt)).map(card).join("")}</div>`; }).join("")}`).join("")
           : `<div style="grid-column:1/-1;padding:16px" class="small muted">Noch keine Service-Mitarbeiter. Unter Einstellungen Personen die Rolle „Service-Mitarbeiter“ geben.</div>`}
       </div></div></div>`;
 }
@@ -1661,6 +1681,7 @@ function bindDnD() {
       e.preventDefault(); cell.classList.remove("drop-on");
       const i = issue(e.dataTransfer.getData("text/appt")); if (!i) return;
       const [userId, day] = cell.dataset.dropAppt.split("|");
+      const ab = absenceOn(userId, day); if (ab && !confirm(`${uname(userId)} ist abwesend: ${absenceText(ab)}. Trotzdem einplanen?`)) return;
       if (i.status === "SCHEDULED") {
         const old = new Date(i.appointmentAt); const [y, m, d] = day.split("-").map(Number);
         const next = new Date(y, m - 1, d, old.getHours(), old.getMinutes());
@@ -2013,6 +2034,8 @@ document.addEventListener("click", (e) => {
     case "asset-maint": { const c = customer(id); const a = assetOf(c, el.dataset.k); const sp = db.projects.find((p) => p.type === "service"); if (!a || !sp) return;
       createIssue({ projectId: sp.id, ...maintenanceIssueData(c, a, nextMaintenance(a) || today()) }).then((i) => { render(); toast(`${keyOf(i)} angelegt`); openIssue(i.id); }).catch((err) => toast(err.message)); break; }
     case "export-customers": exportCustomersXlsx(); break;
+    case "absence-new": absenceForm(team(id)); break;
+    case "absence-delete": { const a = db.absences.find((x) => x.id === id); if (!a || !confirm(`Abwesenheit entfernen? ${uname(a.userId)}: ${absenceText(a)}`)) return; db.absences = db.absences.filter((x) => x.id !== id); save(); render(); break; }
     case "team-new": teamForm(); break;
     case "team-edit": { const t = team(id); if (t) teamForm(t); break; }
     case "team-delete": { const t = team(id); if (!t || !confirm(`Team „${t.name}“ löschen? Die Vorgänge bleiben erhalten, verlieren aber die Teamzuordnung.`)) return;
@@ -2134,6 +2157,8 @@ async function handleSubmit(e, f) {
     case "step-form": {
       const it = issue(f.dataset.id); const t = it && TRANSITIONS[PROJECT_TYPES[proj(it.projectId).type].workflow].find((x) => x.id === f.dataset.t);
       if (!it || !t) return;
+      { const who = fd.get("assigneeId") || it.assigneeId, d = fd.get("date"); const ab = who && d && absenceOn(who, d);
+        if (ab && !confirm(`${uname(who)} ist an diesem Tag abwesend: ${absenceText(ab)}. Trotzdem einplanen?`)) return; }
       performStep(it, t, fd); const back = ui.stepReturn; closeModal(); render(); toast(`${keyOf(it)}: ${t.label} ✓`); if (back) openIssue(back);
       break; }
     case "comment-form": {
@@ -2184,6 +2209,10 @@ async function handleSubmit(e, f) {
         intervalMonths: num("intervalMonths"), lastMaintenance: fd.get("lastMaintenance") || null, nextMaintenance: fd.get("nextMaintenance") || null, active: fd.get("active") === "on" };
       const a = assetOf(c, f.dataset.k); if (a) Object.assign(a, data); else c.assets.push({ id: uid(), ...data });
       c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); toast(`Anlage „${data.name}“ gespeichert`); break; }
+    case "absence-form": {
+      const a = { id: uid(), userId: fd.get("userId"), start: fd.get("start"), end: fd.get("end"), type: fd.get("type"), note: String(fd.get("note") || "").trim(), source: "manual" };
+      if (a.end < a.start) return toast("„Bis“ liegt vor „Von“.");
+      db.absences.push(a); save(); closeModal(); render(); toast(`Abwesenheit eingetragen: ${uname(a.userId)}, ${absenceText(a)}`); break; }
     case "team-form": {
       const members = fd.getAll("m"); const t = team(f.dataset.id);
       const fix = (x) => { if (x.leadId && !x.memberIds.includes(x.leadId)) x.memberIds.unshift(x.leadId); return x; };

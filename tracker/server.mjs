@@ -12,6 +12,7 @@ import { Mailer, mailTemplate } from "./lib/mailer.mjs";
 import { createApiV1 } from "./lib/apiv1.mjs";
 import { createWebhooks, WEBHOOK_EVENTS } from "./lib/webhooks.mjs";
 import { createM365 } from "./lib/m365.mjs";
+import { createFactorial } from "./lib/factorial.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -345,6 +346,8 @@ onEvent((type, obj, extra) => webhooks.enqueue(type, obj, extra));
 const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions });
 setTimeout(() => m365.pollMailbox(), 5e3).unref();
 setInterval(() => m365.pollMailbox(), Number(env.MAILIN_INTERVAL_MS) || 120e3).unref();
+const factorial = createFactorial({ store, S, env, ilog, broadcast });
+if (factorial.configured) { setTimeout(() => factorial.sync().catch(() => {}), 10e3).unref(); setInterval(() => factorial.sync().catch(() => {}), Number(env.FACTORIAL_INTERVAL_MS) || 60 * 60e3).unref(); }
 setInterval(() => webhooks.work(), Number(env.WEBHOOK_INTERVAL_MS) || 10e3).unref();
 function integrationStatus() {
   const meta = (k) => store.meta(k);
@@ -354,7 +357,7 @@ function integrationStatus() {
     apiKeys: apiV1.listKeys().map((k) => ({ ...k, createdBy: userById(k.created_by)?.name || null })),
     webhooks: webhooks.list().map((h) => ({ ...h, stats: webhooks.stats().find((s) => s.hook_id === h.id) || null })),
     log: store.db.prepare("SELECT at, source, level, message FROM integration_log ORDER BY id DESC LIMIT 60").all(),
-    settings: { lastFactorialSync: meta("factorialLastSync") } };
+    factorial: factorial.status() };
 }
 /** Benachrichtigungen per E-Mail (gebündelt je Person, nur der letzten 24 h). */
 async function notificationMailJob() {
@@ -569,12 +572,13 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/admin/integrations/settings" && m === "POST") {
     needAdmin(); const b = await readJson(req, 8e3);
     if ("mailInbox" in b) { const v = str(b.mailInbox, 200).toLowerCase(); if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new HttpError(400, "Postfach: bitte eine E-Mail-Adresse angeben."); store.meta("mailInbox", v); }
-    for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
+    for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft", "factorialCreateUsers"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
     if ("calendarMinutes" in b) store.meta("calendarMinutes", String(Math.min(600, Math.max(15, Number(b.calendarMinutes) || 120))));
     ilog("settings", "info", `Integrationseinstellungen geändert durch ${user.email}`);
     if (b.calendarSync) for (const i of store.all("issues")) if (i.status === "SCHEDULED" && i.appointmentAt) m365.calendarTouch(i);
     return integrationStatus();
   }
+  if (p === "/api/admin/factorial/sync" && m === "POST") { needAdmin(); try { return await factorial.sync(); } catch (e) { throw new HttpError(502, e.message); } }
   if (p === "/api/admin/mail/poll" && m === "POST") { needAdmin(); if (!mailer.appConfigured) throw new HttpError(409, "Microsoft 365 ist nicht eingerichtet (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET)."); if (!m365.settings().inbox) throw new HttpError(409, "Kein Postfach hinterlegt."); return await m365.pollMailbox(); }
   if (p === "/api/admin/api-keys" && m === "POST") { needAdmin(); const b = await readJson(req, 8e3); const k = apiV1.createKey(b.name, b.scope, user.id); ilog("api", "info", `API-Schlüssel „${str(b.name, 80)}“ (${b.scope === "write" ? "lesen+schreiben" : "nur lesen"}) erstellt von ${user.email}`); return k; }
   pm = p.match(/^\/api\/admin\/api-keys\/([A-Za-z0-9_-]+)$/);

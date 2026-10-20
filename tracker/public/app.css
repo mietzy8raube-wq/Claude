@@ -373,3 +373,10 @@ h1 .tavatar { margin-right: 10px; }
 .dropzone { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; padding: 26px 16px; border: 2px dashed var(--border); border-radius: 10px; cursor: pointer; color: var(--fg-2); text-align: center; }
 .dropzone:hover, .dropzone.drop-on { border-color: var(--primary); background: var(--primary-soft); }
 .imp-map select { min-width: 200px; }
+
+/* Abwesenheiten */
+.dcell.absent { background: repeating-linear-gradient(135deg, var(--surface-2) 0 6px, transparent 6px 12px); }
+.dabs { font-size: 11px; font-weight: 600; color: var(--fg-2); background: var(--surface); border: 1px dashed var(--border); border-radius: 6px; padding: 2px 6px; margin-bottom: 4px; text-align: center; }
+.abs-chip { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); }
+.abs-chip.now { background: var(--danger-soft); color: var(--danger); }
+.ag-row.abs { cursor: default; color: var(--fg-2); font-style: italic; }
