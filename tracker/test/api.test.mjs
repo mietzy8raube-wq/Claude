@@ -129,6 +129,22 @@ test("Service-Ablauf: Termin und Servicebericht erscheinen beim Kunden im Portal
   assert.equal(v.statusCat, "done"); assert.equal(v.report.action, "Filter gewechselt"); assert.equal(v.appointmentAt, null);
 });
 
+test("Teams: Admin verwaltet, Teamleitung ändert nur Mitglieder; Kundenanfragen landen im Team-Eingang", async () => {
+  const st = (await anna.req("/api/state")).data;
+  assert.ok(st.teams.length >= 4);
+  const bue = st.teams.find((t) => t.id === "tBUE"); assert.equal(bue.leadId, "u3");
+  const sync = (c, op) => c.req("/api/sync", { method: "POST", body: { ops: [op] } }).then((r) => r.data.results[0]);
+  assert.ok((await sync(lisa, { type: "teams", id: "tNEU", op: "put", data: { id: "tNEU", name: "Neu", memberIds: [] } })).error, "Mitglied darf kein Team anlegen");
+  assert.ok(!(await sync(lisa, { type: "teams", id: "tBUE", op: "patch", patch: { set: { memberIds: ["u3", "u1", "u4"] } } })).error, "Teamleitung darf Mitglieder ändern");
+  assert.ok((await sync(lisa, { type: "teams", id: "tBUE", op: "patch", patch: { set: { name: "Umbenannt" } } })).error, "Teamleitung darf nicht umbenennen");
+  assert.ok((await sync(lisa, { type: "teams", id: "tSVC", op: "patch", patch: { set: { memberIds: ["u3"] } } })).error, "fremdes Team gesperrt");
+  const made = await sync(anna, { type: "teams", id: "tLAGER", op: "put", data: { id: "tLAGER", name: " Lager ", leadId: "u4", memberIds: ["u6"] } });
+  assert.equal(made.data.name, "Lager"); assert.deepEqual(made.data.memberIds, ["u4", "u6"], "Leitung wird automatisch Mitglied");
+  const r = await new Client().req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "SERVICE", name: "Team Test", company: "Test GmbH", email: "team@test.de", summary: "Teamzuordnung", description: "x" } });
+  const issue = (await anna.req("/api/state")).data.issues.find((i) => i.summary === "Teamzuordnung");
+  assert.equal(r.status, 200); assert.equal(issue.teamId, "tSVC");
+});
+
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {
   const st = (await lisa.req("/api/state")).data;
   const ctrl = new AbortController();

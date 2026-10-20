@@ -181,8 +181,9 @@ erhält eine fortlaufende Revisionsnummer.
 | Objekt | Wichtige Felder |
 | --- | --- |
 | **Person** (`users`) | Name, E-Mail, Rolle, aktiv, E-Mail-Benachrichtigungen ja/nein |
-| **Projekt** (`projects`) | Schlüssel (z. B. SD), Name, Vorlage (Scrum/Kanban/Service-Desk), Projektleitung |
-| **Vorgang** (`issues`) | Typ, Zusammenfassung, Beschreibung, Status, Priorität, verantwortlich, Melder, Labels, Fälligkeit, Story Points, Epic, übergeordneter Vorgang, Sprint, Verknüpfungen, Beobachter, Kommentare (auch intern), Verlauf, Zeiterfassung; im Service-Desk zusätzlich Kunde und SLA-Zeitpunkte |
+| **Team** (`teams`) | Name, Farbe, Teamleitung, Mitglieder, Aufgabe – eine Person kann in mehreren Teams sein |
+| **Projekt** (`projects`) | Schlüssel (z. B. SD), Name, Vorlage (Scrum/Kanban/Service-Desk), Projektleitung, Standard-Team |
+| **Vorgang** (`issues`) | Typ, Zusammenfassung, Beschreibung, Status, Priorität, Team, verantwortlich, Melder, Labels, Fälligkeit, Story Points, Epic, übergeordneter Vorgang, Sprint, Verknüpfungen, Beobachter, Kommentare (auch intern), Verlauf, Zeiterfassung; im Service-Desk zusätzlich Kunde und SLA-Zeitpunkte |
 | **Sprint** (`sprints`) | Name, Ziel, Zeitraum, Zustand (geplant/aktiv/abgeschlossen), zugesagte/erledigte Story Points |
 | **Filter** (`filters`) | Name, JQL-Abfrage |
 | **Benachrichtigung** (`notifications`) | Empfänger, Art, Text, Bezug, gelesen |
@@ -445,6 +446,33 @@ benachrichtigt und findet den Vorgang unter „Zur Freigabe durch Sie“;
 - **Erinnerungen**: Der Techniker wird am Vortag/morgens an seinen Termin
   erinnert; ist ein Einsatz 2 Stunden nach Termin nicht begonnen, erscheint
   er unter „Sofort erledigen“ und es gibt eine Benachrichtigung.
+
+**Teams – wer stimmt sich mit wem ab**
+
+Personen werden in Teams eingeteilt (Beispiel: Geschäftsführung, Service & Technik,
+Büro & Vertrieb, Digitalisierung). Teams legen Administratoren an (Einstellungen
+oder Menü „Teams“); die Teamleitung kann Mitglieder und Aufgabe selbst pflegen.
+
+- Jeder Vorgang kann einem **Team** zugeordnet sein; jedes Projekt hat ein
+  **Standard-Team**, in dem neue Vorgänge und Kundenanfragen automatisch landen.
+- **Team-Eingang:** Vorgänge mit Team, aber ohne verantwortliche Person. Alle
+  Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“, bis jemand
+  „Übernehmen“ klickt oder die Teamleitung sie per Auswahl verteilt.
+- **Teamseite:** Kennzahlen, Team-Eingang, „Wer macht was?“ (eine Spalte je
+  Person mit allen offenen Vorgängen, sortiert nach Dringlichkeit – Karten per
+  Ziehen an eine andere Person übergeben), Termine &amp; Fristen der nächsten
+  7 Tage und die letzten Aktivitäten. Ideal für eine kurze tägliche Abstimmung.
+- In der Einsatzplanung lässt sich nach Team filtern, in der Suche mit
+  `team = "Service & Technik"`, und die Excel-Auswertung enthält ein Blatt „Teams“.
+
+**Excel-Auswertung**
+
+Dashboard, Projektberichte, Teamseiten, die Filtersuche und die Einstellungen
+bieten „Excel-Auswertung“: eine echte .xlsx-Datei mit den Blättern Übersicht,
+Vorgänge, Serviceeinsätze, Teams, Personen, Monate, Statusverlauf und
+Kommentare – mit Filter in der Kopfzeile und echten Datums-/Zahlenwerten, also
+direkt für Pivot-Tabellen und Diagramme nutzbar. Die Filtersuche exportiert genau
+das aktuelle Suchergebnis.
 
 **Spielregeln, damit nichts liegen bleibt**
 

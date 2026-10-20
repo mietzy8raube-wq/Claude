@@ -61,8 +61,8 @@ function toast(msg) { const el = document.createElement("div"); el.className = "
    nur die Unterschiede als Patch. Der Server führt Änderungen mehrerer Personen
    feldweise zusammen und meldet per Event, dass es Neues gibt; pull() holt dann
    alle Änderungen seit der eigenen Revision. */
-const COLLECTIONS = ["users", "projects", "sprints", "issues", "filters", "notifications"];
-let db = { users: [], projects: [], sprints: [], issues: [], filters: [], notifications: [], currentUserId: null };
+const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
+let db = { users: [], teams: [], projects: [], sprints: [], issues: [], filters: [], notifications: [], currentUserId: null };
 const sync = { rev: 0, base: {}, pending: [], timer: null, inFlight: false, again: false, pulling: false, pullAgain: false, online: true, retry: 0, mail: false, company: "GF Tracker" };
 COLLECTIONS.forEach((t) => (sync.base[t] = new Map()));
 const LOCAL_KEY = "gft-local";
@@ -185,6 +185,17 @@ const isDone = (i) => statusOf(i).cat === "done";
 const isOverdue = (i) => !isDone(i) && i.dueDate && i.dueDate < today();
 const activeUsers = () => db.users.filter((u) => u.active);
 const projIssues = (p) => db.issues.filter((i) => i.projectId === p.id);
+const team = (id) => (id ? db.teams.find((t) => t.id === id) || null : null);
+const teamsOf = (userId) => db.teams.filter((t) => t.memberIds.includes(userId));
+const teamMembers = (t) => t.memberIds.map(user).filter((u) => u && u.active);
+/** Vorgänge eines Teams: dem Team zugeordnet – oder ohne Team, aber von einem Mitglied bearbeitet. */
+const teamIssues = (t) => db.issues.filter((i) => i.teamId === t.id || (!i.teamId && i.assigneeId && t.memberIds.includes(i.assigneeId)));
+const teamOpts = (sel) => `<option value="">Kein Team</option>` + db.teams.map((t) => `<option value="${t.id}" ${t.id === sel ? "selected" : ""}>${esc(t.name)}</option>`).join("");
+const teamBadge = (t) => (t ? `<span class="tbadge" style="--tc:${t.color}">${esc(t.name)}</span>` : "");
+const teamInitials = (n) => initials(String(n).split(/[\s&+\/-]+/).filter((w) => /\p{L}/u.test(w)).join(" "));
+/** Team-Eingang: dem Team zugeordnet, niemandem zugewiesen und jetzt fällig zu bearbeiten (kein Scrum-Backlog). */
+const inTeamInbox = (i) => !!i.teamId && !i.assigneeId && !isDone(i) && i.type !== "EPIC" && i.type !== "SUBTASK" && !(proj(i.projectId)?.type === "software" && sprint(i.sprintId)?.state !== "active");
+const canManageTeam = (t) => me().role === "ADMIN" || (!!t && t.leadId === db.currentUserId);
 const children = (i) => db.issues.filter((x) => x.parentId === i.id);
 const epicChildren = (e) => db.issues.filter((x) => x.epicId === e.id);
 const epicsOf = (p) => projIssues(p).filter((i) => i.type === "EPIC");
@@ -215,13 +226,14 @@ function notify(userIds, type, title, text, issueId, key) {
 // Fristen- und SLA-Benachrichtigungen erzeugt der Server (deadlineJob).
 
 /* ---------- Vorgänge ändern ---------- */
-const FIELD_LABEL = { appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
+const FIELD_LABEL = { teamId: "Team", appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
   dueDate: "Fälligkeitsdatum", startDate: "Startdatum", storyPoints: "Story Points", estimateH: "Schätzung", epicId: "Epic", sprintId: "Sprint", type: "Vorgangstyp", parentId: "Übergeordnet", color: "Farbe" };
 function fieldText(i, f, v) {
   if (v == null || v === "" || (Array.isArray(v) && !v.length)) return "–";
   if (f === "status") return workflowOf(proj(i.projectId)).find((s) => s.id === v)?.name || v;
   if (f === "priority") return PRIOS[v]?.label || v;
   if (f === "assigneeId" || f === "reporterId") return uname(v);
+  if (f === "teamId") return team(v)?.name || "–";
   if (f === "epicId" || f === "parentId") { const x = issue(v); return x ? `${keyOf(x)} ${x.summary}` : "–"; }
   if (f === "sprintId") return sprint(v)?.name || "Backlog";
   if (f === "type") return TYPES[v]?.label || v;
@@ -248,6 +260,7 @@ function updateIssue(i, changes) {
       if (!i.watchers.includes(v)) i.watchers.push(v);
       notify([v], "assign", `Ihnen zugewiesen: ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id);
     }
+    if (f === "teamId" && v && !i.assigneeId) { const t = team(v); if (t) notify(t.memberIds, "new", `Neu im Team-Eingang (${t.name}): ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id); }
   }
   touch(i); save();
 }
@@ -259,6 +272,7 @@ async function createIssue(data) {
   if (i.parentId) { const par = issue(i.parentId); if (par) { i.sprintId = par.sprintId; i.epicId = null; } }
   db.issues.push(i);
   if (i.assigneeId) notify([i.assigneeId], "assign", `Ihnen zugewiesen: ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id);
+  else if (team(i.teamId)) { const t = team(i.teamId); notify(t.memberIds, "new", `Neu im Team-Eingang (${t.name}): ${keyOf(i)}`, `${me().name}: ${i.summary}`, i.id); }
   save(); return i;
 }
 function addComment(i, text, { internal = false, customerName = null } = {}) {
@@ -296,7 +310,7 @@ const LINK_LABEL = { blocks: "blockiert", blocked_by: "wird blockiert durch", re
 function pushRecent(id) { const r = (localState.recent[db.currentUserId] ||= []); const idx = r.indexOf(id); if (idx >= 0) r.splice(idx, 1); r.unshift(id); r.length = Math.min(r.length, 20); saveLocal(); }
 
 /* ---------- JQL (Teilmenge) ---------- */
-const JQL_FIELDS = ["project", "type", "issuetype", "status", "statuscategory", "assignee", "reporter", "priority", "labels", "sprint", "due", "duedate", "created", "updated", "resolved", "text", "summary", "description", "resolution", "key", "issuekey", "epic", "parent", "storypoints", "points", "customer", "watcher"];
+const JQL_FIELDS = ["team", "project", "type", "issuetype", "status", "statuscategory", "assignee", "reporter", "priority", "labels", "sprint", "due", "duedate", "created", "updated", "resolved", "text", "summary", "description", "resolution", "key", "issuekey", "epic", "parent", "storypoints", "points", "customer", "watcher"];
 function tokenize(q) {
   const toks = []; let i = 0;
   while (i < q.length) {
@@ -355,6 +369,7 @@ function fieldValues(i, f) {
   const p = proj(i.projectId);
   switch (f) {
     case "project": return [p.key, p.name];
+    case "team": { const t = team(i.teamId); return t ? [t.name, t.id] : []; }
     case "type": case "issuetype": return [TYPES[i.type].label, i.type];
     case "status": { const s = statusOf(i); return [s.name, s.id]; }
     case "statuscategory": { const c = statusOf(i).cat; return [CAT_LABEL[c], { todo: "To Do", progress: "In Progress", done: "Done" }[c]]; }
@@ -460,7 +475,12 @@ const custAvatar = (c) => `<span class="avatar" style="background:${hashColor(c?
 const epicChip = (i) => { const e = issue(i.epicId); return e ? `<span class="chip" style="background:${e.color || "#8f5bd6"}22;color:${e.color || "#8f5bd6"}" title="Epic">${esc(e.summary)}</span>` : ""; };
 const keyLink = (i) => `<a class="key" href="#" data-act="open" data-id="${i.id}">${keyOf(i)}</a>`;
 const dueChip = (i) => { if (!i.dueDate || isDone(i)) return ""; const d = daysBetween(today(), i.dueDate); if (d < 0) return `<span class="chip red" title="Überfällig">${fmtShort(i.dueDate)}</span>`; if (d <= 2) return `<span class="chip yellow" title="Bald fällig">${fmtShort(i.dueDate)}</span>`; return `<span class="chip gray">${fmtShort(i.dueDate)}</span>`; };
-const userOpts = (sel, none = "Nicht zugewiesen") => `<option value="">${none}</option>` + activeUsers().map((u) => `<option value="${u.id}" ${u.id === sel ? "selected" : ""}>${esc(u.name)}</option>`).join("");
+const userOpts = (sel, none = "Nicht zugewiesen", teamId = null) => {
+  const o = (u) => `<option value="${u.id}" ${u.id === sel ? "selected" : ""}>${esc(u.name)}</option>`; const t = team(teamId);
+  if (!t) return `<option value="">${none}</option>` + activeUsers().map(o).join("");
+  const inTeam = activeUsers().filter((u) => t.memberIds.includes(u.id));
+  return `<option value="">${none}</option><optgroup label="${esc(t.name)}">${inTeam.map(o).join("")}</optgroup><optgroup label="Weitere Personen">${activeUsers().filter((u) => !inTeam.includes(u)).map(o).join("")}</optgroup>`;
+};
 const prioOpts = (sel) => Object.entries(PRIOS).map(([k, v]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${v.label}</option>`).join("");
 const statusOpts = (i) => workflowOf(proj(i.projectId)).map((s) => `<option value="${s.id}" ${s.id === i.status ? "selected" : ""}>${s.name}</option>`).join("");
 const subtaskProgress = (i) => { const ch = children(i); if (!ch.length) return ""; const d = ch.filter(isDone).length; return `<span class="chip gray" title="Teilaufgaben">☑ ${d}/${ch.length}</span>`; };
@@ -532,7 +552,7 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <a class="logo" href="#/your-work"><span class="mark">${icon("bolt")}</span>GF Tracker</a>
-    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
+    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
     <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Erstellen</span></button>
     <div class="search">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen (z. B. DIG-12)" aria-label="Suchen"></div>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
@@ -563,6 +583,7 @@ function render() {
       case "p": { const p = projByKey(parts[1]); if (!p) { html = `<div class="empty">Projekt nicht gefunden.</div>`; break; }
         const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
         html = tabs + ({ dispatch: viewDispatch, board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
+      case "teams": html = parts[1] ? viewTeam(team(parts[1])) : viewTeams(); break;
       case "filters": html = viewFilters(params); break;
       case "dashboard": html = viewDashboard(); break;
       case "portal": html = `<div class="empty">Das Kundenportal ist öffentlich erreichbar unter <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – diesen Link können Sie an Kunden weitergeben.</div>`; break;
@@ -698,6 +719,8 @@ function viewYourWork() {
   const isAgent = u.role === "AGENT" || u.role === "ADMIN" || db.projects.some((p) => p.type === "service" && p.leadId === uid_);
   const urgentOf = (i) => isOverdue(i) || ["first", "resolve"].some((k) => { const s = slaInfo(i, k); return s && !s.stopped && (s.breached || s.risk); }) || (i.status === "SCHEDULED" && i.appointmentAt && new Date(i.appointmentAt) < new Date(Date.now() - 2 * 36e5));
   const newRequests = isAgent ? open.filter((i) => proj(i.projectId).type === "service" && i.status === "OPEN" && !i.assigneeId && i.type !== "SUBTASK") : [];
+  const teamInbox = open.filter((i) => inTeamInbox(i) && team(i.teamId)?.memberIds.includes(uid_) && !newRequests.includes(i))
+    .sort((a, b) => (a.dueDate || "9").localeCompare(b.dueDate || "9") || PRIOS[b.priority].rank - PRIOS[a.priority].rank);
   const urgent = mine.filter(urgentOf);
   const todayList = mine.filter((i) => !urgent.includes(i) && ((i.appointmentAt && dayKey(i.appointmentAt) === t && ACTIVE_APPT.includes(i.status)) || i.dueDate === t))
     .sort((a, b) => (a.appointmentAt || "9").localeCompare(b.appointmentAt || "9"));
@@ -720,11 +743,12 @@ function viewYourWork() {
     return head + tabs + (list.length ? `<div class="card wlist">${list.map((i) => workRow(i)).join("")}</div>` : `<div class="empty">${tab === "watched" ? "Sie beobachten keine offenen Vorgänge." : "Noch keine Vorgänge angesehen."}</div>`);
   }
   const tiles = [["Sofort erledigen", urgent.length + newRequests.length, urgent.length + newRequests.length ? "var(--danger)" : ""], ["Heute", todayList.length, ""], ["In Arbeit", doing.length, ""], ["Wartet / zur Freigabe", waiting.length + approvals.length, ""]];
-  const allClear = !urgent.length && !newRequests.length && !todayList.length && !doing.length && !next.length && !waiting.length && !approvals.length;
+  const allClear = !urgent.length && !newRequests.length && !teamInbox.length && !todayList.length && !doing.length && !next.length && !waiting.length && !approvals.length;
   return head + tabs + `<div class="grid g4" style="margin-bottom:6px">${tiles.map(([l, v, c]) => `<div class="card stat"><div class="v" style="${c ? `color:${c}` : ""}">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
     ${allClear ? `<div class="empty" style="margin-top:16px">Alles erledigt – keine offenen Vorgänge für Sie. 🎉</div>` : ""}
     ${section("Sofort erledigen", urgent, "", reasonUrgent, "danger")}
     ${section("Neue Kundenanfragen – bitte übernehmen", newRequests, "", (i) => `<span class="chip gray">${ago(i.createdAt)}</span>`, "danger")}
+    ${section("Team-Eingang – noch nicht verteilt", teamInbox, "", (i) => teamBadge(team(i.teamId)))}
     ${section("Heute", todayList, "Heute stehen keine Termine oder Fristen an.")}
     ${section("Zur Freigabe durch Sie", approvals, "", (i) => `<span class="chip gray">von ${esc(uname(i.assigneeId))}</span>`)}
     ${section("In Arbeit", doing, "")}
@@ -737,6 +761,77 @@ function issueRow(i, extra = "") {
   return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
     <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
 }
+/* ---------- Ansicht: Teams ---------- */
+function teamStats(t) {
+  const l = teamIssues(t).filter((i) => i.type !== "EPIC"); const open = l.filter((i) => !isDone(i)); const tk = today(); const wk = addDays(tk, -6);
+  return { open, inbox: open.filter((i) => i.teamId === t.id && inTeamInbox(i)), overdue: open.filter(isOverdue), doneWeek: l.filter((i) => i.resolvedAt && dayKey(i.resolvedAt) >= wk) };
+}
+function viewTeams() {
+  const mine = teamsOf(db.currentUserId); const sorted = [...mine, ...db.teams.filter((t) => !mine.includes(t))]; const admin = me().role === "ADMIN";
+  return `<div class="page-head"><div><h1>Teams</h1><p class="muted" style="margin:4px 0 0">Wer gehört zusammen, wer macht gerade was – und was ist noch nicht verteilt.</p></div>${admin ? `<button class="btn primary" data-act="team-new">${icon("plus")} Team anlegen</button>` : ""}</div>
+    ${sorted.length ? `<div class="grid g2">${sorted.map(teamCard).join("")}</div>` : `<div class="empty">Noch keine Teams. ${admin ? "Legen Sie Teams an und ordnen Sie Personen zu." : "Ein Administrator kann Teams anlegen."}</div>`}`;
+}
+function teamCard(t) {
+  const s = teamStats(t); const mem = teamMembers(t); const load = (u) => s.open.filter((i) => i.assigneeId === u.id).length; const max = Math.max(1, ...mem.map(load));
+  return `<a class="card pad tcard" href="#/teams/${t.id}" style="--tc:${t.color}">
+    <div class="row nowrap"><span class="tavatar">${esc(teamInitials(t.name))}</span><div style="min-width:0;flex:1"><div class="b trunc">${esc(t.name)}${t.memberIds.includes(db.currentUserId) ? ' <span class="chip blue">Mein Team</span>' : ""}</div><div class="small muted trunc">${esc(t.desc || "")}</div></div></div>
+    <div class="tstats"><div><b>${s.open.length}</b><span>offen</span></div><div class="${s.inbox.length ? "warn" : ""}"><b>${s.inbox.length}</b><span>nicht verteilt</span></div><div class="${s.overdue.length ? "bad" : ""}"><b>${s.overdue.length}</b><span>überfällig</span></div><div><b>${s.doneWeek.length}</b><span>erledigt (7 T)</span></div></div>
+    <div class="tload">${mem.map((u) => `<div class="tl-row">${avatar(u.id)}<span class="trunc">${esc(u.name)}${u.id === t.leadId ? ' <span class="small muted">· Leitung</span>' : ""}</span><span class="bar"><i style="width:${(load(u) / max) * 100}%"></i></span><span class="small muted">${load(u)}</span></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Mitglieder.</p>'}</div></a>`;
+}
+function viewTeam(t) {
+  if (!t) return `<div class="empty">Team nicht gefunden. <a href="#/teams">Zu den Teams</a></div>`;
+  const s = teamStats(t); const mem = teamMembers(t); const tk = today(); const memIds = new Set(mem.map((u) => u.id));
+  const openAll = db.issues.filter((i) => !isDone(i) && i.type !== "EPIC");
+  const isToday = (i) => i.dueDate === tk || (i.appointmentAt && dayKey(i.appointmentAt) === tk && ACTIVE_APPT.includes(i.status));
+  const urg = (i) => (isOverdue(i) ? 0 : isToday(i) ? 1 : statusOf(i).cat === "progress" ? 2 : 3);
+  const sortW = (a, b) => urg(a) - urg(b) || (a.appointmentAt || a.dueDate || "9").localeCompare(b.appointmentAt || b.dueDate || "9") || PRIOS[b.priority].rank - PRIOS[a.priority].rank;
+  const card = (i) => `<div class="titem ${isOverdue(i) ? "over" : ""}" draggable="true" data-drag-assign="${i.id}" data-act="open" data-id="${i.id}">
+    <div class="row nowrap small">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="sp"></span>${prioIcon(i.priority)}</div>
+    <div class="t2">${esc(i.summary)}</div>
+    <div class="row small" style="gap:4px;margin-top:4px">${lozenge(i)}${apptChip(i)}${dueChip(i)}${i.teamId && i.teamId !== t.id ? teamBadge(team(i.teamId)) : ""}</div></div>`;
+  const cols = mem.map((u) => {
+    const l = openAll.filter((i) => i.assigneeId === u.id).sort(sortW); const od = l.filter(isOverdue).length, td = l.filter(isToday).length;
+    return `<div class="tcol" data-drop-assign="${u.id}"><div class="tcol-h">${avatar(u.id, true)}<div style="min-width:0"><div class="b trunc">${esc(u.name)}${u.id === t.leadId ? ' <span class="small muted">· Leitung</span>' : ""}</div>
+      <div class="small muted">${l.length} offen${td ? ` · ${td} heute` : ""}${od ? ` · <span style="color:var(--danger)">${od} überfällig</span>` : ""}</div></div></div>
+      ${l.slice(0, 12).map(card).join("") || '<p class="small muted" style="margin:8px 4px">Nichts offen – hat Kapazität.</p>'}
+      ${l.length > 12 ? `<a class="small" href="#/filters?jql=${encodeURIComponent(`assignee = "${u.name}" AND statusCategory != Done ORDER BY due ASC`)}">+ ${l.length - 12} weitere</a>` : ""}</div>`;
+  }).join("");
+  const rel = openAll.filter((i) => i.teamId === t.id || memIds.has(i.assigneeId));
+  const agenda = Array.from({ length: 7 }, (_, k) => addDays(tk, k)).map((k) => {
+    const l = rel.filter((i) => i.dueDate === k || (i.appointmentAt && dayKey(i.appointmentAt) === k && ACTIVE_APPT.includes(i.status))).sort((a, b) => (a.appointmentAt || "9").localeCompare(b.appointmentAt || "9"));
+    return l.length ? `<div class="ag-day"><div class="ag-h ${k === tk ? "today" : ""}">${k === tk ? "Heute" : parseDay(k).toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "2-digit" })}</div>
+      ${l.map((i) => `<div class="ag-row" data-act="open" data-id="${i.id}"><span class="ag-t">${i.appointmentAt && dayKey(i.appointmentAt) === k ? fmtTime(i.appointmentAt) : "Frist"}</span><span class="key">${keyOf(i)}</span><span class="trunc">${esc(i.summary)}</span><span class="sp"></span>${i.assigneeId ? avatar(i.assigneeId) : '<span class="chip yellow">offen</span>'}</div>`).join("")}</div>` : "";
+  }).join("");
+  const activity = teamIssues(t).flatMap((i) => i.history.slice(0, 5).map((h) => ({ ...h, i }))).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 10);
+  const inbox = s.inbox.sort(sortW).map((i) => `<div class="wrow" data-act="open" data-id="${i.id}"><div class="wmain">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><span class="trunc b" style="font-weight:500">${esc(i.summary)}</span></div>
+    <div class="wmeta">${dueChip(i)}<span class="chip gray">${ago(i.createdAt)}</span>${i.customer ? `<span class="chip gray">${esc(i.customer.company || i.customer.name)}</span>` : ""}${prioIcon(i.priority)}</div>
+    <div class="wact"><select data-act="team-assign" data-id="${i.id}" aria-label="Zuweisen an" style="width:auto"><option value="">Zuweisen an …</option>${mem.map((u) => `<option value="${u.id}">${esc(u.name)} (${openAll.filter((x) => x.assigneeId === u.id).length} offen)</option>`).join("")}</select><button class="btn sm primary" data-act="take" data-id="${i.id}">Übernehmen</button></div></div>`).join("");
+  const tiles = [["Offen", s.open.length, ""], ["Noch nicht verteilt", s.inbox.length, s.inbox.length ? "var(--warn)" : ""], ["Überfällig", s.overdue.length, s.overdue.length ? "var(--danger)" : ""], ["Erledigt (7 Tage)", s.doneWeek.length, "var(--ok)"]];
+  return `<div class="page-head"><div><div class="crumbs"><a href="#/teams">Teams</a></div><h1 class="row nowrap"><span class="tavatar" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span>${esc(t.name)}</h1>
+      <p class="muted small" style="margin:4px 0 0">${esc(t.desc || "")}${t.leadId ? `${t.desc ? " · " : ""}Leitung: ${esc(uname(t.leadId))}` : ""} · ${mem.length} ${mem.length === 1 ? "Person" : "Personen"}</p></div>
+    <div class="row"><button class="btn primary" data-act="create" data-team="${t.id}">${icon("plus")} Vorgang fürs Team</button><button class="btn" data-act="export-team-xlsx" data-id="${t.id}">${icon("download")} Excel</button>${canManageTeam(t) ? `<button class="btn" data-act="team-edit" data-id="${t.id}">${icon("gear")} Team bearbeiten</button>` : ""}</div></div>
+    <div class="grid g4" style="margin-bottom:6px">${tiles.map(([l, v, c]) => `<div class="card stat"><div class="v" style="${c ? `color:${c}` : ""}">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
+    <section class="wsec ${s.inbox.length ? "danger" : ""}"><h2>Team-Eingang – noch nicht verteilt <span class="count">${s.inbox.length}</span></h2>${inbox ? `<div class="card wlist">${inbox}</div>` : '<p class="small muted" style="margin:0 0 6px">Alles verteilt. ✓</p>'}</section>
+    <section class="wsec"><h2>Wer macht was? <span class="small muted" style="font-weight:400">Karte auf eine andere Person ziehen, um neu zu verteilen</span></h2>
+      ${mem.length ? `<div class="tcols" style="grid-template-columns:repeat(${mem.length}, minmax(230px, 1fr))">${cols}</div>` : '<p class="muted">Dem Team sind noch keine Personen zugeordnet.</p>'}</section>
+    <div class="grid g2" style="align-items:start">
+      <section class="wsec"><h2>Termine &amp; Fristen – nächste 7 Tage</h2><div class="card pad">${agenda || '<p class="small muted" style="margin:0">Keine Termine oder Fristen in den nächsten 7 Tagen.</p>'}</div></section>
+      <section class="wsec"><h2>Zuletzt im Team</h2><div class="card pad">${activity.map((h) => `<div class="hist" data-act="open" data-id="${h.i.id}" style="cursor:pointer">${avatar(h.userId)} <b>${esc(h.userId ? uname(h.userId) : "Kunde")}</b> · <span class="key">${keyOf(h.i)}</span> ${h.to === "erstellt" ? "erstellt" : `${esc(h.field)} → „${esc(String(h.to).slice(0, 40))}“`} <span class="muted small">· ${ago(h.at)}</span></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Aktivität.</p>'}</div></section></div>`;
+}
+function teamForm(t) {
+  const admin = me().role === "ADMIN"; const isNew = !t; const dis = admin ? "" : "disabled";
+  t = t || { name: "", color: PALETTE[db.teams.length % PALETTE.length], leadId: db.currentUserId, memberIds: [db.currentUserId], desc: "" };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Team anlegen" : `Team „${esc(t.name)}“ bearbeiten`}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="team-form" data-id="${isNew ? "" : t.id}"><div class="modal-b">
+      <div class="grid g2" style="gap:12px"><label class="f"><span>Name <span class="req">*</span></span><input type="text" name="name" value="${esc(t.name)}" required maxlength="80" ${dis} placeholder="z. B. Service &amp; Technik"></label>
+        <label class="f">Farbe<select name="color" ${dis}>${PALETTE.map((c) => `<option value="${c}" ${c === t.color ? "selected" : ""} style="color:${c}">● ${c}</option>`).join("")}</select></label></div>
+      <label class="f">Teamleitung<select name="leadId" ${dis}>${userOpts(t.leadId, "–")}</select></label>
+      <label class="f">Aufgabe des Teams<input type="text" name="desc" value="${esc(t.desc || "")}" maxlength="200" placeholder="z. B. Störungen, Wartungen und Einsätze beim Kunden"></label>
+      <div class="f"><span class="small b" style="color:var(--fg-2)">Mitglieder</span><div class="tmembers">${activeUsers().map((u) => `<label class="row nowrap small"><input type="checkbox" name="m" value="${u.id}" ${t.memberIds.includes(u.id) ? "checked" : ""}> ${avatar(u.id)} ${esc(u.name)} <span class="muted">· ${esc(ROLES[u.role] || u.role)}</span></label>`).join("")}</div></div>
+      ${admin ? "" : '<p class="small muted" style="margin:0">Als Teamleitung können Sie Mitglieder und Aufgabe ändern; Name, Farbe und Leitung ändern Administratoren.</p>'}
+    </div><div class="modal-f">${!isNew && admin ? `<button type="button" class="btn danger" data-act="team-delete" data-id="${t.id}" style="margin-right:auto">Team löschen</button>` : ""}<button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">${isNew ? "Team anlegen" : "Speichern"}</button></div></form>`);
+}
+
 /* ---------- Ansicht: Projekte ---------- */
 function viewProjects() {
   return `<div class="page-head"><h1>Projekte</h1>${me().role === "ADMIN" ? `<button class="btn primary" data-act="new-project">${icon("plus")} Projekt erstellen</button>` : ""}</div>
@@ -907,7 +1002,8 @@ function viewDispatch(p) {
   const days = weekDays(ui.dispatchWeek || 0); const t = today();
   const items = projIssues(p).filter((i) => i.type !== "SUBTASK");
   const planned = items.filter((i) => i.appointmentAt && days.includes(dayKey(i.appointmentAt)));
-  const techs = activeUsers().filter((u) => u.role === "AGENT" || planned.some((i) => i.assigneeId === u.id));
+  const dt = team(ui.dispatchTeam);
+  const techs = dt ? teamMembers(dt) : activeUsers().filter((u) => u.role === "AGENT" || planned.some((i) => i.assigneeId === u.id));
   const unplanned = items.filter((i) => ["OPEN", "PARTS", "WAITING"].includes(i.status) && (i.type !== "SERVICE" || i.status === "PARTS"))
     .sort((a, b) => PRIOS[b.priority].rank - PRIOS[a.priority].rank || a.createdAt.localeCompare(b.createdAt));
   const card = (i) => { const done = isDone(i); return `<div class="dcard ${done ? "done" : ""} cat-b-${statusOf(i).cat}" draggable="${done ? "false" : "true"}" data-drag-appt="${i.id}" data-act="open" data-id="${i.id}">
@@ -916,7 +1012,7 @@ function viewDispatch(p) {
   const fmtHead = (k) => parseDay(k).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit" });
   return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Einsatzplanung</h1>
       <div class="small muted">KW ${isoWeek(days[0])} · ${fmtDay(days[0])} – ${fmtDay(days[5])}</div></div>
-      <div class="row"><button class="btn" data-act="dispatch-week" data-v="-1" aria-label="Vorige Woche">←</button><button class="btn" data-act="dispatch-week" data-v="0">Diese Woche</button><button class="btn" data-act="dispatch-week" data-v="1" aria-label="Nächste Woche">→</button></div></div>
+      <div class="row">${db.teams.length ? `<select id="dispatch-team" aria-label="Team" style="width:auto"><option value="">Alle Service-Mitarbeiter</option>${db.teams.map((t) => `<option value="${t.id}" ${dt?.id === t.id ? "selected" : ""}>Team ${esc(t.name)}</option>`).join("")}</select>` : ""}<button class="btn" data-act="dispatch-week" data-v="-1" aria-label="Vorige Woche">←</button><button class="btn" data-act="dispatch-week" data-v="0">Diese Woche</button><button class="btn" data-act="dispatch-week" data-v="1" aria-label="Nächste Woche">→</button></div></div>
     <div class="dispatch-layout">
       <div class="card pad"><h3 style="font-size:14px;margin-bottom:4px">Einzuplanen <span class="badge-count">${unplanned.length}</span></h3><p class="small muted" style="margin:0 0 8px">Auf Techniker und Tag ziehen – oder öffnen und „Einplanen“ wählen.</p>
         ${unplanned.map((i) => `<div class="dcard" draggable="true" data-drag-appt="${i.id}" data-act="open" data-id="${i.id}"><div class="row nowrap small"><span class="key">${keyOf(i)}</span>${lozenge(i)}<span class="sp"></span>${prioIcon(i.priority)}</div><div class="trunc" style="font-weight:500">${esc(i.summary)}</div><div class="small muted trunc">${esc(i.customer?.company || "")} · ${ago(i.createdAt)}</div></div>`).join("") || '<p class="small muted">Alles eingeplant. 👍</p>'}</div>
@@ -984,6 +1080,7 @@ function viewProjectSettings(p) {
       <label class="f">Schlüssel<input type="text" value="${esc(p.key)}" disabled></label>
       <label class="f">Beschreibung<textarea name="desc" rows="3">${esc(p.desc || "")}</textarea></label>
       <label class="f">Projektleitung<select name="leadId">${userOpts(p.leadId, "–")}</select></label>
+      <label class="f">Standard-Team<select name="teamId">${teamOpts(p.teamId)}</select><span class="small muted" style="font-weight:400">Neue Vorgänge und Kundenanfragen landen im Eingang dieses Teams.</span></label>
       <label class="f">Farbe<select name="color">${PALETTE.map((c) => `<option value="${c}" ${c === p.color ? "selected" : ""} style="color:${c}">● ${c}</option>`).join("")}</select></label>
       ${me().role === "ADMIN" ? `<div class="row"><button class="btn primary" type="submit">Speichern</button><span class="sp"></span><button type="button" class="btn danger" data-act="delete-project" data-id="${p.id}">Projekt löschen</button></div>` : '<p class="small muted">Nur Administratoren können Projekteinstellungen ändern.</p>'}</form></div>
       <div class="card pad"><h3 style="font-size:15px;margin-bottom:8px">Workflow</h3><div class="row">${workflowOf(p).map((s, k) => `${k ? "→" : ""}<span class="lozenge cat-${s.cat}">${esc(s.name)}</span>`).join(" ")}</div>
@@ -1045,6 +1142,9 @@ function viewSettings() {
         <select name="role" aria-label="Rolle">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === "MEMBER" ? "selected" : ""}>${v}</option>`).join("")}</select><input type="text" name="password" placeholder="Startpasswort (mind. 10 Zeichen)" minlength="10" required aria-label="Startpasswort">
         <div style="grid-column:1/-1"><button class="btn primary" type="submit">${icon("plus")} Person anlegen</button></div></form>
         <p class="small muted">Rollen: <b>Administrator</b> verwaltet Personen, Projekte und Sicherungen · <b>Mitglied</b> arbeitet in allen Projekten · <b>Service-Mitarbeiter</b> wird zusätzlich über neue Kundenanfragen informiert.</p>` : '<p class="small muted">Personen verwalten nur Administratoren.</p>'}</div>
+    <div class="card pad"><div class="row" style="margin-bottom:6px"><h3 style="font-size:15px;flex:1">Teams</h3>${isAdmin ? `<button class="btn sm" data-act="team-new">${icon("plus")} Team anlegen</button>` : ""}</div>
+      ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
+      <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
@@ -1125,7 +1225,8 @@ function renderIssue() {
         ${i.appointmentAt ? `<div class="details" style="margin-bottom:12px"><div class="drow" style="padding:10px 14px"><span>Termin</span><span class="b">${fmtAppt(i.appointmentAt)}${i.assigneeId ? ` · ${esc(uname(i.assigneeId))}` : ""}</span></div></div>` : ""}
         ${isSvc && (sf || sr) ? `<div class="details" style="margin-bottom:12px"><div class="dh">SLA</div><div class="drow"><span>Erste Antwort</span><span>${slaChip(sf)} <span class="small muted">Ziel ${SLA[i.priority][0]} h</span></span></div><div class="drow" style="padding-bottom:10px"><span>Lösung</span><span>${slaChip(sr)} <span class="small muted">Ziel ${SLA[i.priority][1]} h</span></span></div></div>` : ""}
         <div class="details"><div class="dh">Details</div>
-          <div class="drow"><span>Verantwortlich</span><span><select data-f="assigneeId">${userOpts(i.assigneeId)}</select>${i.assigneeId !== db.currentUserId ? `<a href="#" class="small" data-act="assign-me">Mir zuweisen</a>` : ""}</span></div>
+          <div class="drow"><span>Team</span><span><select data-f="teamId">${teamOpts(i.teamId)}</select></span></div>
+          <div class="drow"><span>Verantwortlich</span><span><select data-f="assigneeId">${userOpts(i.assigneeId, undefined, i.teamId)}</select>${i.assigneeId !== db.currentUserId ? `<a href="#" class="small" data-act="assign-me">Mir zuweisen</a>` : ""}</span></div>
           <div class="drow"><span>Melder</span><span>${i.reporterId ? `<select data-f="reporterId">${userOpts(i.reporterId, "–")}</select>` : `<span class="row nowrap">${custAvatar(i.customer)} ${esc(i.customer?.name || "–")} <span class="small muted">(Kunde)</span></span>`}</span></div>
           <div class="drow"><span>Priorität</span><span class="row nowrap">${prioIcon(i.priority)}<select data-f="priority">${prioOpts(i.priority)}</select></span></div>
           <div class="drow"><span>Vorgangstyp</span><span class="row nowrap">${typeIcon(i.type)}<select data-f="type" ${i.type === "SUBTASK" || i.type === "EPIC" ? "disabled" : ""}>${PROJECT_TYPES[p.type].types.filter((t) => i.type === t || (t !== "SUBTASK" && t !== "EPIC")).map((t) => `<option value="${t}" ${t === i.type ? "selected" : ""}>${TYPES[t].label}</option>`).join("")}</select></span></div>
@@ -1168,7 +1269,8 @@ function createForm(prefill = {}) {
       <label class="f"><span>Zusammenfassung <span class="req">*</span></span><input type="text" name="summary" required maxlength="255" autofocus></label>
       <label class="f">Beschreibung<textarea name="description" rows="4"></textarea></label>
       <div class="grid g2" style="gap:12px">
-        <label class="f">Verantwortlich<select name="assigneeId">${userOpts(prefill.assigneeId ?? null)}</select></label>
+        <label class="f">Team<select name="teamId">${teamOpts(prefill.teamId !== undefined ? prefill.teamId : p.teamId || null)}</select></label>
+        <label class="f">Verantwortlich<select name="assigneeId">${userOpts(prefill.assigneeId ?? null, "Nicht zugewiesen (Team-Eingang)", prefill.teamId !== undefined ? prefill.teamId : p.teamId)}</select></label>
         <label class="f">Priorität<select name="priority">${prioOpts(prefill.priority || "MEDIUM")}</select></label>
         <label class="f">Fälligkeitsdatum<input type="date" name="dueDate"></label>
         <label class="f">Labels<input type="text" name="labels" placeholder="z. B. portal, kunde"></label>
@@ -1214,6 +1316,19 @@ function projectForm() {
 /* ---------- Drag & Drop ---------- */
 let dragId = null;
 function bindDnD() {
+  $$("[data-drag-assign]").forEach((el) => {
+    el.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/assign", el.dataset.dragAssign); el.classList.add("dragging"); });
+    el.addEventListener("dragend", () => el.classList.remove("dragging"));
+  });
+  $$("[data-drop-assign]").forEach((col) => {
+    col.addEventListener("dragover", (e) => { e.preventDefault(); col.classList.add("drop-on"); });
+    col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("drop-on"); });
+    col.addEventListener("drop", (e) => {
+      e.preventDefault(); col.classList.remove("drop-on");
+      const i = issue(e.dataTransfer.getData("text/assign")); const to = col.dataset.dropAssign; if (!i || i.assigneeId === to) return;
+      updateIssue(i, { assigneeId: to }); render(); toast(`${keyOf(i)} an ${uname(to)} übergeben`);
+    });
+  });
   $$("[data-drag-appt]").forEach((el) => el.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/appt", el.dataset.dragAppt); el.classList.add("dragging"); }));
   $$("[data-drag-appt]").forEach((el) => el.addEventListener("dragend", () => el.classList.remove("dragging")));
   $$("[data-drop-appt]").forEach((cell) => {
@@ -1287,12 +1402,12 @@ function exportXlsx(list, name, title) {
 
   const vorg = { name: "Vorgänge", columns: [
     { h: "Schlüssel", w: 10 }, { h: "Projekt", w: 18 }, { h: "Typ", w: 14 }, { h: "Zusammenfassung", w: 46 }, { h: "Status", w: 20 }, { h: "Phase", w: 12 },
-    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Melder", w: 20 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 },
+    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Team", w: 18 }, { h: "Melder", w: 20 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 },
     { h: "Labels", w: 16 }, { h: "Sprint", w: 14 }, { h: "Epic", w: 22 }, { h: "Story Points", w: 8, t: "n" }, { h: "Schätzung (h)", w: 10, t: "h" }, { h: "Erfasst (h)", w: 10, t: "h" },
     { h: "Fällig", w: 11, t: "d" }, { h: "Überfällig", w: 9 }, { h: "Termin", w: 16, t: "dt" }, { h: "Erstellt", w: 16, t: "dt" }, { h: "Erledigt", w: 16, t: "dt" },
     { h: "Durchlaufzeit (Tage)", w: 11, t: "h" }, { h: "SLA Erste Antwort", w: 15 }, { h: "SLA Lösung", w: 15 }, { h: "Kommentare", w: 9, t: "n" }, { h: "Monat erstellt", w: 11 }],
     rows: list.map((i) => [keyOf(i), proj(i.projectId)?.name, TYPES[i.type]?.label, i.summary, statusOf(i).name, CAT_LABEL[statusOf(i).cat] || statusOf(i).cat,
-      PRIOS[i.priority]?.label, person(i.assigneeId), i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", i.customer?.company, i.customer?.name, i.customer?.email,
+      PRIOS[i.priority]?.label, person(i.assigneeId), team(i.teamId)?.name, i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", i.customer?.company, i.customer?.name, i.customer?.email,
       i.labels.join(", "), sprint(i.sprintId)?.name, issue(i.epicId)?.summary, i.storyPoints ?? null, i.estimateH ?? null, hoursOf(i),
       i.dueDate, isOverdue(i) ? "ja" : "nein", i.appointmentAt, i.createdAt, i.resolvedAt, days(i.createdAt, i.resolvedAt), slaTxt(i, "first"), slaTxt(i, "resolve"), i.comments.length, i.createdAt.slice(0, 7)]) };
 
@@ -1311,6 +1426,10 @@ function exportXlsx(list, name, title) {
       return [u.name, ROLES[u.role] || u.role, l.length, l.filter((i) => statusOf(i).cat === "todo").length, l.filter((i) => statusOf(i).cat === "progress").length, l.filter(isDone).length, l.filter(isOverdue).length,
         l.filter((i) => i.resolution).length, r2(l.reduce((s, i) => s + hoursOf(i), 0)), avg(l.filter((i) => i.resolvedAt).map((i) => days(i.createdAt, i.resolvedAt))), quota(slaDone(l))]; }) };
 
+  const tms = { name: "Teams", columns: [{ h: "Team", w: 22 }, { h: "Leitung", w: 18 }, { h: "Mitglieder", w: 40 }, { h: "Vorgänge", w: 9, t: "n" }, { h: "Offen", w: 8, t: "n" }, { h: "Nicht verteilt", w: 10, t: "n" },
+    { h: "Überfällig", w: 9, t: "n" }, { h: "Erledigt", w: 9, t: "n" }, { h: "Stunden erfasst", w: 10, t: "h" }],
+    rows: db.teams.map((t) => { const l = list.filter((i) => i.teamId === t.id);
+      return [t.name, person(t.leadId), teamMembers(t).map((u) => u.name).join(", "), l.length, l.filter((i) => !isDone(i)).length, l.filter(inTeamInbox).length, l.filter(isOverdue).length, l.filter(isDone).length, r2(l.reduce((s, i) => s + hoursOf(i), 0))]; }).filter((r) => r[3] > 0) };
   const months = [...new Set(list.flatMap((i) => [i.createdAt.slice(0, 7), i.resolvedAt?.slice(0, 7)]).filter(Boolean))].sort();
   const mon = { name: "Monate", columns: [{ h: "Monat", w: 10 }, { h: "Erstellt", w: 9, t: "n" }, { h: "Erledigt", w: 9, t: "n" }, { h: "davon Service", w: 10, t: "n" }, { h: "Einsatzstunden", w: 10, t: "h" }, { h: "SLA eingehalten", w: 10, t: "p" }],
     rows: months.map((m) => { const done = list.filter((i) => i.resolvedAt?.startsWith(m));
@@ -1331,8 +1450,8 @@ function exportXlsx(list, name, title) {
     ["Einsatzstunden laut Servicebericht", r2(svc.reduce((s, i) => s + (Number(i.resolution?.hours) || 0), 0)), ""],
     ["SLA Lösung eingehalten (%)", slr.length ? Math.round(quota(slr) * 1000) / 10 : null, "Anteil der gelösten Serviceanfragen innerhalb der Zielzeit"],
     ["Erfasste Stunden gesamt", r2(list.reduce((s, i) => s + hoursOf(i), 0)), ""],
-    ["Tabellenblätter", null, "Vorgänge · Serviceeinsätze · Personen · Monate · Statusverlauf · Kommentare – mit Filter in der Kopfzeile, direkt für Pivot-Tabellen nutzbar"]] };
-  const sheets = [info, vorg, ...(reports.length ? [eins] : []), pers, mon, hist, comm];
+    ["Tabellenblätter", null, "Vorgänge · Serviceeinsätze · Teams · Personen · Monate · Statusverlauf · Kommentare – mit Filter in der Kopfzeile, direkt für Pivot-Tabellen nutzbar"]] };
+  const sheets = [info, vorg, ...(reports.length ? [eins] : []), ...(tms.rows.length ? [tms] : []), pers, mon, hist, comm];
   download(name, XLSX.build(sheets, { title, author: sync.company || "GF Tracker" }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
   toast(`Excel-Datei „${name}“ mit ${list.length} Vorgängen erstellt.`);
 }
@@ -1365,7 +1484,13 @@ document.addEventListener("click", (e) => {
     case "notifs": { const p = $("#notifs"); p.classList.toggle("open"); if (p.classList.contains("open")) renderNotifs(); break; }
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
-    case "create": e.preventDefault(); createForm({ projectId: el.dataset.project, type: el.dataset.type, epicId: el.dataset.epic }); break;
+    case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
+    case "team-new": teamForm(); break;
+    case "team-edit": { const t = team(id); if (t) teamForm(t); break; }
+    case "team-delete": { const t = team(id); if (!t || !confirm(`Team „${t.name}“ löschen? Die Vorgänge bleiben erhalten, verlieren aber die Teamzuordnung.`)) return;
+      db.teams = db.teams.filter((x) => x.id !== t.id); db.issues.forEach((i) => { if (i.teamId === t.id) { i.teamId = null; touch(i); } }); db.projects.forEach((p) => { if (p.teamId === t.id) p.teamId = null; });
+      save(); closeModal(); go("#/teams"); toast(`Team „${t.name}“ gelöscht`); break; }
+    case "export-team-xlsx": { const t = team(id); if (t) exportXlsx(teamIssues(t), `auswertung-team-${t.name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-")}-${today()}.xlsx`, `Team ${t.name}`); break; }
     case "yw-tab": ui.yourWork = el.dataset.v; render(); break;
     case "board-toggle": ui.board[el.dataset.v] = !ui.board[el.dataset.v]; render(); break;
     case "board-user": { const v = el.dataset.v; const a = ui.board.users; ui.board.users = a.includes(v) ? a.filter((x) => x !== v) : [...a, v]; render(); break; }
@@ -1417,6 +1542,8 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
+  if (el.id === "dispatch-team") { ui.dispatchTeam = el.value; render(); return; }
+  if (el.dataset.act === "team-assign") { const i = issue(el.dataset.id); if (i && el.value) { updateIssue(i, { assigneeId: el.value }); render(); toast(`${keyOf(i)} an ${uname(el.value)} verteilt`); } return; }
   if (el.id === "portal-project") { go(`#/portal/${el.value}`); return; }
   if (el.id === "cf-project") { const f = el.form; const data = { summary: f.summary.value, description: f.description.value }; ui.lastProject = el.value; createForm({ projectId: el.value }); $("#create-form").summary.value = data.summary; $("#create-form").description.value = data.description; return; }
   if (el.id === "json-file" && el.files[0]) {
@@ -1432,7 +1559,7 @@ document.addEventListener("change", (e) => {
   if (el.dataset.f && cur) {
     const f = el.dataset.f; let v = el.value;
     if (f === "summary") { v = v.trim(); if (!v) { el.value = cur.summary; return; } }
-    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId"].includes(f)) v = v || null;
+    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId", "teamId"].includes(f)) v = v || null;
     if (f === "storyPoints" || f === "estimateH") v = v === "" ? null : Number(v);
     if (f === "labels") v = v.split(",").map((x) => x.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
     if (f === "sprintId") children(cur).forEach((c) => (c.sprintId = v));
@@ -1457,7 +1584,7 @@ async function handleSubmit(e, f) {
     case "create-form": {
       const labels = String(fd.get("labels") || "").split(",").map((x) => x.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
       const cname = fd.get("cname"), cemail = fd.get("cemail");
-      const i = await createIssue({ projectId: fd.get("projectId"), type: fd.get("type"), summary: fd.get("summary"), description: fd.get("description"), assigneeId: fd.get("assigneeId"), priority: fd.get("priority"),
+      const i = await createIssue({ projectId: fd.get("projectId"), type: fd.get("type"), summary: fd.get("summary"), description: fd.get("description"), assigneeId: fd.get("assigneeId"), priority: fd.get("priority"), teamId: fd.get("teamId") || null,
         dueDate: fd.get("dueDate") || null, labels, storyPoints: fd.get("storyPoints") ? Number(fd.get("storyPoints")) : null, sprintId: fd.get("sprintId") || null, epicId: fd.get("epicId") || null,
         customer: cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
       ui.lastProject = i.projectId;
@@ -1495,7 +1622,13 @@ async function handleSubmit(e, f) {
       const p = { id: uid(), key, name: String(fd.get("name")).trim(), type: fd.get("type"), leadId: fd.get("leadId") || db.currentUserId, color: PALETTE[db.projects.length % PALETTE.length], nextNo: 1, desc: "" };
       db.projects.push(p); if (p.type === "software") db.sprints.push({ id: uid(), projectId: p.id, name: `${key} Sprint 1`, goal: "", state: "future", start: null, end: null, committed: null, completed: null });
       save(); closeModal(); go(`#/p/${key}`); toast(`Projekt ${p.name} erstellt`); break; }
-    case "project-form": { const p = proj(f.dataset.id); Object.assign(p, { name: fd.get("name"), desc: fd.get("desc"), leadId: fd.get("leadId") || p.leadId, color: fd.get("color") }); save(); render(); toast("Gespeichert"); break; }
+    case "project-form": { const p = proj(f.dataset.id); Object.assign(p, { name: fd.get("name"), desc: fd.get("desc"), leadId: fd.get("leadId") || p.leadId, color: fd.get("color"), teamId: fd.get("teamId") || null }); save(); render(); toast("Gespeichert"); break; }
+    case "team-form": {
+      const members = fd.getAll("m"); const t = team(f.dataset.id);
+      const fix = (x) => { if (x.leadId && !x.memberIds.includes(x.leadId)) x.memberIds.unshift(x.leadId); return x; };
+      if (t) { if (me().role === "ADMIN") Object.assign(t, { name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null }); t.memberIds = members; t.desc = String(fd.get("desc") || ""); fix(t); }
+      else db.teams.push(fix({ id: uid(), name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null, memberIds: members, desc: String(fd.get("desc") || "") }));
+      save(); closeModal(); render(); toast(t ? `Team „${t.name}“ gespeichert` : "Team angelegt"); break; }
     case "user-form": {
       const r = await api("/api/admin/users", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), role: fd.get("role"), password: fd.get("password") } });
       applyServer({ type: "users", id: r.user.id, data: r.user }); f.reset(); render(); toast(`${r.user.name} angelegt – Zugangsdaten bitte persönlich übergeben.`); break; }

@@ -9,7 +9,7 @@
 "use strict";
 const S = globalThis.TrackerShared;
 const DB_KEY = "gft-sa-db", SESSION_KEY = "gft-sa-user";
-const COLLECTIONS = ["users", "projects", "sprints", "issues", "filters", "notifications"];
+const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const COMPANY = "Druckluft Chemnitz";
 const BASE = location.href.split(/[?#]/)[0];
@@ -100,6 +100,11 @@ function canWrite(user, type, op, cur, data) {
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
   if (type === "projects" && !admin) return "Nur Administratoren dürfen Projekte anlegen, ändern oder löschen.";
+  if (type === "teams" && !admin) {
+    if (op !== "patch" || !cur || cur.leadId !== user.id) return "Teams verwalten Administratoren; die Teamleitung kann Mitglieder ändern.";
+    const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
+    if (fields.some((f) => !["memberIds", "desc"].includes(f))) return "Die Teamleitung kann nur Mitglieder und Beschreibung ändern.";
+  }
   if (type === "notifications") {
     if (op === "put") return null;
     if (!cur || cur.userId !== user.id) return "Fremde Benachrichtigungen können nicht geändert werden.";
@@ -127,6 +132,11 @@ function sanitize(d, type, obj, cur) {
     if (!S.PROJECT_TYPES[obj.type]) throw new HttpError(400, "Unbekannter Projekttyp.");
   }
   if (type === "users" && cur) obj.email = cur.email;
+  if (type === "teams") {
+    obj.name = String(obj.name || "").trim().slice(0, 80); if (!obj.name) throw new HttpError(400, "Teamname fehlt.");
+    obj.memberIds = [...new Set((Array.isArray(obj.memberIds) ? obj.memberIds : []).filter((x) => typeof x === "string" && ID_RE.test(x)))];
+    if (obj.leadId && !obj.memberIds.includes(obj.leadId)) obj.memberIds.unshift(obj.leadId);
+  }
   return obj;
 }
 function applyOp(d, user, op) {
@@ -257,7 +267,7 @@ function importAll(data, admin) {
     const users = data.users.map((u) => ({ ...publicUser({ notifyEmail: true, active: true, color: S.hashColor(u.email), ...u }), email: String(u.email).toLowerCase() }));
     if (!users.some((u) => u.id === admin.id)) users.push(publicUser(admin));
     for (const u of users) put(d, "users", u);
-    for (const t of ["projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) put(d, t, o);
+    for (const t of ["teams", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) put(d, t, o);
     d.counters = {};
   });
   return { imported: data.issues.length, usersWithoutPassword: [] };

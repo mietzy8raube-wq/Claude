@@ -153,6 +153,7 @@ function newIssue(d) {
     epicId: d.epicId || null, parentId: d.parentId || null, sprintId: d.sprintId || null, links: [], watchers: [], comments: [], history: [],
     createdAt: nowIso, updatedAt: nowIso, resolvedAt: null, customer: d.customer || null, firstResponseAt: null, pausedMs: 0, pausedSince: null,
     rank: d.rank ?? Date.now(), color: d.color || null, appointmentAt: d.appointmentAt || null, resolution: null,
+    teamId: d.teamId !== undefined ? d.teamId || null : project.teamId || null,
   };
   i.watchers = [...new Set([i.reporterId, i.assigneeId].filter(Boolean))];
   i.history.push({ id: uid(), at: nowIso, userId: i.reporterId, field: "Vorgang", from: "", to: "erstellt" });
@@ -216,9 +217,16 @@ function seed() {
   ];
   users.forEach((u) => (u.color = hashColor(u.email)));
   const projects = [
-    { id: "pDIG", key: "DIG", name: "Digitalisierung", type: "software", leadId: "u2", color: "#2a78d6", nextNo: 1, desc: "Kundenportal und digitale Auftragsabwicklung" },
-    { id: "pGF", key: "GF", name: "Geschäftsführung", type: "business", leadId: "u1", color: "#8f5bd6", nextNo: 1, desc: "Aufgaben und Vorhaben der Geschäftsführung" },
-    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
+    { id: "pDIG", key: "DIG", name: "Digitalisierung", type: "software", leadId: "u2", teamId: "tDIG", color: "#2a78d6", nextNo: 1, desc: "Kundenportal und digitale Auftragsabwicklung" },
+    { id: "pGF", key: "GF", name: "Geschäftsführung", type: "business", leadId: "u1", teamId: "tGF", color: "#8f5bd6", nextNo: 1, desc: "Aufgaben und Vorhaben der Geschäftsführung" },
+    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", teamId: "tSVC", color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
+  ];
+  // Teams: wer gehört zusammen und stimmt sich ab (eine Person kann in mehreren Teams sein)
+  const teams = [
+    { id: "tGF", name: "Geschäftsführung", color: "#8f5bd6", leadId: "u2", memberIds: ["u1", "u2"], desc: "Strategie, Freigaben, Personal und Finanzen" },
+    { id: "tSVC", name: "Service & Technik", color: "#d0352c", leadId: "u5", memberIds: ["u5", "u6"], desc: "Störungen, Wartungen und Einsätze beim Kunden" },
+    { id: "tBUE", name: "Büro & Vertrieb", color: "#16946a", leadId: "u3", memberIds: ["u3", "u1"], desc: "Angebote, Auftragsannahme, Rechnungen und Kundenkontakt" },
+    { id: "tDIG", name: "Digitalisierung", color: "#2a78d6", leadId: "u4", memberIds: ["u4", "u2", "u3"], desc: "Kundenportal, Software und IT" },
   ];
   const sprints = [
     { id: "s2", projectId: "pDIG", name: "DIG Sprint 2", goal: "Grundgerüst Portal", state: "closed", start: addDays(t, -33), end: addDays(t, -19), committed: 18, completed: 16 },
@@ -238,7 +246,7 @@ function seed() {
       links: [], watchers: [], comments: [], history: [], createdAt: iso(created), updatedAt: iso(o.updatedAgo ?? Math.min(created, 2 * D)),
       resolvedAt: o.resolvedAgo != null ? iso(o.resolvedAgo) : null, customer: o.customer || null, firstResponseAt: o.firstRespAgo != null ? iso(o.firstRespAgo) : null,
       pausedMs: 0, pausedSince: o.pausedAgo != null ? iso(o.pausedAgo) : null, rank: rank++, color: o.color || null,
-      appointmentAt: o.appointmentAt || null, resolution: o.resolution || null,
+      appointmentAt: o.appointmentAt || null, resolution: o.resolution || null, teamId: "teamId" in o ? o.teamId : p.teamId || null,
     };
     issue.watchers = [...new Set([issue.reporterId, issue.assigneeId].filter(Boolean))];
     (o.comments || []).forEach(([userId, text, agoMs, internal, author]) => issue.comments.push({ id: uid(), userId, author: author || null, text, at: iso(agoMs), internal: !!internal }));
@@ -306,7 +314,10 @@ function seed() {
   const findI = (s) => issues.find((i) => i.summary.startsWith(s));
   const a = findI("Login schlägt"), b = findI("Störung über das Portal");
   a.links.push({ type: "blocks", issueId: b.id }); b.links.push({ type: "blocked_by", issueId: a.id });
-  return { users, projects, sprints, issues, filters: [], notifications: [] };
+  // Beispiele für den Team-Eingang (dem Team zugeordnet, aber noch niemandem zugewiesen)
+  add("pGF", { type: "TASK", summary: "Angebot Druckluftanlage Müller Maschinenbau nachfassen", status: "TODO", priority: "HIGH", teamId: "tBUE", reporterId: "u1", createdAgo: 5 * H, dueDate: addDays(t, 2) });
+  add("pGF", { type: "TASK", summary: "Ersatzteilbestand Filterelemente prüfen und nachbestellen", status: "TODO", priority: "MEDIUM", teamId: "tSVC", reporterId: "u2", createdAgo: 20 * H, dueDate: addDays(t, 4) });
+  return { users, teams, projects, sprints, issues, filters: [], notifications: [] };
 }
 
 return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
