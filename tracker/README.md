@@ -61,3 +61,13 @@ npm start     # Server mit Konfiguration aus Umgebungsvariablen
 | `public/app.js` | Browser-App |
 | `public/portal.js` | Kundenportal |
 | `test/` | Tests |
+
+## Einzeldatei-Version (ohne Server)
+
+`npm run build:standalone` erzeugt aus denselben Quelldateien
+`../standalone/gf-suite-tracker.html`: eine HTML-Datei, die per Doppelklick im
+Browser läuft – mit Arbeitsablauf, Mein Tag, Einsatzplanung, Servicebericht und
+Kundenportal (`?portal`). Daten liegen im localStorage dieses Browsers; jeder Tab
+kann als andere Person angemeldet sein. Kein Passwortschutz, kein E-Mail-Versand,
+kein gemeinsames Arbeiten über mehrere Geräte – dafür die Server-Version nutzen.
+
