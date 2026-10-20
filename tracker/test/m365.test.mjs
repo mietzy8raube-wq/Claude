@@ -51,6 +51,7 @@ function startMock() {
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/events(?:\/([^/]+))?$/);
         if (m) {
           const who = decodeURIComponent(m[1]); const id = m[2] && decodeURIComponent(m[2]);
+          if (req.method === "GET") { const ev = M.events.get(id); if (!ev) return json(404, {}); return json(200, { id: ev.id, start: ev.start, end: ev.end, isCancelled: false }); }
           if (req.method === "POST") { const ev = { id: `ev${++seq}`, owner: who, ...JSON.parse(body) }; M.events.set(ev.id, ev); return json(201, ev); }
           if (req.method === "PATCH") { const ev = M.events.get(id); if (!ev) return json(404, {}); Object.assign(ev, JSON.parse(body), { patched: (ev.patched || 0) + 1 }); return json(200, ev); }
           if (req.method === "DELETE") { M.events.delete(id); return json(204); }
@@ -67,7 +68,7 @@ before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gft-m365-"));
   proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server.mjs"], { cwd: ROOT, stdio: "ignore", env: { ...process.env, PORT: String(PORT), HOST: "127.0.0.1", DATA_DIR: dataDir, SEED_DEMO: "1", APP_URL: BASE,
     MS_TENANT_ID: "tenant1", MS_CLIENT_ID: "client1", MS_CLIENT_SECRET: "secret1", MAIL_SENDER: "noreply@druckluft-chemnitz.de", MS_LOGIN_HOST: MOCK, MS_GRAPH_BASE: `${MOCK}/v1.0`,
-    MAIL_INBOX: INBOX, MAILIN_INTERVAL_MS: "300", SSO_MICROSOFT: "1", TZ: "Europe/Berlin", FACTORIAL_API_KEY: "fact-key", FACTORIAL_BASE_URL: MOCK, FACTORIAL_API_VERSION: "2026-10-01" } });
+    MAIL_INBOX: INBOX, MAILIN_INTERVAL_MS: "300", SSO_MICROSOFT: "1", TZ: "Europe/Berlin", FACTORIAL_API_KEY: "fact-key", CAL_PULL_INTERVAL_MS: "400", FACTORIAL_BASE_URL: MOCK, FACTORIAL_API_VERSION: "2026-10-01" } });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {} await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
@@ -123,6 +124,12 @@ test("Outlook-Kalender: Einplanen trägt ein, Verschieben ändert, Umplanen auf 
   const berlin = (d, addMin = 0) => new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Berlin", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date(d.getTime() + addMin * 60e3)).replace(", ", "T") + ":00";
   assert.ok(ev, "Termin angelegt"); assert.equal(ev.owner, "mehmet.yilmaz@druckluft-chemnitz.de"); assert.equal(ev.start.dateTime, berlin(at)); assert.equal(ev.end.dateTime, berlin(at, 90)); assert.equal(ev.start.timeZone, "Europe/Berlin");
   assert.match(ev.location.displayName, /Neukirchen/); assert.match(ev.body.content, /#\/issue\/SD-/);
+  // Rückweg: Techniker verschiebt den Termin in Outlook → Tracker übernimmt, Kunde bekommt neue Terminmail
+  const moved1 = new Date(at.getTime() + 864e5 + 90 * 60e3); M.events.get(ev.id).start = { dateTime: moved1.toISOString().replace("Z", "").replace(/\.\d{3}$/, ".0000000"), timeZone: "UTC" };
+  const upd = await until(async () => { const x = (await issues()).find((i) => i.id === issue.id); return x.appointmentAt === moved1.toISOString() && x; });
+  assert.ok(upd, "in Outlook verschobener Termin übernommen"); assert.ok(upd.history.some((h) => h.by === "Outlook (Mehmet Yilmaz)" && h.field === "Termin"));
+  assert.ok(await until(() => M.sent.some((x) => x.subject.includes("Neuer Termin") && x.toRecipients[0].emailAddress.address === "m.lorenz@lorenz-kt.de")), "Kunde informiert");
+  await new Promise((r) => setTimeout(r, 600)); assert.ok(!M.events.get(ev.id).patched, "kein Echo zurück nach Outlook");
   const at2 = new Date(at); at2.setHours(13, 0, 0, 0); await sync({ appointmentAt: at2.toISOString() });
   await until(() => M.events.get(ev.id)?.patched >= 1); assert.equal(M.events.get(ev.id).start.dateTime, berlin(at2));
   await sync({ assigneeId: "u6" });
@@ -168,4 +175,26 @@ test("Factorial: Mitarbeiter werden zugeordnet bzw. angelegt, Abwesenheiten übe
   const own = await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: "m1", op: "put", data: { id: "m1", userId: "u5", start: "2026-12-01", end: "2026-12-02", type: "Schulung" } }] } }); assert.ok(!own.data.results[0].error, "eigene Abwesenheit erlaubt");
   const other = await mehmet.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: "m2", op: "put", data: { id: "m2", userId: "u1", start: "2026-12-01", end: "2026-12-02", type: "Urlaub" } }] } }); assert.ok(other.data.results[0].error, "fremde nur Teamleitung/Admin");
   const status = (await anna.req("/api/admin/integrations")).data.factorial; assert.equal(status.configured, true); assert.ok(status.lastSync);
+});
+
+test("Outlook-Kalender: Kalender-Abo (ICS) mit Einsätzen, Fristen und Abwesenheiten; Löschen in Outlook meldet; Kunde als Teilnehmer", async () => {
+  const mehmet = new Client(); await mehmet.req("/api/login", { method: "POST", body: { email: "mehmet.yilmaz@druckluft-chemnitz.de", password: "Passwort123!" } });
+  const feed = (await mehmet.req("/api/me/calendar")).data; assert.match(feed.url, /\/cal\/[A-Za-z0-9_-]+\.ics$/); assert.match(feed.webcal, /^webcal:/);
+  const ics = await fetch(feed.url).then((r) => { assert.match(r.headers.get("content-type"), /text\/calendar/); return r.text(); });
+  assert.match(ics, /BEGIN:VCALENDAR/); assert.match(ics, /SUMMARY:🔧 SD-1 /, "Einsatz"); assert.match(ics, /DTSTART;VALUE=DATE:/, "ganztägig (Frist/Abwesenheit)"); assert.match(ics, /TRIGGER:-PT/);
+  assert.ok(ics.split("\r\n").every((l) => Buffer.byteLength(l) <= 75), "Zeilen nach RFC 5545 umbrochen");
+  const team = await fetch(feed.teamUrl).then((r) => r.text()); assert.match(team, /Sarah Becker|SD-4/);
+  const reset = (await mehmet.req("/api/me/calendar", { method: "POST" })).data; assert.notEqual(reset.url, feed.url); assert.equal((await fetch(feed.url)).status, 404, "alter Link ungültig");
+  // Kunde als Teilnehmer
+  await anna.req("/api/admin/integrations/settings", { method: "POST", body: { calendarInviteCustomer: true } });
+  const ga = (await issues()).find((i) => i.summary === "Jahreswartung Schraubenkompressor GA 30");
+  const at = new Date(Date.now() + 3 * 864e5); at.setUTCHours(8, 0, 0, 0); const sentBefore = M.sent.length;
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: ga.id, op: "patch", patch: { set: { status: "SCHEDULED", assigneeId: "u5", appointmentAt: at.toISOString() } } }] } });
+  const ev = await until(() => [...M.events.values()].find((e) => e.subject.includes("GA 30")));
+  assert.equal(ev.attendees[0].emailAddress.address, "t.richter@richter-holz.de");
+  const conf = await until(() => M.sent.slice(sentBefore).find((x) => x.subject.includes("Terminbestätigung"))); assert.ok(!conf.attachments?.length, "keine doppelte .ics, wenn Einladung aktiv");
+  // in Outlook gelöscht → Hinweis an Disposition
+  M.events.delete(ev.id);
+  const n = await until(async () => (await mehmet.req("/api/state")).data.notifications.find((x) => x.title.startsWith("Termin in Outlook gelöscht")));
+  assert.ok(n, "Hinweis bei gelöschtem Termin");
 });

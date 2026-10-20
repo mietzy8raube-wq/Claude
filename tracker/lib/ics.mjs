@@ -7,10 +7,10 @@ const utc = (d) => new Date(d).toISOString().replace(/[-:]/g, "").replace(/\.\d{
 const day = (k) => String(k).slice(0, 10).replace(/-/g, "");
 const nextDay = (k) => { const d = new Date(`${String(k).slice(0, 10)}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10).replace(/-/g, ""); };
 
-/** Ein Termin: { uid, start, end, allDay (Datum JJJJ-MM-TT), summary, description, location, url, alarmMinutes, status, categories, sequence } */
+/** Ein Termin: { uid, start, end | allDay (JJJJ-MM-TT) [+ allDayEnd], summary, description, location, url, alarmMinutes | alarmTrigger, status, categories, sequence } */
 export function vevent(e) {
   const lines = ["BEGIN:VEVENT", `UID:${e.uid}`, `DTSTAMP:${utc(e.stamp || Date.now())}`];
-  if (e.allDay) lines.push(`DTSTART;VALUE=DATE:${day(e.allDay)}`, `DTEND;VALUE=DATE:${nextDay(e.allDay)}`, "TRANSP:TRANSPARENT");
+  if (e.allDay) lines.push(`DTSTART;VALUE=DATE:${day(e.allDay)}`, `DTEND;VALUE=DATE:${nextDay(e.allDayEnd || e.allDay)}`, "TRANSP:TRANSPARENT");
   else lines.push(`DTSTART:${utc(e.start)}`, `DTEND:${utc(e.end)}`);
   lines.push(`SUMMARY:${text(e.summary)}`);
   if (e.description) lines.push(`DESCRIPTION:${text(e.description)}`);
@@ -19,7 +19,8 @@ export function vevent(e) {
   if (e.categories) lines.push(`CATEGORIES:${e.categories.map(text).join(",")}`);
   if (e.sequence != null) lines.push(`SEQUENCE:${e.sequence}`);
   lines.push(`STATUS:${e.status || "CONFIRMED"}`);
-  if (e.alarmMinutes != null) lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${text(e.summary)}`, `TRIGGER:-PT${Math.round(e.alarmMinutes)}M`, "END:VALARM");
+  const trigger = e.alarmTrigger || (e.alarmMinutes != null ? `-PT${Math.round(e.alarmMinutes)}M` : null);
+  if (trigger) lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${text(e.summary)}`, `TRIGGER:${trigger}`, "END:VALARM");
   lines.push("END:VEVENT");
   return lines;
 }

@@ -374,6 +374,7 @@ function handle(method, url, body) {
   if (/^\/api\/admin\/users\/[A-Za-z0-9_-]+\/password$/.test(p)) { needAdmin(); return { ok: true }; }
   if (p === "/api/admin/export") { needAdmin(); download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(exportAll(d0), null, 2)); return { ok: true }; }
   if (p === "/api/admin/import" && method === "POST") { needAdmin(); return importAll(body, user); }
+  if (p === "/api/me/calendar") return { standalone: true };
   if (p === "/api/admin/integrations") { needAdmin(); return { standalone: true }; }
   if (p === "/api/admin/mail-test") throw new HttpError(409, "In der Einzeldatei-Version gibt es keinen E-Mail-Versand – dafür wird die Server-Version benötigt.");
   throw new HttpError(404, "Unbekannte Schnittstelle.");

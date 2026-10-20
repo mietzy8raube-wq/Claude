@@ -807,6 +807,8 @@ function viewIntegrations() {
         <label class="f">Termindauer im Kalender (Minuten)<input type="number" name="calendarMinutes" value="${M.calendarMinutes}" min="15" max="600" step="15"></label>
         <label class="row nowrap small"><input type="checkbox" name="mailInEnabled" ${M.mailIn ? "checked" : ""}> E-Mails an das Postfach automatisch als Vorgang anlegen (alle 2 Minuten)</label>
         <label class="row nowrap small"><input type="checkbox" name="calendarSync" ${M.calendar ? "checked" : ""}> Eingeplante Einsätze im Outlook-Kalender der Techniker eintragen</label>
+        <label class="row nowrap small"><input type="checkbox" name="calendarPull" ${M.calendarPull ? "checked" : ""}> Im Outlook-Kalender verschobene Termine zurück in den Tracker übernehmen (Kunde wird informiert)</label>
+        <label class="row nowrap small"><input type="checkbox" name="calendarInviteCustomer" ${M.calendarInvite ? "checked" : ""}> Kunden als Teilnehmer einladen (Outlook-Einladung vom Techniker-Kalender)</label>
         <label class="row nowrap small"><input type="checkbox" name="ssoMicrosoft" ${M.sso ? "checked" : ""} ${M.ssoEnv ? "disabled" : ""}> „Mit Microsoft anmelden“ auf der Anmeldeseite anbieten${M.ssoEnv ? " (per Konfiguration aktiv)" : ""}</label>
         <div class="row" style="grid-column:1/-1"><button class="btn primary" type="submit">Speichern</button><button type="button" class="btn" data-act="integ-poll" ${M.appConfigured && M.inbox ? "" : "disabled"}>Postfach jetzt abrufen</button><button type="button" class="btn" data-act="mail-test" ${I.mail.configured ? "" : "disabled"}>Test-E-Mail an mich</button><span class="small muted">Letzter Abruf: ${fmtTs(M.lastPoll)}</span></div>
       </form>
@@ -1551,6 +1553,16 @@ function viewSettings() {
         <input type="password" name="next" placeholder="Neues Passwort (mind. 10 Zeichen)" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort">
         <input type="password" name="repeat" placeholder="Neues Passwort wiederholen" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort wiederholen">
         <div><button class="btn" type="submit">Passwort ändern</button></div></form>
+      <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Kalender abonnieren</h3>
+      ${(() => { const c = ui.calFeed; if (!c) { if (!ui.calFeedLoading) { ui.calFeedLoading = true; api("/api/me/calendar").then((r) => { ui.calFeed = r; if (route().parts[0] === "settings") render(); }).catch(() => {}); } return '<p class="small muted">Lade …</p>'; }
+        if (c.standalone) return '<p class="small muted" style="margin:0">Das Kalender-Abo gibt es in der Server-Version.</p>';
+        return `<p class="small muted" style="margin:0 0 6px">Ihre Einsätze, Fristen (mit Erinnerung am Vortag) und Abwesenheiten erscheinen als eigener Kalender in Outlook – auf PC, im Web und auf dem Handy.</p>
+        <div class="secret"><code>${esc(c.url)}</code><button class="btn sm" data-act="copy" data-v="${esc(c.url)}">Kopieren</button></div>
+        <div class="row" style="margin-top:8px"><a class="btn sm primary" href="${esc(c.webcal)}">In Outlook öffnen</a><button class="btn sm" data-act="copy" data-v="${esc(c.teamUrl)}">Team-Kalender kopieren</button><button class="btn subtle sm" data-act="cal-reset">Neuen Link erzeugen</button></div>
+        <details class="ihelp"><summary>So geht's in Outlook</summary><ol><li><b>Outlook im Web / neues Outlook:</b> Kalender → „Kalender hinzufügen“ → „Aus dem Internet abonnieren“ → Link einfügen, Namen vergeben.</li>
+          <li><b>Klassisches Outlook (Windows):</b> Kalender → „Kalender hinzufügen“ → „Aus dem Internet …“ → Link einfügen.</li><li><b>iPhone/Android:</b> erscheint automatisch, wenn das Outlook-Konto auf dem Handy eingerichtet ist.</li>
+          <li>Outlook aktualisiert abonnierte Kalender selbst (je nach Version alle paar Stunden). Sofort und mit Erinnerung im eigenen Kalender erscheinen Einsätze, wenn die Administration die Outlook-Kalender-Anbindung eingeschaltet hat.</li>
+          <li>Der Link ist persönlich – nicht weitergeben. Bei Bedarf „Neuen Link erzeugen“, dann ist der alte ungültig.</li></ol></details>`; })()}
       <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
       ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
         : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
@@ -2103,6 +2115,8 @@ document.addEventListener("click", (e) => {
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
     case "integ-reload": ui.integ = null; render(); break;
+    case "cal-reset": if (!confirm("Neuen Kalender-Link erzeugen? Der bisherige Link funktioniert dann nicht mehr – das Abo in Outlook muss mit dem neuen Link neu eingerichtet werden.")) return;
+      api("/api/me/calendar", { method: "POST" }).then((r) => { ui.calFeed = r; render(); toast("Neuer Link erzeugt."); }).catch((err) => toast(err.message)); break;
     case "copy": navigator.clipboard?.writeText(el.dataset.v).then(() => toast("In die Zwischenablage kopiert.")).catch(() => toast("Bitte markieren und mit Strg+C kopieren.")); break;
     case "integ-poll": api("/api/admin/mail/poll", { method: "POST" }).then((r) => { toast(r.skipped ? "Abruf ist deaktiviert." : r.error ? `Fehler: ${r.error}` : `Postfach abgerufen: ${r.created} neue Vorgänge, ${r.replies} Antworten.`); loadIntegrations(); }).catch((err) => toast(err.message)); break;
     case "factorial-sync": el.disabled = true; el.textContent = "Gleiche ab …"; api("/api/admin/factorial/sync", { method: "POST" }).then((r) => { toast(`Factorial: ${r.employees} Mitarbeiter, ${r.created} neu, ${r.absences} Abwesenheiten.`); loadIntegrations(); }).catch((err) => { toast(err.message); loadIntegrations(); }); break;
@@ -2310,7 +2324,7 @@ async function handleSubmit(e, f) {
       const a = assetOf(c, f.dataset.k); if (a) Object.assign(a, data); else c.assets.push({ id: uid(), ...data });
       c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); toast(`Anlage „${data.name}“ gespeichert`); break; }
     case "integ-m365": {
-      const body = { mailInbox: fd.get("mailInbox"), calendarMinutes: Number(fd.get("calendarMinutes")), mailInEnabled: fd.get("mailInEnabled") === "on", calendarSync: fd.get("calendarSync") === "on", ...(f.ssoMicrosoft.disabled ? {} : { ssoMicrosoft: fd.get("ssoMicrosoft") === "on" }) };
+      const body = { mailInbox: fd.get("mailInbox"), calendarMinutes: Number(fd.get("calendarMinutes")), mailInEnabled: fd.get("mailInEnabled") === "on", calendarSync: fd.get("calendarSync") === "on", calendarPull: fd.get("calendarPull") === "on", calendarInviteCustomer: fd.get("calendarInviteCustomer") === "on", ...(f.ssoMicrosoft.disabled ? {} : { ssoMicrosoft: fd.get("ssoMicrosoft") === "on" }) };
       ui.integ = await api("/api/admin/integrations/settings", { method: "POST", body }); render(); toast("Gespeichert"); break; }
     case "apikey-form": {
       const r = await api("/api/admin/api-keys", { method: "POST", body: { name: fd.get("name"), scope: fd.get("scope") } }); f.reset(); await loadIntegrations();

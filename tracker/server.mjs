@@ -274,7 +274,7 @@ function customerMails({ before, after }) {
     queueMail(after.customer.email, `[${key}] ${moved ? "Neuer Termin" : "Terminbestätigung"}: ${when}`, mailTemplate({ company: CFG.company, greeting,
       title: `${moved ? "Ihr Termin wurde verschoben" : "Wir haben einen Termin für Sie eingeplant"}: ${when}`, preheader: `${when}${tech ? ` · ${tech}` : ""}`,
       lines: [`Anliegen: ${after.summary}`, tech ? `Techniker/in: ${tech}` : "", "Den Termin können Sie über den Anhang direkt in Ihren Outlook-Kalender übernehmen. Passt er nicht? Antworten Sie einfach."].filter(Boolean),
-      button: { url: link, label: "Anfrage ansehen" }, replyHint: hint, footer: `Vorgang ${key}` }), { ...opts, attachments: [{ name: "Servicetermin.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: appointmentIcs(after) }] });
+      button: { url: link, label: "Anfrage ansehen" }, replyHint: hint, footer: `Vorgang ${key}` }), { ...opts, attachments: m365.settings().calendarInvite && m365.settings().calendar && mailer.appConfigured ? [] : [{ name: "Servicetermin.ics", contentType: "text/calendar; charset=utf-8; method=PUBLISH", content: appointmentIcs(after) }] });
   }
   if (before && S.statusInfo(p, before.status).cat !== "done" && S.statusInfo(p, after.status).cat === "done") {
     const r = after.resolution;
@@ -360,7 +360,8 @@ function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try {
 const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification });
 const webhooks = createWebhooks({ store, cfg: CFG, issueDto: apiV1.issueDto, customerDto: apiV1.customerDto, ilog, log });
 onEvent((type, obj, extra) => webhooks.enqueue(type, obj, extra));
-const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions });
+const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue });
+setInterval(() => m365.pullCalendarChanges(), Number(env.CAL_PULL_INTERVAL_MS) || 5 * 60e3).unref();
 setTimeout(() => m365.pollMailbox(), 5e3).unref();
 setInterval(() => m365.pollMailbox(), Number(env.MAILIN_INTERVAL_MS) || 120e3).unref();
 const factorial = createFactorial({ store, S, env, ilog, broadcast });
@@ -439,6 +440,25 @@ async function portalCreate(req) {
   broadcast();
   const link = confirmReceipt(issue, email, name);
   return { key: issueKey(issue), token: link.split("/").pop(), url: link, mailSent: mailer.configured };
+}
+/** Persönlicher Kalender-Feed (Outlook „Kalender abonnieren“): Einsätze, Fristen, Abwesenheiten – mit ?scope=team für alle Teamkollegen. */
+function calendarFeed(u, team) {
+  const ids = new Set([u.id]); if (team) for (const t of store.all("teams")) if (t.memberIds.includes(u.id)) t.memberIds.forEach((x) => ids.add(x));
+  const minutes = m365.settings().calendarMinutes; const since = Date.now() - 30 * 864e5; const events = [];
+  for (const i of store.all("issues")) {
+    if (!ids.has(i.assigneeId)) continue; const p = projectById(i.projectId); if (!p) continue;
+    const done = S.statusInfo(p, i.status).cat === "done"; const key = issueKey(i); const link = `${CFG.appUrl}/#/issue/${key}`;
+    const c = i.customerId ? store.get("customers", i.customerId) : null; const who = team && i.assigneeId !== u.id ? ` (${userById(i.assigneeId)?.name || ""})` : "";
+    const desc = [`${key} · ${S.statusInfo(p, i.status).name}`, i.customer ? [i.customer.company, i.customer.name, i.customer.phone].filter(Boolean).join(" · ") : "", String(i.description || "").slice(0, 500), link].filter(Boolean).join("\n");
+    if (i.appointmentAt && new Date(i.appointmentAt).getTime() > since && (done || ["SCHEDULED", "WORKING", "PARTS", "WAITING"].includes(i.status)))
+      events.push({ uid: `appt-${i.id}@gf-tracker`, start: i.appointmentAt, end: new Date(new Date(i.appointmentAt).getTime() + minutes * 60e3), summary: `🔧 ${key} ${i.summary}${i.customer?.company ? ` – ${i.customer.company}` : ""}${who}`,
+        description: desc, location: c ? S.customerAddress(c) : "", url: link, alarmMinutes: done ? null : 60, categories: ["GF Tracker"] });
+    if (i.dueDate && !done && i.type !== "EPIC" && !team) // Erinnerung am Vortag um 9 Uhr
+      events.push({ uid: `due-${i.id}@gf-tracker`, allDay: i.dueDate, summary: `⏰ Fällig: ${key} ${i.summary}`, description: desc, url: link, alarmTrigger: "-PT15H", categories: ["GF Tracker", "Frist"] });
+  }
+  for (const a of store.all("absences")) if (ids.has(a.userId) && new Date(a.end).getTime() > since)
+    events.push({ uid: `abs-${a.id}@gf-tracker`, allDay: a.start, allDayEnd: a.end, summary: `${team || a.userId !== u.id ? `${userById(a.userId)?.name || ""}: ` : ""}${a.type}`, description: a.note || "", categories: ["Abwesenheit"] });
+  return ICS.calendar(events, { name: team ? `GF Tracker – Team (${u.name})` : `GF Tracker – ${u.name}` });
 }
 /** Eingangsbestätigung mit persönlichem Portal-Link an den Kunden (Portal und E-Mail-Eingang). */
 function confirmReceipt(issue, email, name) {
@@ -533,6 +553,13 @@ async function handleApi(req, res, url, session) {
   // Ab hier nur angemeldet
   needUser();
   if (p === "/api/me" && m === "GET") return { user: publicUser(user), mail: mailer.configured, company: CFG.company, appUrl: CFG.appUrl };
+  if (p === "/api/me/calendar" && (m === "GET" || m === "POST")) {
+    if (m === "POST") store.db.prepare("DELETE FROM sync_map WHERE kind = 'icstoken' AND local_id = ?").run(user.id);
+    let row = store.db.prepare("SELECT remote_id FROM sync_map WHERE kind = 'icstoken' AND local_id = ?").get(user.id);
+    if (!row) { row = { remote_id: randomToken(24) }; store.db.prepare("INSERT INTO sync_map (kind, local_id, remote_id) VALUES ('icstoken', ?, ?)").run(user.id, row.remote_id); }
+    const url = `${CFG.appUrl}/cal/${row.remote_id}.ics`;
+    return { url, teamUrl: `${url}?scope=team`, webcal: url.replace(/^https?:/, "webcal:") };
+  }
   if (p === "/api/me/password" && m === "POST") {
     const b = await readJson(req, 8e3); const acc = store.db.prepare("SELECT password_hash FROM accounts WHERE user_id = ?").get(user.id);
     if (!acc || !verifyPassword(String(b.current || ""), acc.password_hash)) throw new HttpError(400, "Das aktuelle Passwort ist falsch.");
@@ -590,7 +617,7 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/admin/integrations/settings" && m === "POST") {
     needAdmin(); const b = await readJson(req, 8e3);
     if ("mailInbox" in b) { const v = str(b.mailInbox, 200).toLowerCase(); if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new HttpError(400, "Postfach: bitte eine E-Mail-Adresse angeben."); store.meta("mailInbox", v); }
-    for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft", "factorialCreateUsers"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
+    for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft", "factorialCreateUsers", "calendarInviteCustomer", "calendarPull"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
     if ("calendarMinutes" in b) store.meta("calendarMinutes", String(Math.min(600, Math.max(15, Number(b.calendarMinutes) || 120))));
     ilog("settings", "info", `Integrationseinstellungen geändert durch ${user.email}`);
     if (b.calendarSync) for (const i of store.all("issues")) if (i.status === "SCHEDULED" && i.appointmentAt) m365.calendarTouch(i);
@@ -663,6 +690,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/" || url.pathname === "/index.html") {
       if (!session || !userById(session.userId)?.active) return send(res, 302, "", { Location: "/login" });
       return serveFile(req, res, "index.html");
+    }
+    const calm = url.pathname.match(/^\/cal\/([A-Za-z0-9_-]{20,64})\.ics$/);
+    if (calm && (req.method === "GET" || req.method === "HEAD")) {
+      const row = store.db.prepare("SELECT local_id FROM sync_map WHERE kind = 'icstoken' AND remote_id = ?").get(calm[1]); const u = row && userById(row.local_id);
+      if (!u || !u.active) return send(res, 404, "Kalender nicht gefunden", { "Content-Type": "text/plain; charset=utf-8" });
+      res.writeHead(200, { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "no-store", "Content-Disposition": `inline; filename="gf-tracker.ics"`, "X-Content-Type-Options": "nosniff" });
+      return res.end(req.method === "HEAD" ? undefined : calendarFeed(u, url.searchParams.get("scope") === "team"));
     }
     if (url.pathname === "/auth/microsoft") {
       if (!m365.settings().sso) return send(res, 302, "", { Location: "/login" });
