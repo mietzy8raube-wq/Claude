@@ -9,6 +9,8 @@ import { fileURLToPath } from "node:url";
 import { Store, COLLECTIONS } from "./lib/store.mjs";
 import { Sessions, RateLimiter, hashPassword, verifyPassword, validatePassword, randomToken, sha256 } from "./lib/auth.mjs";
 import { Mailer, mailTemplate } from "./lib/mailer.mjs";
+import { createApiV1 } from "./lib/apiv1.mjs";
+import { createWebhooks, WEBHOOK_EVENTS } from "./lib/webhooks.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -43,6 +45,13 @@ const portalLimiter = new RateLimiter(8, 10 * 60e3);
 const mailer = new Mailer({ tenantId: env.MS_TENANT_ID, clientId: env.MS_CLIENT_ID, clientSecret: env.MS_CLIENT_SECRET, sender: env.MAIL_SENDER, loginHost: env.MS_LOGIN_HOST, graphBase: env.MS_GRAPH_BASE });
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const DUMMY_HASH = hashPassword(randomToken(16));
+
+/** Integrationsprotokoll (sichtbar unter Einstellungen → Integrationen). */
+function ilog(source, level, message) {
+  log(`[${source}] ${message}`);
+  try { store.db.prepare("INSERT INTO integration_log (at, source, level, message) VALUES (?, ?, ?, ?)").run(Date.now(), source, level, String(message).slice(0, 500));
+    store.db.prepare("DELETE FROM integration_log WHERE id <= (SELECT MAX(id) - 1000 FROM integration_log)").run(); } catch {}
+}
 
 /* ---------- Ersteinrichtung ---------- */
 function setupInitialData() {
@@ -226,6 +235,7 @@ function applyOp(user, op, effects) {
   if (JSON.stringify(next).length > 400e3) throw new HttpError(413, "Objekt zu groß.");
   if (type === "users" && cur && cur.active && next.active === false) effects.deactivated.push(id);
   if (type === "issues") effects.issues.push({ before: cur, after: next });
+  if (type === "customers") effects.customers.push(next);
   store.put(type, next);
   return { type, id, data: type === "users" ? publicUser(next) : next };
 }
@@ -326,6 +336,20 @@ function issueEffects({ before, after }) {
 const eventHandlers = [];
 const onEvent = (fn) => eventHandlers.push(fn);
 function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try { fn(type, issue, extra); } catch (e) { log("Ereignis-Fehler:", e.message); } } }
+/* ---------- Schnittstellen: REST-API und Webhooks ---------- */
+const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification });
+const webhooks = createWebhooks({ store, cfg: CFG, issueDto: apiV1.issueDto, customerDto: apiV1.customerDto, ilog, log });
+onEvent((type, obj, extra) => webhooks.enqueue(type, obj, extra));
+setInterval(() => webhooks.work(), Number(env.WEBHOOK_INTERVAL_MS) || 10e3).unref();
+function integrationStatus() {
+  const meta = (k) => store.meta(k);
+  return { appUrl: CFG.appUrl, events: WEBHOOK_EVENTS,
+    mail: { configured: mailer.configured, sender: env.MAIL_SENDER || null },
+    apiKeys: apiV1.listKeys().map((k) => ({ ...k, createdBy: userById(k.created_by)?.name || null })),
+    webhooks: webhooks.list().map((h) => ({ ...h, stats: webhooks.stats().find((s) => s.hook_id === h.id) || null })),
+    log: store.db.prepare("SELECT at, source, level, message FROM integration_log ORDER BY id DESC LIMIT 60").all(),
+    settings: { lastFactorialSync: meta("factorialLastSync") } };
+}
 /** Benachrichtigungen per E-Mail (gebündelt je Person, nur der letzten 24 h). */
 async function notificationMailJob() {
   if (!mailer.configured) return;
@@ -449,6 +473,7 @@ async function handleApi(req, res, url, session) {
   const user = session ? userById(session.userId) : null;
   const needUser = () => { if (!user || !user.active) throw new HttpError(401, "Nicht angemeldet."); return user; };
   const needAdmin = () => { needUser(); if (user.role !== "ADMIN") throw new HttpError(403, "Nur für Administratoren."); return user; };
+  if (p === "/api/v1" || p.startsWith("/api/v1/")) return apiV1.handle(req, url); // eigene Anmeldung per API-Schlüssel, ohne Cookies
   if (m !== "GET" && req.headers["x-gft"] !== "1") throw new HttpError(403, "Ungültige Anfrage (CSRF-Schutz).");
 
   if (p === "/api/health") return { ok: true, rev: store.rev(), mail: mailer.configured };
@@ -498,10 +523,10 @@ async function handleApi(req, res, url, session) {
   }
   if (p === "/api/sync" && m === "POST") {
     const b = await readJson(req); if (!Array.isArray(b.ops) || b.ops.length > 500) throw new HttpError(400, "Ungültige Änderungen.");
-    const effects = { issues: [], deactivated: [] }; const results = [];
+    const effects = { issues: [], customers: [], deactivated: [] }; const results = [];
     store.tx(() => { for (const op of b.ops) { try { results.push(applyOp(user, op, effects)); } catch (e) { if (!(e instanceof HttpError)) throw e; const cur = store.get(op.type, op.id); results.push({ type: op.type, id: op.id, error: e.message, ...(cur ? { data: op.type === "users" ? publicUser(cur) : cur } : { deleted: true }) }); } } });
     effects.deactivated.forEach((id) => sessions.destroyUser(id));
-    store.tx(() => effects.issues.forEach(issueEffects));
+    store.tx(() => { effects.issues.forEach(issueEffects); effects.customers.forEach((c) => emit("customer.updated", c)); });
     effects.issues.forEach(customerMails); flushMailQueue();
     broadcast();
     return { rev: store.rev(), results };
@@ -528,6 +553,15 @@ async function handleApi(req, res, url, session) {
     broadcast(); log(`Benutzer angelegt: ${email} (${b.role}) durch ${user.email}`);
     return { user: publicUser(u) };
   }
+  if (p === "/api/admin/integrations" && m === "GET") { needAdmin(); return integrationStatus(); }
+  if (p === "/api/admin/api-keys" && m === "POST") { needAdmin(); const b = await readJson(req, 8e3); const k = apiV1.createKey(b.name, b.scope, user.id); ilog("api", "info", `API-Schlüssel „${str(b.name, 80)}“ (${b.scope === "write" ? "lesen+schreiben" : "nur lesen"}) erstellt von ${user.email}`); return k; }
+  pm = p.match(/^\/api\/admin\/api-keys\/([A-Za-z0-9_-]+)$/);
+  if (pm && m === "DELETE") { needAdmin(); if (!apiV1.revokeKey(pm[1])) throw new HttpError(404, "Schlüssel nicht gefunden."); ilog("api", "info", `API-Schlüssel widerrufen durch ${user.email}`); return { ok: true }; }
+  if (p === "/api/admin/webhooks" && m === "POST") { needAdmin(); try { const h = webhooks.add(await readJson(req, 16e3)); ilog("webhook", "info", `Webhook „${h.name}“ angelegt`); return h; } catch (e) { throw new HttpError(400, e.message); } }
+  pm = p.match(/^\/api\/admin\/webhooks\/([A-Za-z0-9_-]+)(\/test)?$/);
+  if (pm && m === "PATCH" && !pm[2]) { needAdmin(); try { const h = webhooks.update(pm[1], await readJson(req, 16e3)); if (!h) throw new HttpError(404, "Webhook nicht gefunden."); return { ok: true }; } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, e.message); } }
+  if (pm && m === "DELETE" && !pm[2]) { needAdmin(); if (!webhooks.remove(pm[1])) throw new HttpError(404, "Webhook nicht gefunden."); return { ok: true }; }
+  if (pm && m === "POST" && pm[2]) { needAdmin(); try { return { ok: true, status: await webhooks.test(pm[1]) }; } catch (e) { ilog("webhook", "error", `Test fehlgeschlagen: ${e.message}`); throw new HttpError(502, `Test fehlgeschlagen: ${e.message}`); } }
   if (p === "/api/admin/users/import" && m === "POST") {
     needAdmin(); const b = await readJson(req, 4e6); if (!Array.isArray(b.users) || b.users.length > 2000) throw new HttpError(400, "Ungültige Liste.");
     let created = 0, updated = 0; const skipped = [];
@@ -576,6 +610,7 @@ const server = http.createServer(async (req, res) => {
         const c = { res, userId: session.userId }; clients.add(c); req.on("close", () => clients.delete(c));
         return;
       }
+      if (out && out.__status) return send(res, out.__status, out.body, extra);
       if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });
       if (out && out.__download) return send(res, 200, JSON.stringify(out.body, null, 2), { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${out.__download}"`, "Cache-Control": "no-store", ...extra });
       return send(res, 200, out, extra);

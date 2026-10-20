@@ -24,6 +24,11 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE TABLE IF NOT EXISTS portal_tokens (token_hash TEXT PRIMARY KEY, issue_id TEXT NOT NULL, token TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS portal_tokens_issue ON portal_tokens (issue_id);
 CREATE TABLE IF NOT EXISTS mail_log (notification_id TEXT PRIMARY KEY, sent_at INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, name TEXT NOT NULL, prefix TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE, scope TEXT NOT NULL, created_by TEXT, created_at INTEGER NOT NULL, last_used_at INTEGER, revoked INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS webhook_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, hook_id TEXT NOT NULL, event TEXT NOT NULL, body TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL, last_error TEXT, done INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS webhook_queue_due ON webhook_queue (done, next_at);
+CREATE TABLE IF NOT EXISTS integration_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, source TEXT NOT NULL, level TEXT NOT NULL, message TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sync_map (kind TEXT NOT NULL, local_id TEXT NOT NULL, remote_id TEXT NOT NULL, extra TEXT, PRIMARY KEY (kind, local_id));
 `;
 
 export const COLLECTIONS = ["users", "teams", "customers", "absences", "projects", "sprints", "issues", "filters", "notifications"];

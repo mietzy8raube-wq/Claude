@@ -7,6 +7,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import http from "node:http";
+import { createHmac } from "node:crypto";
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const PORT = 4300 + Math.floor(Math.random() * 500);
@@ -16,7 +18,7 @@ let proc, dataDir;
 
 before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gft-test-"));
-  proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server.mjs"], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), HOST: "127.0.0.1", DATA_DIR: dataDir, SEED_DEMO: "1", APP_URL: BASE }, stdio: "pipe" });
+  proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server.mjs"], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), HOST: "127.0.0.1", DATA_DIR: dataDir, SEED_DEMO: "1", APP_URL: BASE, WEBHOOK_INTERVAL_MS: "300" }, stdio: "pipe" });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {} await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
 });
@@ -158,6 +160,54 @@ test("Kunden & Wartung: fällige Wartungen werden angelegt, Erledigung schreibt 
   assert.equal(a.lastMaintenance, now.slice(0, 10)); assert.ok(a.nextMaintenance > a.lastMaintenance);
   await new Client().req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "Peter Kunze", company: "Kunze", email: "P.Kunze@kunze-metallbau.de", summary: "Kundenzuordnung", description: "x" } });
   assert.equal((await anna.req("/api/state")).data.issues.find((i) => i.summary === "Kundenzuordnung").customerId, "c1");
+});
+
+test("REST-API v1 und Webhooks: Schlüssel, Rechte, Anlegen/Ändern/Kommentieren, Kunden-Abgleich, signierte Zustellung", async () => {
+  // Empfänger für Webhooks
+  const got = []; const recv = http.createServer((req, res) => { let b = ""; req.on("data", (c) => (b += c)); req.on("end", () => { got.push({ headers: req.headers, body: b }); res.end("ok"); }); });
+  await new Promise((r) => recv.listen(0, "127.0.0.1", r)); const hookUrl = `http://127.0.0.1:${recv.address().port}/hook`;
+  try {
+    assert.equal((await lisa.req("/api/admin/api-keys", { method: "POST", body: { name: "X", scope: "write" } })).status, 403, "nur Admin");
+    const wk = (await anna.req("/api/admin/api-keys", { method: "POST", body: { name: "ERP", scope: "write" } })).data; assert.match(wk.token, /^gft_/);
+    const rk = (await anna.req("/api/admin/api-keys", { method: "POST", body: { name: "BI", scope: "read" } })).data;
+    const hook = (await anna.req("/api/admin/webhooks", { method: "POST", body: { name: "ERP-Hook", url: hookUrl, events: ["issue.created", "issue.status_changed", "issue.resolved", "comment.created", "customer.updated"] } })).data;
+    const teams = (await anna.req("/api/admin/webhooks", { method: "POST", body: { name: "Teams", url: hookUrl + "/teams", format: "teams", events: ["issue.created"] } })).data;
+    const api = (token, p, opt = {}) => fetch(BASE + p, { method: opt.method || "GET", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: opt.body ? JSON.stringify(opt.body) : undefined }).then(async (r) => ({ status: r.status, data: await r.json() }));
+    assert.equal((await api("gft_falsch_falsch_falsch_falsch", "/api/v1/issues")).status, 401);
+    assert.equal((await api(rk.token, "/api/v1/issues", { method: "POST", body: { project: "SD", summary: "x" } })).status, 403, "Leseschlüssel darf nicht schreiben");
+    // Kunde aus dem ERP anlegen und erneut abgleichen (keine Dublette)
+    const c1 = await api(wk.token, "/api/v1/customers/30001", { method: "PUT", body: { name: "ERP Kunde GmbH", city: "Zwickau", contacts: [{ name: "Eva Erp", email: "eva@erp-kunde.de" }], assets: [{ name: "Kompressor", serial: "SN-1", intervalMonths: 12, lastMaintenance: "2026-02-01" }] } });
+    assert.equal(c1.status, 201); assert.equal(c1.data.customer.no, "30001"); assert.equal(c1.data.customer.assets[0].nextMaintenance, "2027-02-01");
+    const c2 = await api(wk.token, "/api/v1/customers/30001", { method: "PUT", body: { phone: "0375 1", assets: [{ name: "Kompressor", serial: "SN-1", model: "GA 11" }] } });
+    assert.equal(c2.status, 200); assert.equal(c2.data.customer.assets.length, 1); assert.equal(c2.data.customer.assets[0].model, "GA 11"); assert.equal(c2.data.customer.phone, "0375 1");
+    // Vorgang anlegen – idempotent über externalId
+    const body = { project: "SD", type: "INCIDENT", summary: "Störung aus ERP", priority: "HIGH", customer: "30001", assetSerial: "SN-1", externalId: "ERP-77", team: "Service & Technik", dueDate: "2026-12-01" };
+    const i1 = await api(wk.token, "/api/v1/issues", { method: "POST", body }); assert.equal(i1.status, 201); assert.match(i1.data.issue.key, /^SD-\d+$/);
+    assert.equal(i1.data.issue.customer.no, "30001"); assert.equal(i1.data.issue.asset.serial, "SN-1"); assert.equal(i1.data.issue.team, "Service & Technik"); assert.equal(i1.data.issue.contact.email, "eva@erp-kunde.de");
+    const i2 = await api(wk.token, "/api/v1/issues", { method: "POST", body }); assert.equal(i2.status, 200); assert.equal(i2.data.created, false); assert.equal(i2.data.issue.key, i1.data.issue.key);
+    const key = i1.data.issue.key;
+    assert.equal((await api(wk.token, `/api/v1/issues/${key}`, { method: "PATCH", body: { status: "UNSINN" } })).status, 400);
+    const pt = await api(wk.token, `/api/v1/issues/${key}`, { method: "PATCH", body: { status: "Erledigt", assignee: "mehmet.yilmaz@druckluft-chemnitz.de" } });
+    assert.equal(pt.status, 200); assert.equal(pt.data.statusName, "Erledigt"); assert.equal(pt.data.assignee.name, "Mehmet Yilmaz"); assert.ok(pt.data.resolvedAt);
+    assert.equal((await api(wk.token, `/api/v1/issues/ERP-77/comments`, { method: "POST", body: { text: "Rechnung 4711 erstellt" } })).status, 201);
+    const ls = await api(rk.token, "/api/v1/issues?customer=30001&statusCategory=done"); assert.equal(ls.data.total, 1);
+    const one = await api(rk.token, `/api/v1/issues/${key}`); assert.ok(one.data.labels !== undefined);
+    // Verlauf im Vorgang zeigt den Schlüssel als Urheber
+    const st = (await anna.req("/api/state")).data.issues.find((i) => i.externalId === "ERP-77"); assert.ok(st.history.some((h) => h.by === "API: ERP" && h.field === "Status"));
+    // Zustellung abwarten
+    for (let n = 0; n < 40 && got.filter((g) => !g.headers["x-gft-event"]?.startsWith("test")).length < 6; n++) await new Promise((r) => setTimeout(r, 150));
+    const erp = got.filter((g) => g.headers["x-gft-delivery"] && !g.body.includes("AdaptiveCard"));
+    const events = erp.map((g) => g.headers["x-gft-event"]);
+    for (const e of ["customer.updated", "issue.created", "issue.resolved", "comment.created"]) assert.ok(events.includes(e), `Ereignis ${e} zugestellt (erhalten: ${events.join(",")})`);
+    const sample = erp.find((g) => g.headers["x-gft-event"] === "issue.created");
+    assert.equal(sample.headers["x-gft-signature"], "sha256=" + createHmac("sha256", hook.secret).update(sample.body).digest("hex"), "Signatur stimmt");
+    assert.equal(JSON.parse(sample.body).issue.externalId, "ERP-77");
+    const card = got.find((g) => g.body.includes("AdaptiveCard")); assert.ok(card, "Teams-Karte zugestellt"); assert.match(JSON.parse(card.body).attachments[0].content.body[0].text, /Vorgang angelegt/);
+    // Widerruf
+    await anna.req(`/api/admin/api-keys/${rk.id}`, { method: "DELETE" }); assert.equal((await api(rk.token, "/api/v1/issues")).status, 401);
+    const status = (await anna.req("/api/admin/integrations")).data; assert.ok(status.webhooks.length >= 2 && status.apiKeys.length >= 2 && !status.webhooks[0].secret.includes(hook.secret.slice(10)));
+    void teams;
+  } finally { recv.close(); }
 });
 
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {

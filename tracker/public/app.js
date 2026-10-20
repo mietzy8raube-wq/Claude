@@ -1500,7 +1500,7 @@ function renderIssue() {
   const comments = i.comments.map((c) => `<div class="comment ${c.internal ? "internal" : ""}">${c.userId ? avatar(c.userId, true) : custAvatar({ name: c.author, email: i.customer?.email })}
     <div class="body"><div class="small"><b>${esc(c.userId ? uname(c.userId) : c.author + " (Kunde)")}</b> <span class="muted">${fmtDT(c.at)}</span>${c.internal ? ' <span class="chip yellow">intern</span>' : isSvc && c.userId ? ' <span class="chip gray">für Kunden sichtbar</span>' : ""}</div>
     <div class="text">${highlightMentions(c.text)}</div></div></div>`).join("") || '<p class="muted small">Noch keine Kommentare.</p>';
-  const history = i.history.map((h) => `<div class="hist">${avatar(h.userId)} <b>${esc(uname(h.userId))}</b> hat <b>${esc(h.field)}</b> ${h.from && h.from !== "–" ? `von „${esc(h.from)}“ ` : ""}${h.to === "erstellt" ? "erstellt" : `auf „${esc(h.to)}“ geändert`} <span class="muted small">· ${fmtDT(h.at)}</span></div>`).join("");
+  const history = i.history.map((h) => `<div class="hist">${avatar(h.userId)} <b>${esc(h.by || (h.userId ? uname(h.userId) : "Kunde/System"))}</b> hat <b>${esc(h.field)}</b> ${h.from && h.from !== "–" ? `von „${esc(h.from)}“ ` : ""}${h.to === "erstellt" ? "erstellt" : `auf „${esc(h.to)}“ geändert`} <span class="muted small">· ${fmtDT(h.at)}</span></div>`).join("");
   const timePct = i.estimateH ? Math.min(100, (i.loggedH / i.estimateH) * 100) : 0;
   const sf = slaInfo(i, "first"), sr = slaInfo(i, "resolve");
   $("#modal").innerHTML = `
