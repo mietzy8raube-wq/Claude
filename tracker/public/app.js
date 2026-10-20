@@ -587,6 +587,7 @@ function render() {
       case "p": { const p = projByKey(parts[1]); if (!p) { html = `<div class="empty">Projekt nicht gefunden.</div>`; break; }
         const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
         html = tabs + ({ dispatch: viewDispatch, board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
+      case "import": html = viewImport(); break;
       case "customers": html = parts[1] ? viewCustomer(customer(parts[1])) : viewCustomers(); break;
       case "teams": html = parts[1] ? viewTeam(team(parts[1])) : viewTeams(); break;
       case "filters": html = viewFilters(params); break;
@@ -766,6 +767,206 @@ function issueRow(i, extra = "") {
   return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
     <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
 }
+/* ---------- Import-Assistent ---------- */
+const IMPORT_TYPES = {
+  customers: { label: "Kunden", desc: "Kundenstamm aus Warenwirtschaft / ERP – optional mit erstem Ansprechpartner", sheet: ["kunden", "customers", "debitoren"], fields: [
+    { k: "no", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "kdnummer", "debitor", "debitorennummer", "debitornr", "nummer", "nr", "customerno", "customernumber", "kundenid"] },
+    { k: "name", label: "Firma", req: true, syn: ["firma", "name", "kunde", "firmenname", "name1", "kundenname", "company", "unternehmen", "bezeichnung"] },
+    { k: "street", label: "Straße", syn: ["strasse", "str", "adresse", "anschrift", "street", "strassehausnr", "strasseundhausnummer", "strassenr"] },
+    { k: "zip", label: "PLZ", syn: ["plz", "postleitzahl", "zip"] }, { k: "city", label: "Ort", syn: ["ort", "stadt", "city", "wohnort"] },
+    { k: "phone", label: "Telefon", syn: ["telefon", "tel", "telefonnummer", "phone", "telefonzentrale"] }, { k: "email", label: "E-Mail", syn: ["email", "mail", "emailadresse"] },
+    { k: "externalId", label: "ERP-/Fremd-ID", syn: ["erpid", "fremdid", "externalid", "id", "externeid"] }, { k: "notes", label: "Notizen", syn: ["notizen", "bemerkung", "bemerkungen", "notiz", "info", "hinweis"] },
+    { k: "contactName", label: "Ansprechpartner", syn: ["ansprechpartner", "kontakt", "kontaktperson", "ansprechpartnername"] },
+    { k: "contactEmail", label: "E-Mail Ansprechpartner", syn: ["emailansprechpartner", "ansprechpartneremail", "kontaktemail"] },
+    { k: "contactPhone", label: "Telefon Ansprechpartner", syn: ["telefonansprechpartner", "ansprechpartnertelefon", "kontakttelefon", "mobil", "handy"] }] },
+  contacts: { label: "Ansprechpartner", desc: "Weitere Kontakte je Kunde (Zuordnung über Kundennummer oder Firma)", sheet: ["ansprechpartner", "kontakte", "contacts"], fields: [
+    { k: "customerNo", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "debitor", "debitorennummer"] }, { k: "customerName", label: "Firma", syn: ["firma", "kunde", "firmenname", "kundenname", "company"] },
+    { k: "name", label: "Name", req: true, syn: ["name", "ansprechpartner", "kontakt", "vollername", "nachname"] }, { k: "role", label: "Funktion", syn: ["funktion", "position", "abteilung", "rolle"] },
+    { k: "email", label: "E-Mail", syn: ["email", "mail", "emailadresse"] }, { k: "phone", label: "Telefon", syn: ["telefon", "tel", "mobil", "handy", "phone"] }] },
+  assets: { label: "Anlagen", desc: "Kompressoren, Trockner, Behälter … mit Seriennummer und Wartungsintervall", sheet: ["anlagen", "geraete", "maschinen", "assets"], fields: [
+    { k: "customerNo", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "debitor"] }, { k: "customerName", label: "Firma", syn: ["firma", "kunde", "kundenname"] },
+    { k: "name", label: "Bezeichnung", req: true, syn: ["bezeichnung", "anlage", "maschine", "geraet", "name", "anlagenbezeichnung"] },
+    { k: "manufacturer", label: "Hersteller", syn: ["hersteller", "marke", "fabrikat"] }, { k: "model", label: "Modell", syn: ["modell", "typ", "type", "baureihe"] },
+    { k: "serial", label: "Seriennummer", syn: ["seriennummer", "seriennr", "sn", "fabriknummer", "serial", "serialnumber"] }, { k: "year", label: "Baujahr", syn: ["baujahr", "jahr"] },
+    { k: "location", label: "Standort", syn: ["standort", "aufstellort", "ort", "halle"] }, { k: "intervalMonths", label: "Wartungsintervall (Monate)", syn: ["intervallmonate", "intervall", "wartungsintervall", "wartungsintervallmonate"] },
+    { k: "lastMaintenance", label: "Letzte Wartung", syn: ["letztewartung", "wartungam", "letzterservice"] }, { k: "nextMaintenance", label: "Nächste Wartung", syn: ["naechstewartung", "faellig", "naechsterservice", "wartungfaellig"] },
+    { k: "active", label: "In Betrieb", syn: ["inbetrieb", "aktiv", "status"] }] },
+  users: { label: "Mitarbeiter", desc: "Personen mit Rolle und Team (Anmeldung danach per Passwort oder Microsoft-Konto)", admin: true, sheet: ["mitarbeiter", "personen", "benutzer", "users"], fields: [
+    { k: "name", label: "Name", req: true, syn: ["name", "vollername", "mitarbeiter", "fullname"] }, { k: "email", label: "E-Mail", req: true, syn: ["email", "mail", "emailadresse", "loginemail"] },
+    { k: "role", label: "Rolle", syn: ["rolle", "role", "berechtigung"] }, { k: "team", label: "Team", syn: ["team", "abteilung", "bereich"] }] },
+  issues: { label: "Aufgaben & Vorgänge", desc: "Offene Aufgaben, Tickets oder Projektlisten (z. B. aus Excel, Planner, altem System)", sheet: ["vorgaenge", "aufgaben", "tickets", "tasks"], fields: [
+    { k: "summary", label: "Zusammenfassung", req: true, syn: ["zusammenfassung", "titel", "betreff", "aufgabe", "thema", "summary", "title", "aufgabenname"] },
+    { k: "description", label: "Beschreibung", syn: ["beschreibung", "details", "text", "description", "notizen"] },
+    { k: "project", label: "Projekt", syn: ["projekt", "projektschluessel", "project", "bereich"] }, { k: "type", label: "Typ", syn: ["typ", "art", "vorgangstyp", "type"] },
+    { k: "status", label: "Status", syn: ["status", "zustand", "fortschritt"] }, { k: "priority", label: "Priorität", syn: ["prioritaet", "prio", "dringlichkeit", "priority", "wichtigkeit"] },
+    { k: "assignee", label: "Verantwortlich", syn: ["verantwortlich", "zustaendig", "bearbeiter", "mitarbeiter", "zugewiesenan", "assignee", "zugewiesen"] }, { k: "team", label: "Team", syn: ["team"] },
+    { k: "dueDate", label: "Fällig", syn: ["faellig", "frist", "deadline", "faelligkeitsdatum", "faelligam", "termin", "enddatum", "due"] },
+    { k: "labels", label: "Labels", syn: ["labels", "schlagworte", "kategorie", "tags"] }, { k: "customerNo", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "debitor"] },
+    { k: "externalId", label: "Fremd-ID / Schlüssel", syn: ["externeid", "fremdid", "ticketnr", "ticketnummer", "schluessel", "id", "nummer", "vorgangsnummer"] }] },
+};
+const PRIO_WORDS = { HIGHEST: ["höchste", "hoechste", "kritisch", "sehr hoch", "sofort", "highest", "critical", "1"], HIGH: ["hoch", "dringend", "high", "wichtig", "2"], MEDIUM: ["mittel", "normal", "medium", "3"], LOW: ["niedrig", "gering", "low", "4"], LOWEST: ["niedrigste", "sehr niedrig", "lowest", "5"] };
+const findCust = (no, name) => { const n = String(no || "").trim(), nm = String(name || "").trim().toLowerCase();
+  return (n && (db.customers.find((c) => c.no === n) || db.customers.find((c) => c.externalId === n))) || (nm && db.customers.find((c) => c.name.toLowerCase() === nm)) || null; };
+const findUser = (v) => { const s = String(v || "").trim().toLowerCase(); if (!s) return null;
+  return db.users.find((u) => u.email.toLowerCase() === s) || db.users.find((u) => u.name.toLowerCase() === s) || db.users.find((u) => u.name.toLowerCase().split(" ")[0] === s) || db.users.find((u) => u.name.toLowerCase().split(" ").at(-1) === s) || null; };
+
+function autoMap(type, header) {
+  const used = new Set(); const map = {};
+  for (const f of IMPORT_TYPES[type].fields) {
+    const n = header.map((h) => TableReader.norm(h));
+    let idx = n.findIndex((h, i) => !used.has(i) && (h === TableReader.norm(f.label) || f.syn.includes(h)));
+    if (idx < 0) idx = n.findIndex((h, i) => !used.has(i) && h && f.syn.some((s) => s.length > 3 && h.startsWith(s)));
+    map[f.k] = idx; if (idx >= 0) used.add(idx);
+  }
+  return map;
+}
+/** Zeilen → geplante Aktionen (neu / aktualisieren / Fehler) – noch ohne zu speichern. */
+function planImport(imp) {
+  const T = IMPORT_TYPES[imp.type]; const out = []; const val = (row, k) => (imp.map[k] >= 0 ? String(row[imp.map[k]] ?? "").trim() : "");
+  const seen = new Map();
+  imp.rows.forEach((row, n) => {
+    const r = Object.fromEntries(T.fields.map((f) => [f.k, val(row, f.k)])); const line = n + imp.headerRow + 2;
+    const missing = T.fields.filter((f) => f.req && !r[f.k]).map((f) => f.label);
+    if (missing.length) return out.push({ line, action: "error", label: r.name || r.summary || "–", msg: `fehlt: ${missing.join(", ")}` });
+    if (imp.type === "customers") {
+      const key = r.no || r.externalId || r.name.toLowerCase(); if (seen.has(key)) return out.push({ line, action: "error", label: r.name, msg: `doppelt in der Datei (Zeile ${seen.get(key)})` }); seen.set(key, line);
+      const ex = (r.no && db.customers.find((c) => c.no === r.no)) || (r.externalId && db.customers.find((c) => c.externalId === r.externalId)) || (!r.no && !r.externalId && db.customers.find((c) => c.name.toLowerCase() === r.name.toLowerCase()));
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.name, msg: "existiert bereits" });
+      out.push({ line, action: ex ? "update" : "new", label: r.name, msg: ex ? `Kunde ${ex.no || ex.name} wird aktualisiert` : r.no ? `Kundennr. ${r.no}` : "", r, ex });
+    } else if (imp.type === "contacts" || imp.type === "assets") {
+      const c = findCust(r.customerNo, r.customerName); if (!c) return out.push({ line, action: "error", label: r.name, msg: `Kunde nicht gefunden (${r.customerNo || r.customerName || "keine Angabe"}) – zuerst Kunden importieren` });
+      const list = imp.type === "contacts" ? c.contacts || [] : c.assets || [];
+      const ex = imp.type === "contacts" ? list.find((k) => (r.email && (k.email || "").toLowerCase() === r.email.toLowerCase()) || k.name.toLowerCase() === r.name.toLowerCase())
+        : list.find((a) => (r.serial && a.serial === r.serial) || (!r.serial && a.name.toLowerCase() === r.name.toLowerCase()));
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.name, msg: "existiert bereits" });
+      if (imp.type === "assets" && (r.lastMaintenance && !TableReader.toDate(r.lastMaintenance) || r.nextMaintenance && !TableReader.toDate(r.nextMaintenance))) return out.push({ line, action: "error", label: r.name, msg: "Datum nicht lesbar (z. B. 15.03.2026)" });
+      out.push({ line, action: ex ? "update" : "new", label: r.name, msg: c.name, r, c, ex });
+    } else if (imp.type === "users") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) return out.push({ line, action: "error", label: r.name, msg: "E-Mail ungültig" });
+      const ex = db.users.find((u) => u.email.toLowerCase() === r.email.toLowerCase());
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.name, msg: "existiert bereits" });
+      out.push({ line, action: ex ? "update" : "new", label: r.name, msg: [r.email, r.team && !db.teams.some((t) => t.name.toLowerCase() === r.team.toLowerCase()) ? `Team „${r.team}“ unbekannt` : r.team].filter(Boolean).join(" · "), r, ex });
+    } else if (imp.type === "issues") {
+      const p = (r.project && (projByKey(r.project.toUpperCase()) || db.projects.find((x) => x.name.toLowerCase() === r.project.toLowerCase()))) || proj(imp.projectId);
+      if (!p) return out.push({ line, action: "error", label: r.summary, msg: `Projekt „${r.project}“ unbekannt` });
+      const ex = r.externalId && db.issues.find((i) => i.externalId === r.externalId);
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.summary, msg: `bereits importiert (${keyOf(ex)})` });
+      if (r.dueDate && !TableReader.toDate(r.dueDate)) return out.push({ line, action: "error", label: r.summary, msg: `Fälligkeit „${r.dueDate}“ nicht lesbar` });
+      const warn = [r.assignee && !findUser(r.assignee) ? `Person „${r.assignee}“ unbekannt` : "", r.customerNo && !findCust(r.customerNo) ? `Kunde ${r.customerNo} unbekannt` : ""].filter(Boolean);
+      out.push({ line, action: ex ? "update" : "new", label: r.summary, msg: [p.key, ...warn].join(" · "), r, p, ex, warn: warn.length > 0 });
+    }
+  });
+  return out;
+}
+async function runImport(imp, plan) {
+  const todo = plan.filter((x) => x.action === "new" || x.action === "update"); const now = new Date().toISOString(); const D = TableReader.toDate, N = TableReader.toNumber;
+  if (imp.type === "customers") for (const x of todo) {
+    const r = x.r; const data = Object.fromEntries(["no", "name", "street", "zip", "city", "phone", "email", "externalId", "notes"].filter((k) => r[k] !== "").map((k) => [k, r[k]]));
+    let c = x.ex; if (c) Object.assign(c, data, { updatedAt: now }); else { c = { id: uid(), no: "", street: "", zip: "", city: "", phone: "", email: "", externalId: "", notes: "", ...data, contacts: [], assets: [], createdAt: now, updatedAt: now }; db.customers.push(c); }
+    if (r.contactName) { const k = c.contacts.find((y) => y.name.toLowerCase() === r.contactName.toLowerCase()); const kd = { name: r.contactName, email: r.contactEmail || (k ? k.email : ""), phone: r.contactPhone || (k ? k.phone : ""), role: k?.role || "Hauptansprechpartner" };
+      if (k) Object.assign(k, kd); else c.contacts.push({ id: uid(), ...kd }); }
+  }
+  if (imp.type === "contacts") for (const x of todo) { const r = x.r; const data = Object.fromEntries(["name", "role", "email", "phone"].filter((k) => r[k] !== "").map((k) => [k, r[k]]));
+    if (x.ex) Object.assign(x.ex, data); else x.c.contacts.push({ id: uid(), role: "", email: "", phone: "", ...data }); x.c.updatedAt = now; }
+  if (imp.type === "assets") for (const x of todo) { const r = x.r;
+    const data = { name: r.name, ...(r.manufacturer ? { manufacturer: r.manufacturer } : {}), ...(r.model ? { model: r.model } : {}), ...(r.serial ? { serial: r.serial } : {}), ...(r.year ? { year: N(r.year) } : {}), ...(r.location ? { location: r.location } : {}),
+      ...(r.intervalMonths ? { intervalMonths: N(r.intervalMonths) } : {}), ...(r.lastMaintenance ? { lastMaintenance: D(r.lastMaintenance) } : {}), ...(r.nextMaintenance ? { nextMaintenance: D(r.nextMaintenance) } : {}), ...(r.active ? { active: TableReader.toBool(r.active) } : {}) };
+    if (x.ex) Object.assign(x.ex, data); else x.c.assets.push({ id: uid(), manufacturer: "", model: "", serial: "", year: null, location: "", intervalMonths: null, lastMaintenance: null, nextMaintenance: null, active: true, ...data }); x.c.updatedAt = now; }
+  if (imp.type === "users") {
+    const roleOf = (v) => { const s = String(v || "").toLowerCase(); return Object.entries(ROLES).find(([k, l]) => k.toLowerCase() === s || l.toLowerCase() === s)?.[0] || (/admin/.test(s) ? "ADMIN" : /service|techn|monteur/.test(s) ? "AGENT" : "MEMBER"); };
+    const res = await api("/api/admin/users/import", { method: "POST", body: { users: todo.map((x) => ({ name: x.r.name, email: x.r.email, role: x.r.role ? roleOf(x.r.role) : x.ex?.role || "MEMBER" })) } });
+    await reloadState();
+    for (const x of todo) { const t = x.r.team && db.teams.find((y) => y.name.toLowerCase() === x.r.team.toLowerCase()); const u = db.users.find((y) => y.email.toLowerCase() === x.r.email.toLowerCase());
+      if (t && u && !t.memberIds.includes(u.id)) t.memberIds.push(u.id); }
+    save(); return res;
+  }
+  if (imp.type === "issues") {
+    const creates = todo.filter((x) => !x.ex); const byProj = new Map(); creates.forEach((x) => byProj.set(x.p.id, (byProj.get(x.p.id) || 0) + 1));
+    const nextNo = {}; for (const [pid, n] of byProj) nextNo[pid] = (await api(`/api/projects/${pid}/reserve?count=${n}`, { method: "POST" })).no;
+    const assigned = new Map();
+    for (const x of todo) {
+      const r = x.r; const p = x.p; const wf = workflowOf(p); const types = PROJECT_TYPES[p.type].types.filter((t) => t !== "SUBTASK" && t !== "EPIC");
+      const type = types.find((t) => t === r.type.toUpperCase() || TYPES[t].label.toLowerCase() === r.type.toLowerCase()) || types[0];
+      const st = r.status && (wf.find((s) => s.id === r.status.toUpperCase() || s.name.toLowerCase() === r.status.toLowerCase()) || ({ erledigt: wf.find((s) => s.cat === "done"), fertig: wf.find((s) => s.cat === "done"), done: wf.find((s) => s.cat === "done"), offen: wf[0], neu: wf[0], "in arbeit": wf.find((s) => s.cat === "progress") })[r.status.toLowerCase()]);
+      const prio = Object.entries(PRIO_WORDS).find(([, w]) => w.includes(r.priority.toLowerCase()))?.[0] || (PRIOS[r.priority.toUpperCase()] ? r.priority.toUpperCase() : null);
+      const u = findUser(r.assignee); const t = r.team && db.teams.find((y) => y.name.toLowerCase() === r.team.toLowerCase()); const c = findCust(r.customerNo);
+      const labels = r.labels ? r.labels.split(/[,;]/).map((l) => l.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean) : [];
+      if (x.ex) {
+        const ch = { summary: r.summary, ...(r.description ? { description: r.description } : {}), ...(st ? { status: st.id } : {}), ...(prio ? { priority: prio } : {}), ...(u ? { assigneeId: u.id } : {}), ...(r.dueDate ? { dueDate: D(r.dueDate) } : {}), ...(t ? { teamId: t.id } : {}) };
+        updateIssue(x.ex, ch); continue;
+      }
+      const i = newIssue({ project: p, no: nextNo[p.id]++, type, summary: r.summary, description: r.description, priority: prio || "MEDIUM", assigneeId: u?.id || null, reporterId: db.currentUserId, labels: [...new Set([...labels, "import"])],
+        dueDate: D(r.dueDate), teamId: t ? t.id : undefined, customerId: c?.id || null, customer: c ? customerSnapshot(c) : null, externalId: r.externalId || null, rank: Date.now() + i_rank++ });
+      if (st && st.id !== i.status) { const from = i.status; i.status = st.id; applyTransition(i, p, from, st.id); }
+      i.history.unshift({ id: uid(), at: now, userId: db.currentUserId, field: "Import", from: "", to: imp.fileName || "Datei" });
+      db.issues.push(i); if (u && u.id !== db.currentUserId) assigned.set(u.id, (assigned.get(u.id) || 0) + 1);
+    }
+    for (const [userId, n] of assigned) notify([userId], "assign", `${n} Vorgänge per Import zugewiesen`, `${me().name} hat Vorgänge aus „${imp.fileName}“ importiert.`, null);
+  }
+  save(); await flush(); return null;
+}
+let i_rank = 0;
+function viewImport() {
+  const imp = ui.imp || (ui.imp = { step: 1, update: true }); const admin = me().role === "ADMIN";
+  const types = Object.entries(IMPORT_TYPES).filter(([, t]) => !t.admin || admin);
+  const stepHead = (n, title, done) => `<div class="imp-h ${imp.step === n ? "on" : ""} ${done ? "done" : ""}"><span class="imp-n">${done ? "✓" : n}</span>${title}</div>`;
+  let body = "";
+  body += `<div class="card pad imp-step">${stepHead(1, "Was möchten Sie einspielen?", imp.step > 1)}
+    <div class="grid g3" style="margin-top:10px">${types.map(([k, t]) => `<button type="button" class="card imp-type ${imp.type === k ? "on" : ""}" data-act="imp-type" data-v="${k}"><b>${t.label}</b><span class="small muted">${t.desc}</span></button>`).join("")}</div>
+    ${imp.type ? `<p class="small muted" style="margin:10px 0 0">Tipp: Exportieren Sie die Daten aus Ihrem bisherigen Programm als Excel oder CSV – die Spalten werden automatisch erkannt. Oder nutzen Sie die <a href="#" data-act="imp-template">Excel-Vorlage für ${IMPORT_TYPES[imp.type].label}</a>. Reihenfolge: zuerst Kunden, dann Ansprechpartner und Anlagen.</p>` : ""}</div>`;
+  if (imp.type) body += `<div class="card pad imp-step">${stepHead(2, "Datei auswählen", !!imp.rows)}
+    <label class="dropzone" id="imp-drop"><input type="file" id="imp-file" accept=".xlsx,.csv,.txt,text/csv" hidden>${icon("upload")}<span>${imp.fileName ? `<b>${esc(imp.fileName)}</b> · ${imp.rows ? `${imp.rows.length} Zeilen` : "wird gelesen …"}` : "Excel- (.xlsx) oder CSV-Datei hierher ziehen oder <u>auswählen</u>"}</span></label>
+    ${imp.sheets?.length > 1 ? `<label class="f" style="max-width:320px;margin-top:10px">Tabellenblatt<select id="imp-sheet">${imp.sheets.map((s, n) => `<option value="${n}" ${n === imp.sheetIdx ? "selected" : ""}>${esc(s.name)} (${s.rows.length} Zeilen)</option>`).join("")}</select></label>` : ""}</div>`;
+  if (imp.rows) {
+    const T = IMPORT_TYPES[imp.type]; const sample = (k) => (imp.map[k] >= 0 ? imp.rows.slice(0, 3).map((r) => r[imp.map[k]]).filter(Boolean).join(" · ") : "");
+    body += `<div class="card pad imp-step">${stepHead(3, "Spalten zuordnen", !!imp.plan)}
+      <p class="small muted" style="margin:6px 0 10px">Automatisch erkannt – bitte prüfen. Felder mit * sind Pflicht.</p>
+      <div class="tbl-wrap"><table class="imp-map"><thead><tr><th>Feld im GF Tracker</th><th>Spalte in Ihrer Datei</th><th class="hide-m">Beispielwerte</th></tr></thead><tbody>
+      ${T.fields.map((f) => `<tr><td>${esc(f.label)}${f.req ? ' <span class="req">*</span>' : ""}</td><td><select data-act="imp-map" data-k="${f.k}"><option value="-1">– nicht übernehmen –</option>${imp.header.map((h, n) => `<option value="${n}" ${imp.map[f.k] === n ? "selected" : ""}>${esc(h || `Spalte ${n + 1}`)}</option>`).join("")}</select></td><td class="small muted hide-m trunc" style="max-width:360px">${esc(sample(f.k))}</td></tr>`).join("")}
+      </tbody></table></div>
+      <div class="row" style="margin-top:10px;gap:16px">${imp.type === "issues" ? `<label class="f" style="width:auto">Projekt, wenn keine Spalte „Projekt“<select id="imp-project">${db.projects.map((p) => `<option value="${p.id}" ${p.id === imp.projectId ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>` : ""}
+        <label class="row nowrap small"><input type="checkbox" id="imp-update" ${imp.update ? "checked" : ""}> Vorhandene Einträge aktualisieren (statt überspringen)</label>
+        <span class="sp"></span><button class="btn primary" data-act="imp-check">Prüfen</button></div></div>`;
+  }
+  if (imp.plan) {
+    const cnt = (a) => imp.plan.filter((x) => x.action === a).length; const errs = cnt("error");
+    const badge = { new: '<span class="chip green">neu</span>', update: '<span class="chip blue">aktualisieren</span>', skip: '<span class="chip gray">überspringen</span>', error: '<span class="chip red">Fehler</span>' };
+    body += `<div class="card pad imp-step">${stepHead(4, "Vorschau & Import", !!imp.result)}
+      <div class="row" style="margin:8px 0 10px;gap:8px">${badge.new} ${cnt("new")} ${badge.update} ${cnt("update")} ${badge.skip} ${cnt("skip")} ${badge.error} ${errs}</div>
+      <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Zeile</th><th>Aktion</th><th>Eintrag</th><th>Hinweis</th></tr></thead><tbody>
+      ${imp.plan.slice(0, 500).map((x) => `<tr><td class="small muted">${x.line}</td><td>${badge[x.action]}</td><td class="trunc" style="max-width:320px">${esc(x.label)}</td><td class="small ${x.action === "error" || x.warn ? "" : "muted"}" style="${x.action === "error" ? "color:var(--danger)" : x.warn ? "color:var(--warn)" : ""}">${esc(x.msg || "")}</td></tr>`).join("")}
+      </tbody></table></div>${imp.plan.length > 500 ? `<p class="small muted">… und ${imp.plan.length - 500} weitere Zeilen</p>` : ""}
+      ${imp.result ? `<div class="note info" style="margin-top:12px">${esc(imp.result)}</div>` : `<div class="row" style="margin-top:12px">${errs ? `<span class="small muted">Zeilen mit Fehler werden ausgelassen.</span>` : ""}<span class="sp"></span><button class="btn subtle" data-act="imp-reset">Abbrechen</button><button class="btn primary" data-act="imp-run" ${cnt("new") + cnt("update") ? "" : "disabled"}>${cnt("new") + cnt("update")} Einträge importieren</button></div>`}</div>`;
+  }
+  return `<div class="page-head"><div><h1>Daten importieren</h1><p class="muted" style="margin:4px 0 0">Bestehende Daten aus Excel, CSV oder Ihrem bisherigen Programm übernehmen – auch wiederholt zum Abgleichen.</p></div>${imp.type ? `<button class="btn subtle" data-act="imp-reset">Neu beginnen</button>` : ""}</div>${body}`;
+}
+function importTemplate(type) {
+  const T = IMPORT_TYPES[type];
+  const ex = { customers: ["10100", "Beispiel GmbH", "Hauptstraße 1", "09111", "Chemnitz", "0371 123456", "info@beispiel.de", "D-4711", "Zufahrt über Tor 2", "Max Mustermann", "m.mustermann@beispiel.de", "0171 1234567"],
+    contacts: ["10100", "Beispiel GmbH", "Erika Muster", "Instandhaltung", "e.muster@beispiel.de", "0371 123457"],
+    assets: ["10100", "Beispiel GmbH", "Schraubenkompressor", "Atlas Copco", "GA 30", "AII123456", "2018", "Halle 1", "12", "15.03.2026", "", "ja"],
+    users: ["Max Mustermann", "max.mustermann@druckluft-chemnitz.de", "Service-Mitarbeiter", "Service & Technik"],
+    issues: ["Angebot für Kältetrockner erstellen", "Kunde wünscht Angebot bis Monatsende", "GF", "Aufgabe", "Zu erledigen", "Hoch", "lisa.schmidt@druckluft-chemnitz.de", "Büro & Vertrieb", "30.11.2026", "angebot", "10100", "ALT-0815"] }[type];
+  download(`vorlage-${T.label.toLowerCase().replace(/[^a-z]+/g, "-")}.xlsx`, XLSX.build([{ name: T.label, columns: T.fields.map((f) => ({ h: f.label, w: Math.max(12, f.label.length + 4) })), rows: [ex] }], { title: `Importvorlage ${T.label}` }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+async function importFile(file) {
+  const imp = ui.imp; imp.fileName = file.name; imp.rows = null; imp.plan = null; imp.result = null; render();
+  try {
+    imp.sheets = await TableReader.readTable(file);
+    const want = IMPORT_TYPES[imp.type].sheet; imp.sheetIdx = Math.max(0, imp.sheets.findIndex((s) => want.includes(TableReader.norm(s.name))));
+    importSheet(imp.sheetIdx);
+  } catch (e) { imp.fileName = null; toast(e.message); render(); }
+}
+function importSheet(n) {
+  const imp = ui.imp; const rows = imp.sheets[n]?.rows || []; imp.sheetIdx = n; imp.plan = null; imp.result = null;
+  // Kopfzeile = erste Zeile mit mindestens zwei Texten (Titelzeilen darüber werden übersprungen)
+  const hr = Math.max(0, rows.findIndex((r) => r.filter((c) => c && isNaN(Number(c))).length >= 2));
+  imp.headerRow = hr; imp.header = rows[hr] || []; imp.rows = rows.slice(hr + 1); imp.map = autoMap(imp.type, imp.header);
+  if (!imp.projectId) imp.projectId = db.projects[0]?.id;
+  if (!imp.rows.length) toast("In diesem Tabellenblatt wurden keine Datenzeilen gefunden.");
+  render();
+}
+
 /* ---------- Ansicht: Kunden & Anlagen ---------- */
 const customer = (id) => (id ? db.customers.find((c) => c.id === id) || null : null);
 const assetOf = (c, id) => (c && id ? (c.assets || []).find((a) => a.id === id) || null : null);
@@ -1259,12 +1460,12 @@ function viewSettings() {
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
-      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
+      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
       ${sync.mail ? `<button class="btn" data-act="mail-test">Test-E-Mail an mich senden</button>` : ""}
       <h3 style="font-size:15px;margin:18px 0 6px">Kundenportal auf Ihrer Website</h3><p class="small muted" style="margin:0 0 8px">Öffentliche Adresse: <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – als Link/Button „Störung melden“ verwenden oder direkt in eine Seite einbetten:</p>
       <textarea id="embed-code" class="jql" rows="3" readonly>&lt;iframe src="${esc(location.origin)}/portal?embed=1" title="Service-Portal" style="width:100%;min-height:900px;border:0" loading="lazy"&gt;&lt;/iframe&gt;</textarea>
-      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
+      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
     </div>`;
 }
 
@@ -1435,6 +1636,9 @@ function projectForm() {
 /* ---------- Drag & Drop ---------- */
 let dragId = null;
 function bindDnD() {
+  const dz = $("#imp-drop");
+  if (dz) { dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drop-on"); }); dz.addEventListener("dragleave", () => dz.classList.remove("drop-on"));
+    dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("drop-on"); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }); }
   $$("[data-drag-assign]").forEach((el) => {
     el.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/assign", el.dataset.dragAssign); el.classList.add("dragging"); });
     el.addEventListener("dragend", () => el.classList.remove("dragging"));
@@ -1786,6 +1990,15 @@ document.addEventListener("click", (e) => {
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
+    case "imp-type": ui.imp = { step: 2, update: true, type: el.dataset.v }; render(); break;
+    case "imp-template": e.preventDefault(); importTemplate(ui.imp.type); break;
+    case "imp-reset": ui.imp = null; render(); break;
+    case "imp-check": { const imp = ui.imp; const T = IMPORT_TYPES[imp.type]; const miss = T.fields.filter((f) => f.req && !(imp.map[f.k] >= 0));
+      if (miss.length) return toast(`Bitte Spalte zuordnen: ${miss.map((f) => f.label).join(", ")}`); imp.plan = planImport(imp); imp.step = 4; render(); break; }
+    case "imp-run": { const imp = ui.imp; el.disabled = true; el.textContent = "Importiere …";
+      runImport(imp, imp.plan).then((res) => { const n = imp.plan.filter((x) => x.action === "new").length, u = imp.plan.filter((x) => x.action === "update").length;
+        imp.result = `Fertig: ${n} neu angelegt, ${u} aktualisiert${imp.plan.some((x) => x.action === "error") ? `, ${imp.plan.filter((x) => x.action === "error").length} Zeilen mit Fehler ausgelassen` : ""}.${res?.created != null ? ` (${res.created} Zugänge neu – Passwort unter Einstellungen setzen oder Anmeldung mit Microsoft nutzen.)` : ""}`;
+        toast("Import abgeschlossen"); render(); }).catch((err) => { toast(err.message); el.disabled = false; el.textContent = "Erneut versuchen"; }); break; }
     case "customer-new": customerForm(); break;
     case "customer-edit": { const c = customer(id); if (c) customerForm(c); break; }
     case "customer-delete": { const c = customer(id); if (!c || !confirm(`Kunde „${c.name}“ löschen? Vorgänge bleiben erhalten (mit Kontaktdaten), verlieren aber die Verknüpfung.`)) return;
@@ -1859,6 +2072,11 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
+  if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
+  if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
+  if (el.dataset.act === "imp-map") { ui.imp.map[el.dataset.k] = Number(el.value); ui.imp.plan = null; render(); return; }
+  if (el.id === "imp-project") { ui.imp.projectId = el.value; ui.imp.plan = null; return; }
+  if (el.id === "imp-update") { ui.imp.update = el.checked; ui.imp.plan = null; render(); return; }
   if (el.id === "cf-customer") { const f = el.form; const keep = { summary: f.summary.value, description: f.description.value, priority: f.priority.value }; createForm({ projectId: f.projectId.value, type: f.type.value, customerId: el.value || null, teamId: f.teamId?.value });
     const nf = $("#create-form"); nf.summary.value = keep.summary; nf.description.value = keep.description; nf.priority.value = keep.priority; return; }
   if (el.id === "dispatch-team") { ui.dispatchTeam = el.value; render(); return; }

@@ -364,6 +364,26 @@ h1 .tavatar { margin-right: 10px; }
 .qtable td.num, .qtable th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .qd { font-size: 10px; } .qd.good { color: var(--ok); } .qd.bad { color: var(--danger); }
 
+/* Kunden */
+.cust-grid { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 14px; align-items: start; }
+.h3 { font-size: 15px; margin: 0 0 10px; }
+.kv { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 6px 10px; font-size: 13px; } .kv > span:nth-child(odd) { color: var(--muted); }
+.hist-item { padding: 8px 6px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 6px; } .hist-item:hover { background: var(--surface-2); }
+@media (max-width: 1000px) { .cust-grid { grid-template-columns: minmax(0, 1fr); } }
+.cust-grid > *, .cust-grid .card { min-width: 0; } .kv > span { overflow-wrap: anywhere; }
+.cust-grid > .grid { grid-template-columns: minmax(0, 1fr); }
+
+/* Import */
+.imp-step { margin-bottom: 14px; }
+.imp-h { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+.imp-n { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--surface-2); color: var(--fg-2); font-size: 13px; flex: none; }
+.imp-h.on .imp-n { background: var(--primary); color: var(--primary-fg); } .imp-h.done .imp-n { background: var(--ok-soft); color: var(--ok); }
+.imp-type { display: grid; gap: 4px; text-align: left; padding: 12px 14px; font: inherit; color: inherit; cursor: pointer; border: 2px solid transparent; }
+.imp-type.on { border-color: var(--primary); background: var(--primary-soft); }
+.dropzone { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; padding: 26px 16px; border: 2px dashed var(--border); border-radius: 10px; cursor: pointer; color: var(--fg-2); text-align: center; }
+.dropzone:hover, .dropzone.drop-on { border-color: var(--primary); background: var(--primary-soft); }
+.imp-map select { min-width: 200px; }
+
 .sa-login { max-width: 520px; margin: 8vh auto; padding: 0 16px; }
 .sa-logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: #fff; }
 .sa-users { display: grid; gap: 8px; }
@@ -394,7 +414,8 @@ h1 .tavatar { margin-right: 10px; }
    Fachlogik (Workflows, SLA, Patch-Verfahren) steckt in shared.js.
    ====================================================================== */
 const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
-  pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch } = TrackerShared;
+  pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch,
+  nextMaintenance, customerSnapshot, customerAddress, maintenanceIssueData } = TrackerShared;
 
 /* ---------- Symbole ---------- */
 const ICONS = {
@@ -450,8 +471,8 @@ function toast(msg) { const el = document.createElement("div"); el.className = "
    nur die Unterschiede als Patch. Der Server führt Änderungen mehrerer Personen
    feldweise zusammen und meldet per Event, dass es Neues gibt; pull() holt dann
    alle Änderungen seit der eigenen Revision. */
-const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
-let db = { users: [], teams: [], projects: [], sprints: [], issues: [], filters: [], notifications: [], currentUserId: null };
+const COLLECTIONS = ["users", "teams", "customers", "absences", "projects", "sprints", "issues", "filters", "notifications"];
+let db = { users: [], teams: [], customers: [], absences: [], projects: [], sprints: [], issues: [], filters: [], notifications: [], currentUserId: null };
 const sync = { rev: 0, base: {}, pending: [], timer: null, inFlight: false, again: false, pulling: false, pullAgain: false, online: true, retry: 0, mail: false, company: "GF Tracker" };
 COLLECTIONS.forEach((t) => (sync.base[t] = new Map()));
 const LOCAL_KEY = "gft-local";
@@ -615,7 +636,7 @@ function notify(userIds, type, title, text, issueId, key) {
 // Fristen- und SLA-Benachrichtigungen erzeugt der Server (deadlineJob).
 
 /* ---------- Vorgänge ändern ---------- */
-const FIELD_LABEL = { teamId: "Team", appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
+const FIELD_LABEL = { customerId: "Kunde", assetId: "Anlage", customer: "Ansprechpartner", teamId: "Team", appointmentAt: "Termin", resolution: "Servicebericht", summary: "Zusammenfassung", description: "Beschreibung", status: "Status", priority: "Priorität", assigneeId: "Verantwortlich", reporterId: "Melder", labels: "Labels",
   dueDate: "Fälligkeitsdatum", startDate: "Startdatum", storyPoints: "Story Points", estimateH: "Schätzung", epicId: "Epic", sprintId: "Sprint", type: "Vorgangstyp", parentId: "Übergeordnet", color: "Farbe" };
 function fieldText(i, f, v) {
   if (v == null || v === "" || (Array.isArray(v) && !v.length)) return "–";
@@ -623,6 +644,9 @@ function fieldText(i, f, v) {
   if (f === "priority") return PRIOS[v]?.label || v;
   if (f === "assigneeId" || f === "reporterId") return uname(v);
   if (f === "teamId") return team(v)?.name || "–";
+  if (f === "customerId") return customer(v)?.name || "–";
+  if (f === "assetId") return assetOf(customer(i.customerId), v)?.name || "–";
+  if (f === "customer") return [v.name, v.company].filter(Boolean).join(" · ");
   if (f === "epicId" || f === "parentId") { const x = issue(v); return x ? `${keyOf(x)} ${x.summary}` : "–"; }
   if (f === "sprintId") return sprint(v)?.name || "Backlog";
   if (f === "type") return TYPES[v]?.label || v;
@@ -771,7 +795,7 @@ function fieldValues(i, f) {
     case "resolution": return isDone(i) ? ["Done", "Erledigt", "Fertig"] : ["Unresolved", "Ungelöst"];
     case "key": case "issuekey": return [keyOf(i)];
     case "epic": case "parent": { const e = issue(f === "epic" ? i.epicId : i.parentId); return e ? [keyOf(e), e.summary] : []; }
-    case "customer": return i.customer ? [i.customer.name, i.customer.company, i.customer.email] : [];
+    case "customer": { const c = customer(i.customerId); return [...(i.customer ? [i.customer.name, i.customer.company, i.customer.email] : []), ...(c ? [c.name, c.no] : [])]; }
     default: return [];
   }
 }
@@ -941,7 +965,7 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <a class="logo" href="#/your-work"><span class="mark">${icon("bolt")}</span>GF Tracker</a>
-    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="?portal" target="_blank" rel="noopener">Service-Portal ↗</a>
+    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Filter", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="?portal" target="_blank" rel="noopener">Service-Portal ↗</a>
     <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Erstellen</span></button>
     <div class="search">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen (z. B. DIG-12)" aria-label="Suchen"></div>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
@@ -972,6 +996,8 @@ function render() {
       case "p": { const p = projByKey(parts[1]); if (!p) { html = `<div class="empty">Projekt nicht gefunden.</div>`; break; }
         const v = parts[2] || (p.type === "service" ? "queue" : "board"); const tabs = projectNav(p, v);
         html = tabs + ({ dispatch: viewDispatch, board: viewBoard, backlog: viewBacklog, timeline: viewTimeline, list: viewList, reports: viewReports, queue: viewQueue, settings: viewProjectSettings }[v] || viewBoard)(p); break; }
+      case "import": html = viewImport(); break;
+      case "customers": html = parts[1] ? viewCustomer(customer(parts[1])) : viewCustomers(); break;
       case "teams": html = parts[1] ? viewTeam(team(parts[1])) : viewTeams(); break;
       case "filters": html = viewFilters(params); break;
       case "dashboard": html = viewDashboard(); break;
@@ -1150,6 +1176,299 @@ function issueRow(i, extra = "") {
   return `<tr class="click" data-act="open" data-id="${i.id}"><td style="width:28px">${typeIcon(i.type)}</td><td class="key" style="width:80px">${keyOf(i)}</td>
     <td><div class="trunc" style="max-width:520px">${esc(i.summary)}</div></td><td>${lozenge(i)}</td><td style="width:28px">${prioIcon(i.priority)}</td><td style="width:100px">${dueChip(i) || '<span class="muted small">–</span>'}</td>${extra}</tr>`;
 }
+/* ---------- Import-Assistent ---------- */
+const IMPORT_TYPES = {
+  customers: { label: "Kunden", desc: "Kundenstamm aus Warenwirtschaft / ERP – optional mit erstem Ansprechpartner", sheet: ["kunden", "customers", "debitoren"], fields: [
+    { k: "no", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "kdnummer", "debitor", "debitorennummer", "debitornr", "nummer", "nr", "customerno", "customernumber", "kundenid"] },
+    { k: "name", label: "Firma", req: true, syn: ["firma", "name", "kunde", "firmenname", "name1", "kundenname", "company", "unternehmen", "bezeichnung"] },
+    { k: "street", label: "Straße", syn: ["strasse", "str", "adresse", "anschrift", "street", "strassehausnr", "strasseundhausnummer", "strassenr"] },
+    { k: "zip", label: "PLZ", syn: ["plz", "postleitzahl", "zip"] }, { k: "city", label: "Ort", syn: ["ort", "stadt", "city", "wohnort"] },
+    { k: "phone", label: "Telefon", syn: ["telefon", "tel", "telefonnummer", "phone", "telefonzentrale"] }, { k: "email", label: "E-Mail", syn: ["email", "mail", "emailadresse"] },
+    { k: "externalId", label: "ERP-/Fremd-ID", syn: ["erpid", "fremdid", "externalid", "id", "externeid"] }, { k: "notes", label: "Notizen", syn: ["notizen", "bemerkung", "bemerkungen", "notiz", "info", "hinweis"] },
+    { k: "contactName", label: "Ansprechpartner", syn: ["ansprechpartner", "kontakt", "kontaktperson", "ansprechpartnername"] },
+    { k: "contactEmail", label: "E-Mail Ansprechpartner", syn: ["emailansprechpartner", "ansprechpartneremail", "kontaktemail"] },
+    { k: "contactPhone", label: "Telefon Ansprechpartner", syn: ["telefonansprechpartner", "ansprechpartnertelefon", "kontakttelefon", "mobil", "handy"] }] },
+  contacts: { label: "Ansprechpartner", desc: "Weitere Kontakte je Kunde (Zuordnung über Kundennummer oder Firma)", sheet: ["ansprechpartner", "kontakte", "contacts"], fields: [
+    { k: "customerNo", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "debitor", "debitorennummer"] }, { k: "customerName", label: "Firma", syn: ["firma", "kunde", "firmenname", "kundenname", "company"] },
+    { k: "name", label: "Name", req: true, syn: ["name", "ansprechpartner", "kontakt", "vollername", "nachname"] }, { k: "role", label: "Funktion", syn: ["funktion", "position", "abteilung", "rolle"] },
+    { k: "email", label: "E-Mail", syn: ["email", "mail", "emailadresse"] }, { k: "phone", label: "Telefon", syn: ["telefon", "tel", "mobil", "handy", "phone"] }] },
+  assets: { label: "Anlagen", desc: "Kompressoren, Trockner, Behälter … mit Seriennummer und Wartungsintervall", sheet: ["anlagen", "geraete", "maschinen", "assets"], fields: [
+    { k: "customerNo", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "debitor"] }, { k: "customerName", label: "Firma", syn: ["firma", "kunde", "kundenname"] },
+    { k: "name", label: "Bezeichnung", req: true, syn: ["bezeichnung", "anlage", "maschine", "geraet", "name", "anlagenbezeichnung"] },
+    { k: "manufacturer", label: "Hersteller", syn: ["hersteller", "marke", "fabrikat"] }, { k: "model", label: "Modell", syn: ["modell", "typ", "type", "baureihe"] },
+    { k: "serial", label: "Seriennummer", syn: ["seriennummer", "seriennr", "sn", "fabriknummer", "serial", "serialnumber"] }, { k: "year", label: "Baujahr", syn: ["baujahr", "jahr"] },
+    { k: "location", label: "Standort", syn: ["standort", "aufstellort", "ort", "halle"] }, { k: "intervalMonths", label: "Wartungsintervall (Monate)", syn: ["intervallmonate", "intervall", "wartungsintervall", "wartungsintervallmonate"] },
+    { k: "lastMaintenance", label: "Letzte Wartung", syn: ["letztewartung", "wartungam", "letzterservice"] }, { k: "nextMaintenance", label: "Nächste Wartung", syn: ["naechstewartung", "faellig", "naechsterservice", "wartungfaellig"] },
+    { k: "active", label: "In Betrieb", syn: ["inbetrieb", "aktiv", "status"] }] },
+  users: { label: "Mitarbeiter", desc: "Personen mit Rolle und Team (Anmeldung danach per Passwort oder Microsoft-Konto)", admin: true, sheet: ["mitarbeiter", "personen", "benutzer", "users"], fields: [
+    { k: "name", label: "Name", req: true, syn: ["name", "vollername", "mitarbeiter", "fullname"] }, { k: "email", label: "E-Mail", req: true, syn: ["email", "mail", "emailadresse", "loginemail"] },
+    { k: "role", label: "Rolle", syn: ["rolle", "role", "berechtigung"] }, { k: "team", label: "Team", syn: ["team", "abteilung", "bereich"] }] },
+  issues: { label: "Aufgaben & Vorgänge", desc: "Offene Aufgaben, Tickets oder Projektlisten (z. B. aus Excel, Planner, altem System)", sheet: ["vorgaenge", "aufgaben", "tickets", "tasks"], fields: [
+    { k: "summary", label: "Zusammenfassung", req: true, syn: ["zusammenfassung", "titel", "betreff", "aufgabe", "thema", "summary", "title", "aufgabenname"] },
+    { k: "description", label: "Beschreibung", syn: ["beschreibung", "details", "text", "description", "notizen"] },
+    { k: "project", label: "Projekt", syn: ["projekt", "projektschluessel", "project", "bereich"] }, { k: "type", label: "Typ", syn: ["typ", "art", "vorgangstyp", "type"] },
+    { k: "status", label: "Status", syn: ["status", "zustand", "fortschritt"] }, { k: "priority", label: "Priorität", syn: ["prioritaet", "prio", "dringlichkeit", "priority", "wichtigkeit"] },
+    { k: "assignee", label: "Verantwortlich", syn: ["verantwortlich", "zustaendig", "bearbeiter", "mitarbeiter", "zugewiesenan", "assignee", "zugewiesen"] }, { k: "team", label: "Team", syn: ["team"] },
+    { k: "dueDate", label: "Fällig", syn: ["faellig", "frist", "deadline", "faelligkeitsdatum", "faelligam", "termin", "enddatum", "due"] },
+    { k: "labels", label: "Labels", syn: ["labels", "schlagworte", "kategorie", "tags"] }, { k: "customerNo", label: "Kundennummer", syn: ["kundennummer", "kundennr", "kdnr", "debitor"] },
+    { k: "externalId", label: "Fremd-ID / Schlüssel", syn: ["externeid", "fremdid", "ticketnr", "ticketnummer", "schluessel", "id", "nummer", "vorgangsnummer"] }] },
+};
+const PRIO_WORDS = { HIGHEST: ["höchste", "hoechste", "kritisch", "sehr hoch", "sofort", "highest", "critical", "1"], HIGH: ["hoch", "dringend", "high", "wichtig", "2"], MEDIUM: ["mittel", "normal", "medium", "3"], LOW: ["niedrig", "gering", "low", "4"], LOWEST: ["niedrigste", "sehr niedrig", "lowest", "5"] };
+const findCust = (no, name) => { const n = String(no || "").trim(), nm = String(name || "").trim().toLowerCase();
+  return (n && (db.customers.find((c) => c.no === n) || db.customers.find((c) => c.externalId === n))) || (nm && db.customers.find((c) => c.name.toLowerCase() === nm)) || null; };
+const findUser = (v) => { const s = String(v || "").trim().toLowerCase(); if (!s) return null;
+  return db.users.find((u) => u.email.toLowerCase() === s) || db.users.find((u) => u.name.toLowerCase() === s) || db.users.find((u) => u.name.toLowerCase().split(" ")[0] === s) || db.users.find((u) => u.name.toLowerCase().split(" ").at(-1) === s) || null; };
+
+function autoMap(type, header) {
+  const used = new Set(); const map = {};
+  for (const f of IMPORT_TYPES[type].fields) {
+    const n = header.map((h) => TableReader.norm(h));
+    let idx = n.findIndex((h, i) => !used.has(i) && (h === TableReader.norm(f.label) || f.syn.includes(h)));
+    if (idx < 0) idx = n.findIndex((h, i) => !used.has(i) && h && f.syn.some((s) => s.length > 3 && h.startsWith(s)));
+    map[f.k] = idx; if (idx >= 0) used.add(idx);
+  }
+  return map;
+}
+/** Zeilen → geplante Aktionen (neu / aktualisieren / Fehler) – noch ohne zu speichern. */
+function planImport(imp) {
+  const T = IMPORT_TYPES[imp.type]; const out = []; const val = (row, k) => (imp.map[k] >= 0 ? String(row[imp.map[k]] ?? "").trim() : "");
+  const seen = new Map();
+  imp.rows.forEach((row, n) => {
+    const r = Object.fromEntries(T.fields.map((f) => [f.k, val(row, f.k)])); const line = n + imp.headerRow + 2;
+    const missing = T.fields.filter((f) => f.req && !r[f.k]).map((f) => f.label);
+    if (missing.length) return out.push({ line, action: "error", label: r.name || r.summary || "–", msg: `fehlt: ${missing.join(", ")}` });
+    if (imp.type === "customers") {
+      const key = r.no || r.externalId || r.name.toLowerCase(); if (seen.has(key)) return out.push({ line, action: "error", label: r.name, msg: `doppelt in der Datei (Zeile ${seen.get(key)})` }); seen.set(key, line);
+      const ex = (r.no && db.customers.find((c) => c.no === r.no)) || (r.externalId && db.customers.find((c) => c.externalId === r.externalId)) || (!r.no && !r.externalId && db.customers.find((c) => c.name.toLowerCase() === r.name.toLowerCase()));
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.name, msg: "existiert bereits" });
+      out.push({ line, action: ex ? "update" : "new", label: r.name, msg: ex ? `Kunde ${ex.no || ex.name} wird aktualisiert` : r.no ? `Kundennr. ${r.no}` : "", r, ex });
+    } else if (imp.type === "contacts" || imp.type === "assets") {
+      const c = findCust(r.customerNo, r.customerName); if (!c) return out.push({ line, action: "error", label: r.name, msg: `Kunde nicht gefunden (${r.customerNo || r.customerName || "keine Angabe"}) – zuerst Kunden importieren` });
+      const list = imp.type === "contacts" ? c.contacts || [] : c.assets || [];
+      const ex = imp.type === "contacts" ? list.find((k) => (r.email && (k.email || "").toLowerCase() === r.email.toLowerCase()) || k.name.toLowerCase() === r.name.toLowerCase())
+        : list.find((a) => (r.serial && a.serial === r.serial) || (!r.serial && a.name.toLowerCase() === r.name.toLowerCase()));
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.name, msg: "existiert bereits" });
+      if (imp.type === "assets" && (r.lastMaintenance && !TableReader.toDate(r.lastMaintenance) || r.nextMaintenance && !TableReader.toDate(r.nextMaintenance))) return out.push({ line, action: "error", label: r.name, msg: "Datum nicht lesbar (z. B. 15.03.2026)" });
+      out.push({ line, action: ex ? "update" : "new", label: r.name, msg: c.name, r, c, ex });
+    } else if (imp.type === "users") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(r.email)) return out.push({ line, action: "error", label: r.name, msg: "E-Mail ungültig" });
+      const ex = db.users.find((u) => u.email.toLowerCase() === r.email.toLowerCase());
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.name, msg: "existiert bereits" });
+      out.push({ line, action: ex ? "update" : "new", label: r.name, msg: [r.email, r.team && !db.teams.some((t) => t.name.toLowerCase() === r.team.toLowerCase()) ? `Team „${r.team}“ unbekannt` : r.team].filter(Boolean).join(" · "), r, ex });
+    } else if (imp.type === "issues") {
+      const p = (r.project && (projByKey(r.project.toUpperCase()) || db.projects.find((x) => x.name.toLowerCase() === r.project.toLowerCase()))) || proj(imp.projectId);
+      if (!p) return out.push({ line, action: "error", label: r.summary, msg: `Projekt „${r.project}“ unbekannt` });
+      const ex = r.externalId && db.issues.find((i) => i.externalId === r.externalId);
+      if (ex && !imp.update) return out.push({ line, action: "skip", label: r.summary, msg: `bereits importiert (${keyOf(ex)})` });
+      if (r.dueDate && !TableReader.toDate(r.dueDate)) return out.push({ line, action: "error", label: r.summary, msg: `Fälligkeit „${r.dueDate}“ nicht lesbar` });
+      const warn = [r.assignee && !findUser(r.assignee) ? `Person „${r.assignee}“ unbekannt` : "", r.customerNo && !findCust(r.customerNo) ? `Kunde ${r.customerNo} unbekannt` : ""].filter(Boolean);
+      out.push({ line, action: ex ? "update" : "new", label: r.summary, msg: [p.key, ...warn].join(" · "), r, p, ex, warn: warn.length > 0 });
+    }
+  });
+  return out;
+}
+async function runImport(imp, plan) {
+  const todo = plan.filter((x) => x.action === "new" || x.action === "update"); const now = new Date().toISOString(); const D = TableReader.toDate, N = TableReader.toNumber;
+  if (imp.type === "customers") for (const x of todo) {
+    const r = x.r; const data = Object.fromEntries(["no", "name", "street", "zip", "city", "phone", "email", "externalId", "notes"].filter((k) => r[k] !== "").map((k) => [k, r[k]]));
+    let c = x.ex; if (c) Object.assign(c, data, { updatedAt: now }); else { c = { id: uid(), no: "", street: "", zip: "", city: "", phone: "", email: "", externalId: "", notes: "", ...data, contacts: [], assets: [], createdAt: now, updatedAt: now }; db.customers.push(c); }
+    if (r.contactName) { const k = c.contacts.find((y) => y.name.toLowerCase() === r.contactName.toLowerCase()); const kd = { name: r.contactName, email: r.contactEmail || (k ? k.email : ""), phone: r.contactPhone || (k ? k.phone : ""), role: k?.role || "Hauptansprechpartner" };
+      if (k) Object.assign(k, kd); else c.contacts.push({ id: uid(), ...kd }); }
+  }
+  if (imp.type === "contacts") for (const x of todo) { const r = x.r; const data = Object.fromEntries(["name", "role", "email", "phone"].filter((k) => r[k] !== "").map((k) => [k, r[k]]));
+    if (x.ex) Object.assign(x.ex, data); else x.c.contacts.push({ id: uid(), role: "", email: "", phone: "", ...data }); x.c.updatedAt = now; }
+  if (imp.type === "assets") for (const x of todo) { const r = x.r;
+    const data = { name: r.name, ...(r.manufacturer ? { manufacturer: r.manufacturer } : {}), ...(r.model ? { model: r.model } : {}), ...(r.serial ? { serial: r.serial } : {}), ...(r.year ? { year: N(r.year) } : {}), ...(r.location ? { location: r.location } : {}),
+      ...(r.intervalMonths ? { intervalMonths: N(r.intervalMonths) } : {}), ...(r.lastMaintenance ? { lastMaintenance: D(r.lastMaintenance) } : {}), ...(r.nextMaintenance ? { nextMaintenance: D(r.nextMaintenance) } : {}), ...(r.active ? { active: TableReader.toBool(r.active) } : {}) };
+    if (x.ex) Object.assign(x.ex, data); else x.c.assets.push({ id: uid(), manufacturer: "", model: "", serial: "", year: null, location: "", intervalMonths: null, lastMaintenance: null, nextMaintenance: null, active: true, ...data }); x.c.updatedAt = now; }
+  if (imp.type === "users") {
+    const roleOf = (v) => { const s = String(v || "").toLowerCase(); return Object.entries(ROLES).find(([k, l]) => k.toLowerCase() === s || l.toLowerCase() === s)?.[0] || (/admin/.test(s) ? "ADMIN" : /service|techn|monteur/.test(s) ? "AGENT" : "MEMBER"); };
+    const res = await api("/api/admin/users/import", { method: "POST", body: { users: todo.map((x) => ({ name: x.r.name, email: x.r.email, role: x.r.role ? roleOf(x.r.role) : x.ex?.role || "MEMBER" })) } });
+    await reloadState();
+    for (const x of todo) { const t = x.r.team && db.teams.find((y) => y.name.toLowerCase() === x.r.team.toLowerCase()); const u = db.users.find((y) => y.email.toLowerCase() === x.r.email.toLowerCase());
+      if (t && u && !t.memberIds.includes(u.id)) t.memberIds.push(u.id); }
+    save(); return res;
+  }
+  if (imp.type === "issues") {
+    const creates = todo.filter((x) => !x.ex); const byProj = new Map(); creates.forEach((x) => byProj.set(x.p.id, (byProj.get(x.p.id) || 0) + 1));
+    const nextNo = {}; for (const [pid, n] of byProj) nextNo[pid] = (await api(`/api/projects/${pid}/reserve?count=${n}`, { method: "POST" })).no;
+    const assigned = new Map();
+    for (const x of todo) {
+      const r = x.r; const p = x.p; const wf = workflowOf(p); const types = PROJECT_TYPES[p.type].types.filter((t) => t !== "SUBTASK" && t !== "EPIC");
+      const type = types.find((t) => t === r.type.toUpperCase() || TYPES[t].label.toLowerCase() === r.type.toLowerCase()) || types[0];
+      const st = r.status && (wf.find((s) => s.id === r.status.toUpperCase() || s.name.toLowerCase() === r.status.toLowerCase()) || ({ erledigt: wf.find((s) => s.cat === "done"), fertig: wf.find((s) => s.cat === "done"), done: wf.find((s) => s.cat === "done"), offen: wf[0], neu: wf[0], "in arbeit": wf.find((s) => s.cat === "progress") })[r.status.toLowerCase()]);
+      const prio = Object.entries(PRIO_WORDS).find(([, w]) => w.includes(r.priority.toLowerCase()))?.[0] || (PRIOS[r.priority.toUpperCase()] ? r.priority.toUpperCase() : null);
+      const u = findUser(r.assignee); const t = r.team && db.teams.find((y) => y.name.toLowerCase() === r.team.toLowerCase()); const c = findCust(r.customerNo);
+      const labels = r.labels ? r.labels.split(/[,;]/).map((l) => l.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean) : [];
+      if (x.ex) {
+        const ch = { summary: r.summary, ...(r.description ? { description: r.description } : {}), ...(st ? { status: st.id } : {}), ...(prio ? { priority: prio } : {}), ...(u ? { assigneeId: u.id } : {}), ...(r.dueDate ? { dueDate: D(r.dueDate) } : {}), ...(t ? { teamId: t.id } : {}) };
+        updateIssue(x.ex, ch); continue;
+      }
+      const i = newIssue({ project: p, no: nextNo[p.id]++, type, summary: r.summary, description: r.description, priority: prio || "MEDIUM", assigneeId: u?.id || null, reporterId: db.currentUserId, labels: [...new Set([...labels, "import"])],
+        dueDate: D(r.dueDate), teamId: t ? t.id : undefined, customerId: c?.id || null, customer: c ? customerSnapshot(c) : null, externalId: r.externalId || null, rank: Date.now() + i_rank++ });
+      if (st && st.id !== i.status) { const from = i.status; i.status = st.id; applyTransition(i, p, from, st.id); }
+      i.history.unshift({ id: uid(), at: now, userId: db.currentUserId, field: "Import", from: "", to: imp.fileName || "Datei" });
+      db.issues.push(i); if (u && u.id !== db.currentUserId) assigned.set(u.id, (assigned.get(u.id) || 0) + 1);
+    }
+    for (const [userId, n] of assigned) notify([userId], "assign", `${n} Vorgänge per Import zugewiesen`, `${me().name} hat Vorgänge aus „${imp.fileName}“ importiert.`, null);
+  }
+  save(); await flush(); return null;
+}
+let i_rank = 0;
+function viewImport() {
+  const imp = ui.imp || (ui.imp = { step: 1, update: true }); const admin = me().role === "ADMIN";
+  const types = Object.entries(IMPORT_TYPES).filter(([, t]) => !t.admin || admin);
+  const stepHead = (n, title, done) => `<div class="imp-h ${imp.step === n ? "on" : ""} ${done ? "done" : ""}"><span class="imp-n">${done ? "✓" : n}</span>${title}</div>`;
+  let body = "";
+  body += `<div class="card pad imp-step">${stepHead(1, "Was möchten Sie einspielen?", imp.step > 1)}
+    <div class="grid g3" style="margin-top:10px">${types.map(([k, t]) => `<button type="button" class="card imp-type ${imp.type === k ? "on" : ""}" data-act="imp-type" data-v="${k}"><b>${t.label}</b><span class="small muted">${t.desc}</span></button>`).join("")}</div>
+    ${imp.type ? `<p class="small muted" style="margin:10px 0 0">Tipp: Exportieren Sie die Daten aus Ihrem bisherigen Programm als Excel oder CSV – die Spalten werden automatisch erkannt. Oder nutzen Sie die <a href="#" data-act="imp-template">Excel-Vorlage für ${IMPORT_TYPES[imp.type].label}</a>. Reihenfolge: zuerst Kunden, dann Ansprechpartner und Anlagen.</p>` : ""}</div>`;
+  if (imp.type) body += `<div class="card pad imp-step">${stepHead(2, "Datei auswählen", !!imp.rows)}
+    <label class="dropzone" id="imp-drop"><input type="file" id="imp-file" accept=".xlsx,.csv,.txt,text/csv" hidden>${icon("upload")}<span>${imp.fileName ? `<b>${esc(imp.fileName)}</b> · ${imp.rows ? `${imp.rows.length} Zeilen` : "wird gelesen …"}` : "Excel- (.xlsx) oder CSV-Datei hierher ziehen oder <u>auswählen</u>"}</span></label>
+    ${imp.sheets?.length > 1 ? `<label class="f" style="max-width:320px;margin-top:10px">Tabellenblatt<select id="imp-sheet">${imp.sheets.map((s, n) => `<option value="${n}" ${n === imp.sheetIdx ? "selected" : ""}>${esc(s.name)} (${s.rows.length} Zeilen)</option>`).join("")}</select></label>` : ""}</div>`;
+  if (imp.rows) {
+    const T = IMPORT_TYPES[imp.type]; const sample = (k) => (imp.map[k] >= 0 ? imp.rows.slice(0, 3).map((r) => r[imp.map[k]]).filter(Boolean).join(" · ") : "");
+    body += `<div class="card pad imp-step">${stepHead(3, "Spalten zuordnen", !!imp.plan)}
+      <p class="small muted" style="margin:6px 0 10px">Automatisch erkannt – bitte prüfen. Felder mit * sind Pflicht.</p>
+      <div class="tbl-wrap"><table class="imp-map"><thead><tr><th>Feld im GF Tracker</th><th>Spalte in Ihrer Datei</th><th class="hide-m">Beispielwerte</th></tr></thead><tbody>
+      ${T.fields.map((f) => `<tr><td>${esc(f.label)}${f.req ? ' <span class="req">*</span>' : ""}</td><td><select data-act="imp-map" data-k="${f.k}"><option value="-1">– nicht übernehmen –</option>${imp.header.map((h, n) => `<option value="${n}" ${imp.map[f.k] === n ? "selected" : ""}>${esc(h || `Spalte ${n + 1}`)}</option>`).join("")}</select></td><td class="small muted hide-m trunc" style="max-width:360px">${esc(sample(f.k))}</td></tr>`).join("")}
+      </tbody></table></div>
+      <div class="row" style="margin-top:10px;gap:16px">${imp.type === "issues" ? `<label class="f" style="width:auto">Projekt, wenn keine Spalte „Projekt“<select id="imp-project">${db.projects.map((p) => `<option value="${p.id}" ${p.id === imp.projectId ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label>` : ""}
+        <label class="row nowrap small"><input type="checkbox" id="imp-update" ${imp.update ? "checked" : ""}> Vorhandene Einträge aktualisieren (statt überspringen)</label>
+        <span class="sp"></span><button class="btn primary" data-act="imp-check">Prüfen</button></div></div>`;
+  }
+  if (imp.plan) {
+    const cnt = (a) => imp.plan.filter((x) => x.action === a).length; const errs = cnt("error");
+    const badge = { new: '<span class="chip green">neu</span>', update: '<span class="chip blue">aktualisieren</span>', skip: '<span class="chip gray">überspringen</span>', error: '<span class="chip red">Fehler</span>' };
+    body += `<div class="card pad imp-step">${stepHead(4, "Vorschau & Import", !!imp.result)}
+      <div class="row" style="margin:8px 0 10px;gap:8px">${badge.new} ${cnt("new")} ${badge.update} ${cnt("update")} ${badge.skip} ${cnt("skip")} ${badge.error} ${errs}</div>
+      <div class="tbl-wrap" style="max-height:420px;overflow:auto"><table><thead><tr><th>Zeile</th><th>Aktion</th><th>Eintrag</th><th>Hinweis</th></tr></thead><tbody>
+      ${imp.plan.slice(0, 500).map((x) => `<tr><td class="small muted">${x.line}</td><td>${badge[x.action]}</td><td class="trunc" style="max-width:320px">${esc(x.label)}</td><td class="small ${x.action === "error" || x.warn ? "" : "muted"}" style="${x.action === "error" ? "color:var(--danger)" : x.warn ? "color:var(--warn)" : ""}">${esc(x.msg || "")}</td></tr>`).join("")}
+      </tbody></table></div>${imp.plan.length > 500 ? `<p class="small muted">… und ${imp.plan.length - 500} weitere Zeilen</p>` : ""}
+      ${imp.result ? `<div class="note info" style="margin-top:12px">${esc(imp.result)}</div>` : `<div class="row" style="margin-top:12px">${errs ? `<span class="small muted">Zeilen mit Fehler werden ausgelassen.</span>` : ""}<span class="sp"></span><button class="btn subtle" data-act="imp-reset">Abbrechen</button><button class="btn primary" data-act="imp-run" ${cnt("new") + cnt("update") ? "" : "disabled"}>${cnt("new") + cnt("update")} Einträge importieren</button></div>`}</div>`;
+  }
+  return `<div class="page-head"><div><h1>Daten importieren</h1><p class="muted" style="margin:4px 0 0">Bestehende Daten aus Excel, CSV oder Ihrem bisherigen Programm übernehmen – auch wiederholt zum Abgleichen.</p></div>${imp.type ? `<button class="btn subtle" data-act="imp-reset">Neu beginnen</button>` : ""}</div>${body}`;
+}
+function importTemplate(type) {
+  const T = IMPORT_TYPES[type];
+  const ex = { customers: ["10100", "Beispiel GmbH", "Hauptstraße 1", "09111", "Chemnitz", "0371 123456", "info@beispiel.de", "D-4711", "Zufahrt über Tor 2", "Max Mustermann", "m.mustermann@beispiel.de", "0171 1234567"],
+    contacts: ["10100", "Beispiel GmbH", "Erika Muster", "Instandhaltung", "e.muster@beispiel.de", "0371 123457"],
+    assets: ["10100", "Beispiel GmbH", "Schraubenkompressor", "Atlas Copco", "GA 30", "AII123456", "2018", "Halle 1", "12", "15.03.2026", "", "ja"],
+    users: ["Max Mustermann", "max.mustermann@druckluft-chemnitz.de", "Service-Mitarbeiter", "Service & Technik"],
+    issues: ["Angebot für Kältetrockner erstellen", "Kunde wünscht Angebot bis Monatsende", "GF", "Aufgabe", "Zu erledigen", "Hoch", "lisa.schmidt@druckluft-chemnitz.de", "Büro & Vertrieb", "30.11.2026", "angebot", "10100", "ALT-0815"] }[type];
+  download(`vorlage-${T.label.toLowerCase().replace(/[^a-z]+/g, "-")}.xlsx`, XLSX.build([{ name: T.label, columns: T.fields.map((f) => ({ h: f.label, w: Math.max(12, f.label.length + 4) })), rows: [ex] }], { title: `Importvorlage ${T.label}` }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+}
+async function importFile(file) {
+  const imp = ui.imp; imp.fileName = file.name; imp.rows = null; imp.plan = null; imp.result = null; render();
+  try {
+    imp.sheets = await TableReader.readTable(file);
+    const want = IMPORT_TYPES[imp.type].sheet; imp.sheetIdx = Math.max(0, imp.sheets.findIndex((s) => want.includes(TableReader.norm(s.name))));
+    importSheet(imp.sheetIdx);
+  } catch (e) { imp.fileName = null; toast(e.message); render(); }
+}
+function importSheet(n) {
+  const imp = ui.imp; const rows = imp.sheets[n]?.rows || []; imp.sheetIdx = n; imp.plan = null; imp.result = null;
+  // Kopfzeile = erste Zeile mit mindestens zwei Texten (Titelzeilen darüber werden übersprungen)
+  const hr = Math.max(0, rows.findIndex((r) => r.filter((c) => c && isNaN(Number(c))).length >= 2));
+  imp.headerRow = hr; imp.header = rows[hr] || []; imp.rows = rows.slice(hr + 1); imp.map = autoMap(imp.type, imp.header);
+  if (!imp.projectId) imp.projectId = db.projects[0]?.id;
+  if (!imp.rows.length) toast("In diesem Tabellenblatt wurden keine Datenzeilen gefunden.");
+  render();
+}
+
+/* ---------- Ansicht: Kunden & Anlagen ---------- */
+const customer = (id) => (id ? db.customers.find((c) => c.id === id) || null : null);
+const assetOf = (c, id) => (c && id ? (c.assets || []).find((a) => a.id === id) || null : null);
+const custIssues = (c) => db.issues.filter((i) => i.customerId === c.id);
+const custOpts = (sel, none = "– kein Kunde –") => `<option value="">${none}</option>` + [...db.customers].sort((a, b) => a.name.localeCompare(b.name, "de")).map((c) => `<option value="${c.id}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}${c.no ? ` (${esc(c.no)})` : ""}</option>`).join("");
+const maintChip = (a) => { const d = nextMaintenance(a); if (!d || a.active === false) return '<span class="muted small">–</span>'; const n = daysBetween(today(), d);
+  return `<span class="chip ${n < 0 ? "red" : n <= 30 ? "yellow" : "gray"}" title="${n < 0 ? `seit ${-n} Tagen überfällig` : `in ${n} Tagen`}">${fmtDay(d)}</span>`; };
+const nextCustMaint = (c) => (c.assets || []).filter((a) => a.active !== false).map(nextMaintenance).filter(Boolean).sort()[0] || null;
+function viewCustomers() {
+  const q = (ui.custQ || "").toLowerCase().trim();
+  const list = [...db.customers].filter((c) => !q || `${c.no} ${c.name} ${c.city} ${(c.contacts || []).map((k) => `${k.name} ${k.email}`).join(" ")} ${(c.assets || []).map((a) => `${a.name} ${a.serial} ${a.model}`).join(" ")}`.toLowerCase().includes(q))
+    .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const dueSoon = db.customers.flatMap((c) => (c.assets || []).filter((a) => a.active !== false && nextMaintenance(a) && daysBetween(today(), nextMaintenance(a)) <= 30).map((a) => ({ c, a }))).sort((x, y) => nextMaintenance(x.a).localeCompare(nextMaintenance(y.a)));
+  return `<div class="page-head"><div><h1>Kunden &amp; Anlagen</h1><p class="muted" style="margin:4px 0 0">${db.customers.length} Kunden · ${db.customers.reduce((s, c) => s + (c.assets || []).length, 0)} Anlagen · ${dueSoon.length} Wartungen in den nächsten 30 Tagen</p></div>
+      <div class="row"><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Importieren</button><button class="btn" data-act="export-customers">${icon("download")} Excel</button><button class="btn primary" data-act="customer-new">${icon("plus")} Kunde anlegen</button></div></div>
+    <div class="row" style="margin-bottom:12px"><div class="search" style="width:min(420px,100%)">${icon("search")}<input type="search" id="cust-q" value="${esc(ui.custQ || "")}" placeholder="Suchen: Name, Kundennr., Ort, Ansprechpartner, Seriennummer" aria-label="Kunden suchen"></div></div>
+    ${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Nr.</th><th>Kunde</th><th class="hide-m">Ort</th><th class="hide-m">Ansprechpartner</th><th>Anlagen</th><th>Offen</th><th>Nächste Wartung</th></tr></thead><tbody>
+      ${list.map((c) => { const open = custIssues(c).filter((i) => !isDone(i)).length; const nm = nextCustMaint(c); const k = (c.contacts || [])[0];
+        return `<tr class="click" data-act="goto" data-href="#/customers/${c.id}"><td class="key">${esc(c.no || "–")}</td><td><div class="b">${esc(c.name)}</div>${c.externalId ? `<div class="small muted">ERP: ${esc(c.externalId)}</div>` : ""}</td><td class="hide-m">${esc([c.zip, c.city].filter(Boolean).join(" "))}</td>
+          <td class="hide-m">${k ? `${esc(k.name)}<div class="small muted">${esc(k.email || k.phone || "")}</div>` : '<span class="muted">–</span>'}</td><td>${(c.assets || []).length}</td><td>${open ? `<span class="chip blue">${open}</span>` : '<span class="muted">0</span>'}</td>
+          <td>${nm ? maintChip({ nextMaintenance: nm }) : '<span class="muted small">–</span>'}</td></tr>`; }).join("")}</tbody></table></div>`
+      : `<div class="empty">${q ? "Keine Kunden gefunden." : 'Noch keine Kunden. Legen Sie Kunden an oder übernehmen Sie Ihren Kundenstamm per <a href="#/import">Import</a> (CSV oder Excel aus Ihrer Warenwirtschaft).'}</div>`}`;
+}
+function viewCustomer(c) {
+  if (!c) return `<div class="empty">Kunde nicht gefunden. <a href="#/customers">Zur Kundenliste</a></div>`;
+  const iss = custIssues(c).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); const open = iss.filter((i) => !isDone(i)); const done = iss.filter(isDone);
+  const reports = iss.filter((i) => i.resolution).sort((a, b) => String(b.resolution.at).localeCompare(String(a.resolution.at)));
+  const hours = reports.reduce((s, i) => s + (Number(i.resolution.hours) || 0), 0); const admin = me().role === "ADMIN";
+  const addr = customerAddress(c);
+  return `<div class="page-head"><div><div class="crumbs"><a href="#/customers">Kunden</a></div><h1>${esc(c.name)}</h1>
+      <p class="muted small" style="margin:4px 0 0">${c.no ? `Kundennr. ${esc(c.no)} · ` : ""}${esc(addr || "keine Adresse")}${c.externalId ? ` · ERP-ID ${esc(c.externalId)}` : ""}</p></div>
+    <div class="row"><button class="btn primary" data-act="customer-issue" data-id="${c.id}">${icon("plus")} Vorgang für Kunden</button><button class="btn" data-act="customer-edit" data-id="${c.id}">${icon("gear")} Stammdaten</button>${admin ? `<button class="btn subtle" data-act="customer-delete" data-id="${c.id}" title="Kunde löschen">${icon("trash")}</button>` : ""}</div></div>
+    <div class="grid g4" style="margin-bottom:14px">${[["Offene Vorgänge", open.length], ["Anlagen", (c.assets || []).length], ["Serviceberichte", reports.length], ["Einsatzstunden", String(Math.round(hours * 10) / 10).replace(".", ",")]].map(([l, v]) => `<div class="card stat"><div class="v">${v}</div><div class="l">${l}</div></div>`).join("")}</div>
+    <div class="cust-grid">
+      <div class="grid" style="gap:14px;align-content:start">
+        <div class="card pad"><h3 class="h3">Kontakt</h3>
+          <div class="kv">${[["Adresse", addr], ["Telefon", c.phone ? `<a href="tel:${esc(c.phone.replace(/\s/g, ""))}">${esc(c.phone)}</a>` : ""], ["E-Mail", c.email ? `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>` : ""]].map(([k, v]) => `<span>${k}</span><span>${v ? (k === "Adresse" ? esc(v) : v) : '<span class="muted">–</span>'}</span>`).join("")}</div>
+          ${c.notes ? `<div class="note info" style="margin-top:10px;white-space:pre-wrap">${esc(c.notes)}</div>` : ""}</div>
+        <div class="card pad"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">Ansprechpartner</h3><button class="btn sm" data-act="contact-new" data-id="${c.id}">${icon("plus")} Hinzufügen</button></div>
+          ${(c.contacts || []).map((k) => `<div class="row nowrap" style="padding:8px 0;border-bottom:1px solid var(--border)">${custAvatar({ name: k.name, email: k.email })}<div style="flex:1;min-width:0"><div class="b trunc">${esc(k.name)}${k.role ? ` <span class="small muted">· ${esc(k.role)}</span>` : ""}</div>
+            <div class="small muted trunc">${[k.email ? `<a href="mailto:${esc(k.email)}">${esc(k.email)}</a>` : "", k.phone ? `<a href="tel:${esc(k.phone.replace(/\s/g, ""))}">${esc(k.phone)}</a>` : ""].filter(Boolean).join(" · ") || "–"}</div></div>
+            <button class="btn subtle sm" data-act="contact-edit" data-id="${c.id}" data-k="${k.id}">Bearbeiten</button></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Ansprechpartner.</p>'}</div>
+      </div>
+      <div class="grid" style="gap:14px;align-content:start;min-width:0">
+        <div class="card pad"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">Anlagen &amp; Wartungsplan</h3><button class="btn sm" data-act="asset-new" data-id="${c.id}">${icon("plus")} Anlage</button></div>
+          ${(c.assets || []).length ? `<div class="tbl-wrap"><table><thead><tr><th>Anlage</th><th class="hide-m">Seriennr.</th><th class="hide-m">Standort</th><th>Intervall</th><th>Letzte</th><th>Nächste Wartung</th><th></th></tr></thead><tbody>
+            ${(c.assets || []).map((a) => { const openA = iss.filter((i) => i.assetId === a.id && !isDone(i));
+              return `<tr style="${a.active === false ? "opacity:.5" : ""}"><td><div class="b">${esc(a.name)}</div><div class="small muted">${esc([a.manufacturer, a.model, a.year].filter(Boolean).join(" · "))}</div></td><td class="hide-m">${esc(a.serial || "–")}</td><td class="hide-m">${esc(a.location || "–")}</td>
+                <td>${a.intervalMonths ? `${a.intervalMonths} Mon.` : "–"}</td><td class="small">${a.lastMaintenance ? fmtDay(a.lastMaintenance) : "–"}</td><td>${maintChip(a)}${openA.length ? `<div><a href="#" class="small" data-act="open" data-id="${openA[0].id}">${keyOf(openA[0])} offen</a></div>` : ""}</td>
+                <td class="nowrap"><button class="btn subtle sm" data-act="asset-edit" data-id="${c.id}" data-k="${a.id}">Bearbeiten</button>${openA.some((i) => i.type === "MAINT") ? "" : `<button class="btn subtle sm" data-act="asset-maint" data-id="${c.id}" data-k="${a.id}" title="Wartungsvorgang jetzt anlegen">Wartung anlegen</button>`}</td></tr>`; }).join("")}
+            </tbody></table></div>` : '<p class="small muted" style="margin:0">Noch keine Anlagen erfasst. Mit Intervall erfasst, legt das System Wartungen automatisch rechtzeitig an.</p>'}</div>
+        <div class="card pad"><h3 class="h3">Vorgänge <span class="small muted" style="font-weight:400">${open.length} offen · ${done.length} erledigt</span></h3>
+          ${iss.length ? `<div class="wlist">${[...open, ...done.slice(0, 15)].map((i) => workRow(i, i.assetId ? `<span class="chip gray">${esc(assetOf(c, i.assetId)?.name || "Anlage")}</span>` : "")).join("")}</div>` : '<p class="small muted" style="margin:0">Noch keine Vorgänge.</p>'}</div>
+        <div class="card pad"><h3 class="h3">Servicehistorie</h3>
+          ${reports.map((i) => `<div class="hist-item" data-act="open" data-id="${i.id}"><div class="row nowrap small"><b>${fmtDay(dayKey(i.resolution.at))}</b><span class="key">${keyOf(i)}</span><span class="trunc">${esc(i.summary)}</span><span class="sp"></span>${i.resolution.hours ? `<span class="chip gray">${String(i.resolution.hours).replace(".", ",")} h</span>` : ""}${avatar(i.resolution.by)}</div>
+            <div class="small" style="margin-top:3px">${i.resolution.cause ? `<span class="muted">Ursache:</span> ${esc(i.resolution.cause)} · ` : ""}${esc(i.resolution.action)}${i.resolution.parts ? ` <span class="muted">· Material:</span> ${esc(i.resolution.parts)}` : ""}</div></div>`).join("") || '<p class="small muted" style="margin:0">Noch keine Serviceberichte.</p>'}</div>
+      </div></div>`;
+}
+function customerForm(c) {
+  const isNew = !c; c = c || { no: String(Math.max(10000, ...db.customers.map((x) => Number(x.no) || 0)) + 1), name: "", street: "", zip: "", city: "", phone: "", email: "", notes: "", externalId: "" };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Kunde anlegen" : "Stammdaten bearbeiten"}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="customer-form" data-id="${isNew ? "" : c.id}"><div class="modal-b">
+      <div class="grid g2" style="gap:12px"><label class="f"><span>Firmenname <span class="req">*</span></span><input type="text" name="name" value="${esc(c.name)}" required maxlength="200" autofocus></label>
+        <label class="f">Kundennummer<input type="text" name="no" value="${esc(c.no || "")}" maxlength="40"></label>
+        <label class="f" style="grid-column:1/-1">Straße<input type="text" name="street" value="${esc(c.street || "")}" maxlength="200"></label>
+        <label class="f">PLZ<input type="text" name="zip" value="${esc(c.zip || "")}" maxlength="10"></label><label class="f">Ort<input type="text" name="city" value="${esc(c.city || "")}" maxlength="100"></label>
+        <label class="f">Telefon<input type="tel" name="phone" value="${esc(c.phone || "")}" maxlength="60"></label><label class="f">E-Mail (allgemein)<input type="email" name="email" value="${esc(c.email || "")}" maxlength="200"></label>
+        <label class="f">ERP-/Fremd-ID<input type="text" name="externalId" value="${esc(c.externalId || "")}" maxlength="80" placeholder="Nummer im Warenwirtschaftssystem"></label></div>
+      <label class="f">Notizen<textarea name="notes" rows="3" placeholder="z. B. Zufahrt, Ansprechzeiten, Besonderheiten">${esc(c.notes || "")}</textarea></label>
+    </div><div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">${isNew ? "Kunde anlegen" : "Speichern"}</button></div></form>`);
+}
+function contactForm(c, k) {
+  const isNew = !k; k = k || { name: "", role: "", email: "", phone: "" };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Ansprechpartner hinzufügen" : "Ansprechpartner bearbeiten"}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="contact-form" data-id="${c.id}" data-k="${isNew ? "" : k.id}"><div class="modal-b"><div class="grid g2" style="gap:12px">
+      <label class="f"><span>Name <span class="req">*</span></span><input type="text" name="name" value="${esc(k.name)}" required maxlength="120" autofocus></label><label class="f">Funktion<input type="text" name="role" value="${esc(k.role || "")}" maxlength="80" placeholder="z. B. Instandhaltung"></label>
+      <label class="f">E-Mail<input type="email" name="email" value="${esc(k.email || "")}" maxlength="200"></label><label class="f">Telefon<input type="tel" name="phone" value="${esc(k.phone || "")}" maxlength="60"></label></div>
+      <p class="small muted" style="margin:0">Anfragen aus dem Portal oder per E-Mail von dieser Adresse werden automatisch diesem Kunden zugeordnet.</p></div>
+    <div class="modal-f">${isNew ? "" : `<button type="button" class="btn danger" data-act="contact-delete" data-id="${c.id}" data-k="${k.id}" style="margin-right:auto">Entfernen</button>`}<button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></div></form>`);
+}
+function assetForm(c, a) {
+  const isNew = !a; a = a || { name: "", manufacturer: "", model: "", serial: "", year: "", location: "", intervalMonths: 12, lastMaintenance: "", nextMaintenance: "", active: true };
+  openModal(`<div class="modal-h"><h2>${isNew ? "Anlage hinzufügen" : "Anlage bearbeiten"}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="asset-form" data-id="${c.id}" data-k="${isNew ? "" : a.id}"><div class="modal-b"><div class="grid g2" style="gap:12px">
+      <label class="f" style="grid-column:1/-1"><span>Bezeichnung <span class="req">*</span></span><input type="text" name="name" value="${esc(a.name)}" required maxlength="120" autofocus placeholder="z. B. Schraubenkompressor GA 37"></label>
+      <label class="f">Hersteller<input type="text" name="manufacturer" value="${esc(a.manufacturer || "")}" maxlength="80"></label><label class="f">Modell<input type="text" name="model" value="${esc(a.model || "")}" maxlength="80"></label>
+      <label class="f">Seriennummer<input type="text" name="serial" value="${esc(a.serial || "")}" maxlength="80"></label><label class="f">Baujahr<input type="number" name="year" value="${esc(a.year || "")}" min="1950" max="2100"></label>
+      <label class="f">Standort beim Kunden<input type="text" name="location" value="${esc(a.location || "")}" maxlength="120" placeholder="z. B. Halle 2"></label><label class="f">Wartungsintervall (Monate)<input type="number" name="intervalMonths" value="${esc(a.intervalMonths ?? "")}" min="0" max="120"></label>
+      <label class="f">Letzte Wartung<input type="date" name="lastMaintenance" value="${esc(a.lastMaintenance || "")}"></label><label class="f">Nächste Wartung (leer = automatisch)<input type="date" name="nextMaintenance" value="${esc(a.nextMaintenance || "")}"></label></div>
+      <label class="row nowrap small"><input type="checkbox" name="active" ${a.active !== false ? "checked" : ""}> Anlage in Betrieb (Wartungen planen)</label></div>
+    <div class="modal-f">${isNew ? "" : `<button type="button" class="btn danger" data-act="asset-delete" data-id="${c.id}" data-k="${a.id}" style="margin-right:auto">Entfernen</button>`}<button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></div></form>`);
+}
+
 /* ---------- Ansicht: Teams ---------- */
 function teamStats(t) {
   const l = teamIssues(t).filter((i) => i.type !== "EPIC"); const open = l.filter((i) => !isDone(i)); const tk = today(); const wk = addDays(tk, -6);
@@ -1550,12 +1869,12 @@ function viewSettings() {
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
-      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
+      <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
       ${sync.mail ? `<button class="btn" data-act="mail-test">Test-E-Mail an mich senden</button>` : ""}
       <h3 style="font-size:15px;margin:18px 0 6px">Kundenportal auf Ihrer Website</h3><p class="small muted" style="margin:0 0 8px">Öffentliche Adresse: <a href="?portal" target="_blank" rel="noopener">${esc(GFTLocal.BASE)}?portal</a> – als Link/Button „Störung melden“ verwenden oder direkt in eine Seite einbetten:</p>
       <textarea id="embed-code" class="jql" rows="3" readonly>&lt;iframe src="${esc(GFTLocal.BASE)}?portal&embed=1" title="Service-Portal" style="width:100%;min-height:900px;border:0" loading="lazy"&gt;&lt;/iframe&gt;</textarea>
-      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
+      <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
     </div>`;
 }
 
@@ -1604,7 +1923,7 @@ function renderIssue() {
       <div style="min-width:0">
         <input class="issue-sum" data-f="summary" value="${esc(i.summary)}" aria-label="Zusammenfassung">
         <div class="row" style="margin:8px 0 16px">${i.type !== "SUBTASK" && i.type !== "EPIC" ? `<button class="btn sm" data-act="add-subtask">${icon("sub")} Teilaufgabe</button>` : ""}<button class="btn sm" data-act="add-link">${icon("link")} Verknüpfen</button>${i.type === "EPIC" ? `<button class="btn sm" data-act="create" data-project="${p.id}" data-epic="${i.id}">${icon("plus")} Vorgang im Epic</button>` : ""}</div>
-        ${i.customer ? `<div class="note info" style="margin-bottom:14px"><b>${esc(i.customer.name)}</b> · ${esc(i.customer.company || "")} · <a href="mailto:${encodeURIComponent(i.customer.email)}?subject=${encodeURIComponent(`[${keyOf(i)}] ${i.summary}`)}">${esc(i.customer.email)}</a>${i.customer.phone ? ` · ${esc(i.customer.phone)}` : ""}</div>` : ""}
+        ${i.customer ? `<div class="note info" style="margin-bottom:14px">${customer(i.customerId) ? `<a href="#/customers/${i.customerId}" class="b">${esc(customer(i.customerId).name)}</a>${customer(i.customerId).no ? ` <span class="small muted">(${esc(customer(i.customerId).no)})</span>` : ""}${assetOf(customer(i.customerId), i.assetId) ? ` · Anlage <b>${esc(assetOf(customer(i.customerId), i.assetId).name)}</b>${assetOf(customer(i.customerId), i.assetId).serial ? ` (SN ${esc(assetOf(customer(i.customerId), i.assetId).serial)})` : ""}` : ""}${customerAddress(customer(i.customerId)) ? `<div class="small" style="margin:2px 0 4px">${esc(customerAddress(customer(i.customerId)))}</div>` : "<br>"}` : ""}<b>${esc(i.customer.name)}</b> · ${esc(i.customer.company || "")} · <a href="mailto:${encodeURIComponent(i.customer.email)}?subject=${encodeURIComponent(`[${keyOf(i)}] ${i.summary}`)}">${esc(i.customer.email)}</a>${i.customer.phone ? ` · ${esc(i.customer.phone)}` : ""}</div>` : ""}
         ${reportBlock(i)}
         <div class="sec-title">Beschreibung</div>
         ${ui.editingDesc ? `<textarea id="desc-edit" rows="8">${esc(i.description)}</textarea><div class="row" style="margin-top:6px"><button class="btn primary sm" data-act="save-desc">Speichern</button><button class="btn subtle sm" data-act="cancel-desc">Abbrechen</button></div>`
@@ -1630,6 +1949,8 @@ function renderIssue() {
         ${isSvc && (sf || sr) ? `<div class="details" style="margin-bottom:12px"><div class="dh">SLA</div><div class="drow"><span>Erste Antwort</span><span>${slaChip(sf)} <span class="small muted">Ziel ${SLA[i.priority][0]} h</span></span></div><div class="drow" style="padding-bottom:10px"><span>Lösung</span><span>${slaChip(sr)} <span class="small muted">Ziel ${SLA[i.priority][1]} h</span></span></div></div>` : ""}
         <div class="details"><div class="dh">Details</div>
           <div class="drow"><span>Team</span><span><select data-f="teamId">${teamOpts(i.teamId)}</select></span></div>
+          ${isSvc || i.customerId ? `<div class="drow"><span>Kunde</span><span><select data-f="customerId">${custOpts(i.customerId)}</select></span></div>
+          ${customer(i.customerId) ? `<div class="drow"><span>Anlage</span><span><select data-f="assetId"><option value="">–</option>${(customer(i.customerId).assets || []).map((a) => `<option value="${a.id}" ${a.id === i.assetId ? "selected" : ""}>${esc(a.name)}${a.serial ? ` (${esc(a.serial)})` : ""}</option>`).join("")}</select></span></div>` : ""}` : ""}
           <div class="drow"><span>Verantwortlich</span><span><select data-f="assigneeId">${userOpts(i.assigneeId, undefined, i.teamId)}</select>${i.assigneeId !== db.currentUserId ? `<a href="#" class="small" data-act="assign-me">Mir zuweisen</a>` : ""}</span></div>
           <div class="drow"><span>Melder</span><span>${i.reporterId ? `<select data-f="reporterId">${userOpts(i.reporterId, "–")}</select>` : `<span class="row nowrap">${custAvatar(i.customer)} ${esc(i.customer?.name || "–")} <span class="small muted">(Kunde)</span></span>`}</span></div>
           <div class="drow"><span>Priorität</span><span class="row nowrap">${prioIcon(i.priority)}<select data-f="priority">${prioOpts(i.priority)}</select></span></div>
@@ -1681,7 +2002,11 @@ function createForm(prefill = {}) {
         ${p.type === "software" ? `<label class="f">Story Points<input type="number" name="storyPoints" min="0" step="1"></label>
         <label class="f">Sprint<select name="sprintId"><option value="">Backlog</option>${db.sprints.filter((x) => x.projectId === p.id && x.state !== "closed").map((x) => `<option value="${x.id}" ${prefill.sprintId === x.id ? "selected" : ""}>${esc(x.name)}${x.state === "active" ? " (aktiv)" : ""}</option>`).join("")}</select></label>` : ""}
         ${epicsOf(p).length ? `<label class="f">Epic<select name="epicId"><option value="">–</option>${epicsOf(p).map((e) => `<option value="${e.id}" ${prefill.epicId === e.id ? "selected" : ""}>${esc(e.summary)}</option>`).join("")}</select></label>` : ""}
-        ${p.type === "service" ? `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>` : ""}
+        ${p.type === "service" ? (() => { const cu = customer(prefill.customerId);
+          return `<label class="f" style="grid-column:1/-1">Kunde<select name="customerId" id="cf-customer">${custOpts(prefill.customerId, "– Kunde wählen (oder unten neu eintragen) –")}</select></label>
+          ${cu ? `<label class="f">Ansprechpartner<select name="contactId">${(cu.contacts || []).map((k) => `<option value="${k.id}">${esc(k.name)}${k.email ? ` · ${esc(k.email)}` : ""}</option>`).join("") || '<option value="">–</option>'}</select></label>
+            <label class="f">Anlage<select name="assetId"><option value="">– keine bestimmte Anlage –</option>${(cu.assets || []).filter((a) => a.active !== false).map((a) => `<option value="${a.id}" ${a.id === prefill.assetId ? "selected" : ""}>${esc(a.name)}${a.serial ? ` (SN ${esc(a.serial)})` : ""}</option>`).join("")}</select></label>`
+          : `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>`}`; })() : ""}
       </div></div>
       <div class="modal-f"><label class="small row nowrap" style="margin-right:auto"><input type="checkbox" name="another"> Weiteren Vorgang erstellen</label><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Erstellen</button></div></form>`);
 }
@@ -1720,6 +2045,9 @@ function projectForm() {
 /* ---------- Drag & Drop ---------- */
 let dragId = null;
 function bindDnD() {
+  const dz = $("#imp-drop");
+  if (dz) { dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("drop-on"); }); dz.addEventListener("dragleave", () => dz.classList.remove("drop-on"));
+    dz.addEventListener("drop", (e) => { e.preventDefault(); dz.classList.remove("drop-on"); const f = e.dataTransfer.files?.[0]; if (f) importFile(f); }); }
   $$("[data-drag-assign]").forEach((el) => {
     el.addEventListener("dragstart", (e) => { e.dataTransfer.setData("text/assign", el.dataset.dragAssign); el.classList.add("dragging"); });
     el.addEventListener("dragend", () => el.classList.remove("dragging"));
@@ -1966,21 +2294,22 @@ function exportXlsx(list, name, title, opts = {}) {
 
   const vorg = { name: "Vorgänge", columns: [
     { h: "Schlüssel", w: 10 }, { h: "Projekt", w: 18 }, { h: "Typ", w: 14 }, { h: "Zusammenfassung", w: 46 }, { h: "Status", w: 20 }, { h: "Phase", w: 12 },
-    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Team", w: 18 }, { h: "Melder", w: 20 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 },
+    { h: "Priorität", w: 11 }, { h: "Verantwortlich", w: 18 }, { h: "Team", w: 18 }, { h: "Melder", w: 20 }, { h: "Kundennr.", w: 10 }, { h: "Firma (Kunde)", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Kunden-E-Mail", w: 24 }, { h: "Anlage", w: 22 },
     { h: "Labels", w: 16 }, { h: "Sprint", w: 14 }, { h: "Epic", w: 22 }, { h: "Story Points", w: 8, t: "n" }, { h: "Schätzung (h)", w: 10, t: "h" }, { h: "Erfasst (h)", w: 10, t: "h" },
     { h: "Fällig", w: 11, t: "d" }, { h: "Überfällig", w: 9 }, { h: "Termin", w: 16, t: "dt" }, { h: "Erstellt", w: 16, t: "dt" }, { h: "Erledigt", w: 16, t: "dt" },
     { h: "Durchlaufzeit (Tage)", w: 11, t: "h" }, { h: "SLA Erste Antwort", w: 15 }, { h: "SLA Lösung", w: 15 }, { h: "Kommentare", w: 9, t: "n" }, { h: "Monat erstellt", w: 11 }],
     rows: list.map((i) => [keyOf(i), proj(i.projectId)?.name, TYPES[i.type]?.label, i.summary, statusOf(i).name, CAT_LABEL[statusOf(i).cat] || statusOf(i).cat,
-      PRIOS[i.priority]?.label, person(i.assigneeId), team(i.teamId)?.name, i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", i.customer?.company, i.customer?.name, i.customer?.email,
+      PRIOS[i.priority]?.label, person(i.assigneeId), team(i.teamId)?.name, i.reporterId ? person(i.reporterId) : i.customer?.name ? `${i.customer.name} (Kunde)` : "", customer(i.customerId)?.no, i.customer?.company, i.customer?.name, i.customer?.email, assetOf(customer(i.customerId), i.assetId)?.name,
       i.labels.join(", "), sprint(i.sprintId)?.name, issue(i.epicId)?.summary, i.storyPoints ?? null, i.estimateH ?? null, hoursOf(i),
       i.dueDate, isOverdue(i) ? "ja" : "nein", i.appointmentAt, i.createdAt, i.resolvedAt, days(i.createdAt, i.resolvedAt), slaTxt(i, "first"), slaTxt(i, "resolve"), i.comments.length, i.createdAt.slice(0, 7)]) };
 
   const eins = { name: "Serviceeinsätze", columns: [
-    { h: "Schlüssel", w: 10 }, { h: "Firma", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Telefon", w: 14 }, { h: "Art", w: 14 }, { h: "Betreff", w: 40 }, { h: "Techniker/in", w: 18 },
+    { h: "Schlüssel", w: 10 }, { h: "Kundennr.", w: 10 }, { h: "Firma", w: 24 }, { h: "Ansprechpartner", w: 18 }, { h: "Telefon", w: 14 }, { h: "Anlage", w: 22 }, { h: "Seriennr.", w: 14 }, { h: "Art", w: 14 }, { h: "Betreff", w: 40 }, { h: "Techniker/in", w: 18 },
     { h: "Termin", w: 16, t: "dt" }, { h: "Status", w: 20 }, { h: "Ursache", w: 30, wrap: true }, { h: "Durchgeführte Arbeiten", w: 50, wrap: true }, { h: "Material / Ersatzteile", w: 34, wrap: true },
     { h: "Arbeitszeit (h)", w: 10, t: "h" }, { h: "Bericht am", w: 16, t: "dt" }, { h: "Bericht von", w: 18 }, { h: "Gemeldet", w: 16, t: "dt" }, { h: "Reaktionszeit (h)", w: 10, t: "h" }, { h: "Lösungszeit (h)", w: 10, t: "h" }],
     rows: reports.map((i) => { const r = i.resolution || {};
-      return [keyOf(i), i.customer?.company, i.customer?.name, i.customer?.phone, TYPES[i.type]?.label, i.summary, person(i.assigneeId), i.appointmentAt, statusOf(i).name,
+      const cu = customer(i.customerId); const as = assetOf(cu, i.assetId);
+      return [keyOf(i), cu?.no, i.customer?.company, i.customer?.name, i.customer?.phone, as?.name, as?.serial, TYPES[i.type]?.label, i.summary, person(i.assigneeId), i.appointmentAt, statusOf(i).name,
         r.cause, r.action, r.parts, typeof r.hours === "number" ? r.hours : null, r.at, person(r.by), i.createdAt, hrs(i.createdAt, i.firstResponseAt), hrs(i.createdAt, i.resolvedAt)]; }) };
 
   const people = db.users.filter((u) => list.some((i) => i.assigneeId === u.id));
@@ -2026,6 +2355,21 @@ function exportXlsx(list, name, title, opts = {}) {
   toast(`Excel-Datei „${name}“ mit ${list.length} Vorgängen erstellt.`);
 }
 
+/** Kundenstamm als Excel (gleiches Format wie der Import – zum Pflegen und Wiedereinspielen). */
+function exportCustomersXlsx() {
+  const cs = [...db.customers].sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const sheets = [
+    { name: "Kunden", columns: [{ h: "Kundennummer", w: 12 }, { h: "Firma", w: 30 }, { h: "Straße", w: 26 }, { h: "PLZ", w: 8 }, { h: "Ort", w: 18 }, { h: "Telefon", w: 16 }, { h: "E-Mail", w: 26 }, { h: "ERP-ID", w: 12 }, { h: "Notizen", w: 40, wrap: true }, { h: "Anlagen", w: 8, t: "n" }, { h: "Offene Vorgänge", w: 10, t: "n" }, { h: "Nächste Wartung", w: 12, t: "d" }],
+      rows: cs.map((c) => [c.no, c.name, c.street, c.zip, c.city, c.phone, c.email, c.externalId, c.notes, (c.assets || []).length, custIssues(c).filter((i) => !isDone(i)).length, nextCustMaint(c)]) },
+    { name: "Ansprechpartner", columns: [{ h: "Kundennummer", w: 12 }, { h: "Firma", w: 30 }, { h: "Name", w: 22 }, { h: "Funktion", w: 18 }, { h: "E-Mail", w: 28 }, { h: "Telefon", w: 16 }],
+      rows: cs.flatMap((c) => (c.contacts || []).map((k) => [c.no, c.name, k.name, k.role, k.email, k.phone])) },
+    { name: "Anlagen", columns: [{ h: "Kundennummer", w: 12 }, { h: "Firma", w: 28 }, { h: "Bezeichnung", w: 28 }, { h: "Hersteller", w: 14 }, { h: "Modell", w: 14 }, { h: "Seriennummer", w: 16 }, { h: "Baujahr", w: 8, t: "n" }, { h: "Standort", w: 14 }, { h: "Intervall (Monate)", w: 10, t: "n" }, { h: "Letzte Wartung", w: 12, t: "d" }, { h: "Nächste Wartung", w: 12, t: "d" }, { h: "In Betrieb", w: 8 }],
+      rows: cs.flatMap((c) => (c.assets || []).map((a) => [c.no, c.name, a.name, a.manufacturer, a.model, a.serial, a.year ?? null, a.location, a.intervalMonths ?? null, a.lastMaintenance, nextMaintenance(a), a.active === false ? "nein" : "ja"])) },
+  ];
+  download(`kunden-anlagen-${today()}.xlsx`, XLSX.build(sheets, { title: "Kunden und Anlagen", author: sync.company || "GF Tracker" }), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  toast(`Excel mit ${cs.length} Kunden erstellt – kann bearbeitet und wieder importiert werden.`);
+}
+
 /* ---------- Benachrichtigungen ---------- */
 function renderNotifs() {
   const list = db.notifications.filter((n) => n.userId === db.currentUserId).slice(0, 50); const unread = list.filter((n) => !n.read).length;
@@ -2055,6 +2399,29 @@ document.addEventListener("click", (e) => {
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
+    case "imp-type": ui.imp = { step: 2, update: true, type: el.dataset.v }; render(); break;
+    case "imp-template": e.preventDefault(); importTemplate(ui.imp.type); break;
+    case "imp-reset": ui.imp = null; render(); break;
+    case "imp-check": { const imp = ui.imp; const T = IMPORT_TYPES[imp.type]; const miss = T.fields.filter((f) => f.req && !(imp.map[f.k] >= 0));
+      if (miss.length) return toast(`Bitte Spalte zuordnen: ${miss.map((f) => f.label).join(", ")}`); imp.plan = planImport(imp); imp.step = 4; render(); break; }
+    case "imp-run": { const imp = ui.imp; el.disabled = true; el.textContent = "Importiere …";
+      runImport(imp, imp.plan).then((res) => { const n = imp.plan.filter((x) => x.action === "new").length, u = imp.plan.filter((x) => x.action === "update").length;
+        imp.result = `Fertig: ${n} neu angelegt, ${u} aktualisiert${imp.plan.some((x) => x.action === "error") ? `, ${imp.plan.filter((x) => x.action === "error").length} Zeilen mit Fehler ausgelassen` : ""}.${res?.created != null ? ` (${res.created} Zugänge neu – Passwort unter Einstellungen setzen oder Anmeldung mit Microsoft nutzen.)` : ""}`;
+        toast("Import abgeschlossen"); render(); }).catch((err) => { toast(err.message); el.disabled = false; el.textContent = "Erneut versuchen"; }); break; }
+    case "customer-new": customerForm(); break;
+    case "customer-edit": { const c = customer(id); if (c) customerForm(c); break; }
+    case "customer-delete": { const c = customer(id); if (!c || !confirm(`Kunde „${c.name}“ löschen? Vorgänge bleiben erhalten (mit Kontaktdaten), verlieren aber die Verknüpfung.`)) return;
+      db.customers = db.customers.filter((x) => x.id !== c.id); db.issues.forEach((i) => { if (i.customerId === c.id) { i.customerId = null; i.assetId = null; touch(i); } }); save(); go("#/customers"); toast(`Kunde „${c.name}“ gelöscht`); break; }
+    case "customer-issue": { const sp = db.projects.find((p) => p.type === "service"); createForm({ projectId: sp?.id, customerId: id, type: "INCIDENT" }); break; }
+    case "contact-new": { const c = customer(id); if (c) contactForm(c); break; }
+    case "contact-edit": { const c = customer(id); const k = c?.contacts.find((x) => x.id === el.dataset.k); if (k) contactForm(c, k); break; }
+    case "contact-delete": { const c = customer(id); if (!c) return; c.contacts = c.contacts.filter((x) => x.id !== el.dataset.k); c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); break; }
+    case "asset-new": { const c = customer(id); if (c) assetForm(c); break; }
+    case "asset-edit": { const c = customer(id); const a = assetOf(c, el.dataset.k); if (a) assetForm(c, a); break; }
+    case "asset-delete": { const c = customer(id); if (!c || !confirm("Anlage entfernen? Vorhandene Vorgänge bleiben erhalten.")) return; c.assets = c.assets.filter((x) => x.id !== el.dataset.k); c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); break; }
+    case "asset-maint": { const c = customer(id); const a = assetOf(c, el.dataset.k); const sp = db.projects.find((p) => p.type === "service"); if (!a || !sp) return;
+      createIssue({ projectId: sp.id, ...maintenanceIssueData(c, a, nextMaintenance(a) || today()) }).then((i) => { render(); toast(`${keyOf(i)} angelegt`); openIssue(i.id); }).catch((err) => toast(err.message)); break; }
+    case "export-customers": exportCustomersXlsx(); break;
     case "team-new": teamForm(); break;
     case "team-edit": { const t = team(id); if (t) teamForm(t); break; }
     case "team-delete": { const t = team(id); if (!t || !confirm(`Team „${t.name}“ löschen? Die Vorgänge bleiben erhalten, verlieren aber die Teamzuordnung.`)) return;
@@ -2114,6 +2481,13 @@ document.addEventListener("click", (e) => {
 document.addEventListener("change", (e) => {
   const el = e.target;
   if (el.id === "board-lane") { ui.board.lane = el.value; render(); return; }
+  if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
+  if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
+  if (el.dataset.act === "imp-map") { ui.imp.map[el.dataset.k] = Number(el.value); ui.imp.plan = null; render(); return; }
+  if (el.id === "imp-project") { ui.imp.projectId = el.value; ui.imp.plan = null; return; }
+  if (el.id === "imp-update") { ui.imp.update = el.checked; ui.imp.plan = null; render(); return; }
+  if (el.id === "cf-customer") { const f = el.form; const keep = { summary: f.summary.value, description: f.description.value, priority: f.priority.value }; createForm({ projectId: f.projectId.value, type: f.type.value, customerId: el.value || null, teamId: f.teamId?.value });
+    const nf = $("#create-form"); nf.summary.value = keep.summary; nf.description.value = keep.description; nf.priority.value = keep.priority; return; }
   if (el.id === "dispatch-team") { ui.dispatchTeam = el.value; render(); return; }
   if (el.dataset.act === "team-assign") { const i = issue(el.dataset.id); if (i && el.value) { updateIssue(i, { assigneeId: el.value }); render(); toast(`${keyOf(i)} an ${uname(el.value)} verteilt`); } return; }
   if (el.id === "portal-project") { go(`#/portal/${el.value}`); return; }
@@ -2131,7 +2505,8 @@ document.addEventListener("change", (e) => {
   if (el.dataset.f && cur) {
     const f = el.dataset.f; let v = el.value;
     if (f === "summary") { v = v.trim(); if (!v) { el.value = cur.summary; return; } }
-    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId", "teamId"].includes(f)) v = v || null;
+    if (["assigneeId", "reporterId", "dueDate", "startDate", "sprintId", "epicId", "teamId", "assetId"].includes(f)) v = v || null;
+    if (f === "customerId") { const c = customer(v); updateIssue(cur, { customerId: c?.id || null, assetId: null, ...(c ? { customer: customerSnapshot(c) } : {}) }); render(); renderIssue(); return; }
     if (f === "storyPoints" || f === "estimateH") v = v === "" ? null : Number(v);
     if (f === "labels") v = v.split(",").map((x) => x.trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
     if (f === "sprintId") children(cur).forEach((c) => (c.sprintId = v));
@@ -2139,6 +2514,7 @@ document.addEventListener("change", (e) => {
   }
 });
 document.addEventListener("input", (e) => {
+  if (e.target.id === "cust-q") { ui.custQ = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#cust-q"); s.focus(); s.setSelectionRange(pos, pos); }
   if (e.target.id === "board-q") { ui.board.q = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#board-q"); s.focus(); s.setSelectionRange(pos, pos); }
   if (e.target.id === "np-name") { const k = $("#np-key"); if (!k.dataset.touched) k.value = e.target.value.replace(/[^A-Za-zÄÖÜäöü ]/g, "").split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 4).toUpperCase().replace(/[ÄÖÜ]/g, (c) => ({ Ä: "A", Ö: "O", Ü: "U" })[c]) || e.target.value.slice(0, 3).toUpperCase(); }
   if (e.target.id === "np-key") e.target.dataset.touched = "1";
@@ -2158,7 +2534,8 @@ async function handleSubmit(e, f) {
       const cname = fd.get("cname"), cemail = fd.get("cemail");
       const i = await createIssue({ projectId: fd.get("projectId"), type: fd.get("type"), summary: fd.get("summary"), description: fd.get("description"), assigneeId: fd.get("assigneeId"), priority: fd.get("priority"), teamId: fd.get("teamId") || null,
         dueDate: fd.get("dueDate") || null, labels, storyPoints: fd.get("storyPoints") ? Number(fd.get("storyPoints")) : null, sprintId: fd.get("sprintId") || null, epicId: fd.get("epicId") || null,
-        customer: cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
+        customerId: customer(fd.get("customerId"))?.id || null, assetId: fd.get("assetId") || null,
+        customer: customer(fd.get("customerId")) ? customerSnapshot(customer(fd.get("customerId")), fd.get("contactId")) : cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
       ui.lastProject = i.projectId;
       if (fd.get("another")) { const pid = i.projectId; createForm({ projectId: pid }); $("#create-form").another.checked = true; render(); toast(`${keyOf(i)} erstellt`); }
       else { closeModal(); render(); toast(`${keyOf(i)} erstellt`); openIssue(i.id); }
@@ -2200,6 +2577,22 @@ async function handleSubmit(e, f) {
       if (v.startsWith("q:")) { const [, y, q] = v.split(":").map(Number); per = quarterRange(y, q); } else if (v.startsWith("y:")) per = yearRange(Number(v.slice(2)));
       const l = per ? x.scope.filter((i) => activeIn(i, per)) : x.scope;
       closeModal(); exportXlsx(l, `${x.base}${per ? "-" + per.label.toLowerCase().replace(/\s+/g, "-") : ""}-${today()}.xlsx`, per ? `${x.title} · ${per.label}` : x.title, { period: per, scope: x.scope }); break; }
+    case "customer-form": {
+      const data = Object.fromEntries(["name", "no", "street", "zip", "city", "phone", "email", "externalId", "notes"].map((k) => [k, String(fd.get(k) || "").trim()]));
+      if (data.no && db.customers.some((x) => x.no === data.no && x.id !== f.dataset.id)) return toast(`Kundennummer ${data.no} ist bereits vergeben.`);
+      let c = customer(f.dataset.id); const now = new Date().toISOString();
+      if (c) Object.assign(c, data, { updatedAt: now }); else { c = { id: uid(), ...data, contacts: [], assets: [], createdAt: now, updatedAt: now }; db.customers.push(c); }
+      save(); closeModal(); go(`#/customers/${c.id}`); render(); toast(`${c.name} gespeichert`); break; }
+    case "contact-form": {
+      const c = customer(f.dataset.id); if (!c) break; const data = Object.fromEntries(["name", "role", "email", "phone"].map((k) => [k, String(fd.get(k) || "").trim()]));
+      const k = c.contacts.find((x) => x.id === f.dataset.k); if (k) Object.assign(k, data); else c.contacts.push({ id: uid(), ...data });
+      if (!c.email && data.email && c.contacts.length === 1) c.email = data.email; c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); break; }
+    case "asset-form": {
+      const c = customer(f.dataset.id); if (!c) break; const num = (k) => (fd.get(k) === "" || fd.get(k) == null ? null : Number(fd.get(k)));
+      const data = { name: String(fd.get("name")).trim(), manufacturer: String(fd.get("manufacturer") || "").trim(), model: String(fd.get("model") || "").trim(), serial: String(fd.get("serial") || "").trim(), year: num("year"), location: String(fd.get("location") || "").trim(),
+        intervalMonths: num("intervalMonths"), lastMaintenance: fd.get("lastMaintenance") || null, nextMaintenance: fd.get("nextMaintenance") || null, active: fd.get("active") === "on" };
+      const a = assetOf(c, f.dataset.k); if (a) Object.assign(a, data); else c.assets.push({ id: uid(), ...data });
+      c.updatedAt = new Date().toISOString(); save(); closeModal(); render(); toast(`Anlage „${data.name}“ gespeichert`); break; }
     case "team-form": {
       const members = fd.getAll("m"); const t = team(f.dataset.id);
       const fix = (x) => { if (x.leadId && !x.memberIds.includes(x.leadId)) x.memberIds.unshift(x.leadId); return x; };
@@ -2528,6 +2921,7 @@ function newIssue(d) {
     createdAt: nowIso, updatedAt: nowIso, resolvedAt: null, customer: d.customer || null, firstResponseAt: null, pausedMs: 0, pausedSince: null,
     rank: d.rank ?? Date.now(), color: d.color || null, appointmentAt: d.appointmentAt || null, resolution: null,
     teamId: d.teamId !== undefined ? d.teamId || null : project.teamId || null,
+    customerId: d.customerId || null, assetId: d.assetId || null, externalId: d.externalId || null,
   };
   i.watchers = [...new Set([i.reporterId, i.assigneeId].filter(Boolean))];
   i.history.push({ id: uid(), at: nowIso, userId: i.reporterId, field: "Vorgang", from: "", to: "erstellt" });
@@ -2543,6 +2937,8 @@ const KEYED = {
   comments: { key: (x) => x.id, sort: (a, b) => String(a.at).localeCompare(String(b.at)) },
   history: { key: (x) => x.id || `${x.at}|${x.field}|${x.to}`, sort: (a, b) => String(b.at).localeCompare(String(a.at)) },
   links: { key: (x) => `${x.type}|${x.issueId}` },
+  contacts: { key: (x) => x.id },
+  assets: { key: (x) => x.id },
 };
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 function diffEntity(base, next) {
@@ -2578,6 +2974,44 @@ function applyPatch(obj, patch) {
   return out;
 }
 
+/* ---------- Kunden, Anlagen und Wartung ---------- */
+function addMonths(dk, n) {
+  const [y, m, d] = String(dk).slice(0, 10).split("-").map(Number); const t = new Date(y, m - 1 + Number(n), 1);
+  const last = new Date(t.getFullYear(), t.getMonth() + 1, 0).getDate();
+  return dayKey(new Date(t.getFullYear(), t.getMonth(), Math.min(d, last)));
+}
+/** Nächster Wartungstermin einer Anlage: fest eingetragen oder letzte Wartung + Intervall. */
+const nextMaintenance = (a) => a.nextMaintenance || (a.lastMaintenance && a.intervalMonths ? addMonths(a.lastMaintenance, a.intervalMonths) : null);
+/** Kontaktdaten für einen Vorgang (Momentaufnahme – bleibt erhalten, auch wenn sich der Kundenstamm ändert). */
+function customerSnapshot(c, contactId) {
+  const k = (c.contacts || []).find((x) => x.id === contactId) || (c.contacts || [])[0] || {};
+  return { name: k.name || c.name, company: c.name, email: k.email || c.email || "", phone: k.phone || c.phone || "" };
+}
+const customerAddress = (c) => [c.street, [c.zip, c.city].filter(Boolean).join(" ")].filter(Boolean).join(", ");
+/** Anlagen, für die jetzt ein Wartungsvorgang angelegt werden muss (fällig innerhalb leadDays, noch kein offener Wartungsvorgang). */
+function maintenanceDue({ customers, issues, projects, today: t, leadDays = 21 }) {
+  const open = new Set(issues.filter((i) => i.assetId && i.type === "MAINT" && statusInfo(projects.find((p) => p.id === i.projectId) || { type: "service" }, i.status).cat !== "done").map((i) => i.assetId));
+  const out = [];
+  for (const c of customers) for (const a of c.assets || []) {
+    if (a.active === false || !a.intervalMonths) continue; const due = nextMaintenance(a);
+    if (due && daysBetween(t, due) <= leadDays && !open.has(a.id) && a.autoCreatedFor !== due) out.push({ customer: c, asset: a, due });
+  }
+  return out;
+}
+function maintenanceIssueData(c, a, due) {
+  return { type: "MAINT", summary: `Wartung ${a.name}${a.serial ? ` (SN ${a.serial})` : ""}`, priority: "MEDIUM", dueDate: due, labels: ["wartung-auto"],
+    description: [`Fällige Wartung laut Wartungsplan (Intervall ${a.intervalMonths} Monate).`, `Anlage: ${[a.manufacturer, a.model].filter(Boolean).join(" ") || a.name}${a.serial ? ` · Seriennummer ${a.serial}` : ""}${a.location ? ` · Standort ${a.location}` : ""}`,
+      customerAddress(c) ? `Adresse: ${customerAddress(c)}` : ""].filter(Boolean).join("\n"),
+    customerId: c.id, assetId: a.id, customer: customerSnapshot(c) };
+}
+/** Nach erledigter Wartung: letzte Wartung setzen und nächste berechnen. Gibt den geänderten Kunden zurück (oder null). */
+function completeMaintenance(c, assetId, dk) {
+  const a = (c.assets || []).find((x) => x.id === assetId); if (!a) return null;
+  const next = JSON.parse(JSON.stringify(c)); const b = next.assets.find((x) => x.id === assetId);
+  b.lastMaintenance = dk; b.nextMaintenance = b.intervalMonths ? addMonths(dk, b.intervalMonths) : null; next.updatedAt = new Date().toISOString();
+  return next;
+}
+
 function seed() {
   const now = Date.now(); const H = 36e5, D = 864e5; const t = today();
   const iso = (msAgo) => new Date(now - msAgo).toISOString();
@@ -2593,7 +3027,7 @@ function seed() {
   const projects = [
     { id: "pDIG", key: "DIG", name: "Digitalisierung", type: "software", leadId: "u2", teamId: "tDIG", color: "#2a78d6", nextNo: 1, desc: "Kundenportal und digitale Auftragsabwicklung" },
     { id: "pGF", key: "GF", name: "Geschäftsführung", type: "business", leadId: "u1", teamId: "tGF", color: "#8f5bd6", nextNo: 1, desc: "Aufgaben und Vorhaben der Geschäftsführung" },
-    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", teamId: "tSVC", color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
+    { id: "pSD", key: "SD", name: "Service-Desk", type: "service", leadId: "u5", teamId: "tSVC", autoMaint: true, maintLeadDays: 21, color: "#d0352c", nextNo: 1, desc: "Störungen, Wartungen und Kundenanfragen" },
   ];
   // Teams: wer gehört zusammen und stimmt sich ab (eine Person kann in mehreren Teams sein)
   const teams = [
@@ -2691,12 +3125,36 @@ function seed() {
   // Beispiele für den Team-Eingang (dem Team zugeordnet, aber noch niemandem zugewiesen)
   add("pGF", { type: "TASK", summary: "Angebot Druckluftanlage Müller Maschinenbau nachfassen", status: "TODO", priority: "HIGH", teamId: "tBUE", reporterId: "u1", createdAgo: 5 * H, dueDate: addDays(t, 2) });
   add("pGF", { type: "TASK", summary: "Ersatzteilbestand Filterelemente prüfen und nachbestellen", status: "TODO", priority: "MEDIUM", teamId: "tSVC", reporterId: "u2", createdAgo: 20 * H, dueDate: addDays(t, 4) });
-  return { users, teams, projects, sprints, issues, filters: [], notifications: [] };
+  // Kundenstamm mit Ansprechpartnern und Anlagen; Vorgänge werden über die Firma verknüpft
+  const c = (id, no, name, street, zip, city, phone, contacts, assets) => ({ id, no, name, street, zip, city, phone, email: contacts[0]?.email || "", notes: "", externalId: null,
+    contacts: contacts.map((k, n) => ({ id: `${id}k${n + 1}`, role: n ? "" : "Hauptansprechpartner", phone: "", ...k })),
+    assets: assets.map((a, n) => ({ id: `${id}a${n + 1}`, active: true, location: "", year: null, ...a })), createdAt: iso(90 * D), updatedAt: iso(5 * D) });
+  const customers = [
+    c("c1", "10001", "Kunze Metallbau GmbH", "Industriestraße 12", "09117", "Chemnitz", "0371 456780", [{ name: "Peter Kunze", email: "p.kunze@kunze-metallbau.de", phone: "0371 456781" }],
+      [{ name: "Schraubenkompressor GA 37 VSD", manufacturer: "Atlas Copco", model: "GA 37 VSD+", serial: "API123456", year: 2019, location: "Halle 2", intervalMonths: 12, lastMaintenance: addDays(t, -300) },
+       { name: "Kältetrockner FD 120", manufacturer: "Atlas Copco", model: "FD 120", serial: "FD778812", year: 2019, location: "Halle 2", intervalMonths: 12, lastMaintenance: addDays(t, -200) }]),
+    c("c2", "10002", "Lorenz Kunststofftechnik", "Am Gewerbepark 3", "09221", "Neukirchen/Erzgeb.", "0371 22110", [{ name: "Maria Lorenz", email: "m.lorenz@lorenz-kt.de" }, { name: "Uwe Bergmann", email: "u.bergmann@lorenz-kt.de", role: "Instandhaltung" }],
+      [{ name: "Kältetrockner Taupunkt +3 °C", manufacturer: "Kaeser", model: "TC 44", serial: "KT-44-0912", year: 2020, intervalMonths: 12, lastMaintenance: addDays(t, -380) },
+       { name: "Schraubenkompressor SK 25", manufacturer: "Kaeser", model: "SK 25", serial: "SK25-55102", year: 2016, intervalMonths: 6, lastMaintenance: addDays(t, -170) }]),
+    c("c3", "10003", "Richter Holzbau", "Waldweg 8", "09577", "Niederwiesa", "037206 1234", [{ name: "Tom Richter", email: "t.richter@richter-holz.de" }],
+      [{ name: "Schraubenkompressor GA 30", manufacturer: "Atlas Copco", model: "GA 30", serial: "GA30-88123", year: 2014, intervalMonths: 12, lastMaintenance: addDays(t, -350) }]),
+    c("c4", "10004", "Hofmann Druckguss", "Gießereistraße 1", "09125", "Chemnitz", "0371 51000", [{ name: "Jens Hofmann", email: "hofmann@druckguss-hofmann.de" }],
+      [{ name: "Kältetrockner", manufacturer: "Boge", model: "DS 80", serial: "B-DS80-4411", year: 2018, intervalMonths: 12, lastMaintenance: addDays(t, -362) },
+       { name: "Druckbehälter 2000 l", manufacturer: "Boge", model: "DB 2000", serial: "DB-2000-17", year: 2018, intervalMonths: 60, lastMaintenance: addDays(t, -14) }]),
+    c("c5", "10005", "Müller Maschinenbau GmbH", "Zwickauer Straße 210", "09116", "Chemnitz", "0371 300400", [{ name: "Andrea Müller", email: "a.mueller@mueller-maschinenbau.de", role: "Einkauf" }], []),
+  ];
+  for (const i of issues) if (i.customer?.company) { const k = customers.find((x) => x.name === i.customer.company); if (k) i.customerId = k.id; }
+  const asset = { "Jahreswartung Schraubenkompressor GA 30": "c3a1", "Jährliche Wartung Kältetrockner": "c4a1", "Kältetrockner Alarm Taupunkt zu hoch": "c2a1", "Schraubenkompressor zeigt Fehler E42 – Produktion steht": "c1a1", "Druckbehälterprüfung nach BetrSichV": "c4a2" };
+  for (const i of issues) if (asset[i.summary]) i.assetId = asset[i.summary];
+  // Abwesenheiten (normalerweise aus Factorial; hier Beispiel)
+  const absences = [{ id: "ab1", userId: "u6", start: addDays(t, 8), end: addDays(t, 12), type: "Urlaub", source: "manual", note: "" }];
+  return { users, teams, customers, absences, projects, sprints, issues, filters: [], notifications: [] };
 }
 
 return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur,
-  workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed };
+  workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed,
+  addMonths, nextMaintenance, customerSnapshot, customerAddress, maintenanceDue, maintenanceIssueData, completeMaintenance };
 })();
 
 </script>
@@ -2907,6 +3365,144 @@ return { build, ref, colName };
 </script>
 <script>
 /* ======================================================================
+   Datei-Leser für den Import: CSV (Trennzeichen und Zeichensatz werden
+   erkannt) und Excel .xlsx (ohne externe Bibliotheken – entpackt über die
+   im Browser eingebaute DecompressionStream-API).
+   readTable(file) → Promise<[{ name, rows: [[Zelle, …], …] }]>
+   Datumszellen aus Excel werden als "JJJJ-MM-TT" (bzw. mit Uhrzeit) geliefert.
+   ====================================================================== */
+globalThis.TableReader = (() => {
+"use strict";
+
+/* ---------- CSV ---------- */
+function decode(bytes) {
+  let text;
+  try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { text = new TextDecoder("windows-1252").decode(bytes); } // Excel speichert CSV oft als ANSI
+  return text.replace(/^﻿/, "");
+}
+function detectDelimiter(text) {
+  const line = text.split(/\r?\n/).find((l) => l.trim()) || "";
+  let best = ";", max = -1;
+  for (const d of [";", ",", "\t", "|"]) { let n = 0, q = false; for (const ch of line) { if (ch === '"') q = !q; else if (ch === d && !q) n++; } if (n > max) { max = n; best = d; } }
+  return best;
+}
+function parseCsv(text) {
+  const d = detectDelimiter(text); const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cell += '"'; i++; } else q = false; } else cell += ch; continue; }
+    if (ch === '"' && cell === "") q = true;
+    else if (ch === d) { row.push(cell); cell = ""; }
+    else if (ch === "\n" || ch === "\r") { if (ch === "\r" && text[i + 1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += ch;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.map((r) => r.map((c) => c.trim())).filter((r) => r.some((c) => c !== ""));
+}
+
+/* ---------- XLSX ---------- */
+async function unzip(buf) {
+  const v = new DataView(buf); const u8 = new Uint8Array(buf); let eocd = -1;
+  for (let i = buf.byteLength - 22; i >= Math.max(0, buf.byteLength - 66000); i--) if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+  if (eocd < 0) throw new Error("Die Datei ist keine gültige Excel-Datei (.xlsx).");
+  const count = v.getUint16(eocd + 10, true); let p = v.getUint32(eocd + 16, true); const files = {};
+  for (let k = 0; k < count; k++) {
+    if (v.getUint32(p, true) !== 0x02014b50) break;
+    const method = v.getUint16(p + 10, true), csize = v.getUint32(p + 20, true), nlen = v.getUint16(p + 28, true), elen = v.getUint16(p + 30, true), clen = v.getUint16(p + 32, true), off = v.getUint32(p + 42, true);
+    const name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nlen));
+    files[name] = { method, csize, off }; p += 46 + nlen + elen + clen;
+  }
+  return async (name) => {
+    const f = files[name]; if (!f) return null;
+    const start = f.off + 30 + v.getUint16(f.off + 26, true) + v.getUint16(f.off + 28, true); const data = u8.subarray(start, start + f.csize);
+    if (f.method === 0) return new TextDecoder().decode(data);
+    if (f.method !== 8) throw new Error("Nicht unterstützte Komprimierung in der Excel-Datei.");
+    if (typeof DecompressionStream === "undefined") throw new Error("Dieser Browser kann .xlsx nicht entpacken – bitte als CSV speichern oder einen aktuellen Browser verwenden.");
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+    return new Response(stream).text();
+  };
+}
+const parseXml = (s) => new DOMParser().parseFromString(s, "application/xml");
+const byTag = (el, tag) => [...el.getElementsByTagName(tag)];
+const colIndex = (ref) => { let n = 0; for (const ch of ref.replace(/\d+/g, "")) n = n * 26 + ch.charCodeAt(0) - 64; return n - 1; };
+const BUILTIN_DATES = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47]);
+function serialToIso(n, withTime) {
+  const ms = Math.round((n - 25569) * 864e5); const d = new Date(ms);
+  const p = (x) => String(x).padStart(2, "0"); const date = `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())}`;
+  return withTime && (d.getUTCHours() || d.getUTCMinutes()) ? `${date}T${p(d.getUTCHours())}:${p(d.getUTCMinutes())}` : date;
+}
+async function readXlsx(buf) {
+  const get = await unzip(buf);
+  const wb = parseXml(await get("xl/workbook.xml") || ""); const rels = parseXml(await get("xl/_rels/workbook.xml.rels") || "<r/>");
+  const relMap = Object.fromEntries(byTag(rels, "Relationship").map((r) => [r.getAttribute("Id"), r.getAttribute("Target")]));
+  const ss = await get("xl/sharedStrings.xml"); const shared = ss ? byTag(parseXml(ss), "si").map((si) => byTag(si, "t").map((t) => t.textContent).join("")) : [];
+  const stx = await get("xl/styles.xml"); const dateStyles = new Set();
+  if (stx) {
+    const sd = parseXml(stx); const custom = {}; byTag(sd, "numFmt").forEach((f) => (custom[f.getAttribute("numFmtId")] = f.getAttribute("formatCode") || ""));
+    const xfs = sd.getElementsByTagName("cellXfs")[0]; (xfs ? byTag(xfs, "xf") : []).forEach((xf, i) => {
+      const id = Number(xf.getAttribute("numFmtId") || 0); const code = (custom[id] || "").replace(/"[^"]*"|\[[^\]]*\]/g, "");
+      if (BUILTIN_DATES.has(id) || (id >= 164 && /[dmyjt]/i.test(code) && !/^[#0.,%\s]+$/.test(code))) dateStyles.add(i);
+    });
+  }
+  const sheets = [];
+  for (const s of byTag(wb, "sheet")) {
+    const rid = s.getAttribute("r:id") || s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id");
+    let target = relMap[rid] || ""; target = target.startsWith("/") ? target.slice(1) : `xl/${target.replace(/^\.\//, "")}`;
+    const xml = await get(target); if (!xml) continue;
+    const doc = parseXml(xml); const rows = [];
+    for (const r of byTag(doc, "row")) {
+      const out = [];
+      for (const c of byTag(r, "c")) {
+        const t = c.getAttribute("t"); const v = c.getElementsByTagName("v")[0]?.textContent ?? ""; let val;
+        if (t === "s") val = shared[Number(v)] ?? "";
+        else if (t === "inlineStr") val = byTag(c, "t").map((x) => x.textContent).join("");
+        else if (t === "b") val = v === "1" ? "ja" : "nein";
+        else if (t === "str" || t === "e") val = v;
+        else if (v !== "" && dateStyles.has(Number(c.getAttribute("s") || 0))) val = serialToIso(Number(v), true);
+        else val = v;
+        out[colIndex(c.getAttribute("r") || "A")] = String(val).trim();
+      }
+      for (let k = 0; k < out.length; k++) if (out[k] === undefined) out[k] = "";
+      if (out.some((x) => x !== "")) rows.push(out);
+    }
+    sheets.push({ name: s.getAttribute("name") || `Blatt ${sheets.length + 1}`, rows });
+  }
+  return sheets;
+}
+
+async function readTable(file) {
+  const buf = await file.arrayBuffer(); const head = new Uint8Array(buf.slice(0, 4));
+  if (head[0] === 0x50 && head[1] === 0x4b) return readXlsx(buf);
+  if (head[0] === 0xd0 && head[1] === 0xcf) throw new Error("Alte Excel-Dateien (.xls) bitte in Excel als .xlsx oder CSV speichern.");
+  return [{ name: file.name.replace(/\.[^.]+$/, ""), rows: parseCsv(decode(new Uint8Array(buf))) }];
+}
+
+/* ---------- Werte deuten ---------- */
+/** Datum aus "TT.MM.JJJJ", "JJJJ-MM-TT", "TT/MM/JJ" oder Excel-Seriennummer → "JJJJ-MM-TT" (oder null). */
+function toDate(v) {
+  const s = String(v ?? "").trim(); if (!s) return null;
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  m = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{2,4})/); if (m) { const y = m[3].length === 2 ? `20${m[3]}` : m[3]; return `${y}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`; }
+  if (/^\d{4,5}(\.\d+)?$/.test(s)) return serialToIso(Number(s), false);
+  return null;
+}
+/** Zahl aus "1.234,5" oder "1234.5" (oder null). */
+function toNumber(v) {
+  let s = String(v ?? "").trim().replace(/\s/g, ""); if (!s) return null;
+  if (/,\d{1,3}$/.test(s) && !/\.\d{1,2}$/.test(s)) s = s.replace(/\./g, "").replace(",", ".");
+  else s = s.replace(/,/g, "");
+  const n = Number(s); return isFinite(n) ? n : null;
+}
+const toBool = (v) => !/^(nein|no|false|0|inaktiv|n|-)$/i.test(String(v ?? "").trim());
+/** Vergleichsschlüssel für Spaltenüberschriften: klein, ohne Umlaute/Leer-/Sonderzeichen. */
+const norm = (s) => String(s ?? "").toLowerCase().replace(/ä/g, "ae").replace(/ö/g, "oe").replace(/ü/g, "ue").replace(/ß/g, "ss").replace(/[^a-z0-9]/g, "");
+
+return { readTable, parseCsv, toDate, toNumber, toBool, norm };
+})();
+
+</script>
+<script>
+/* ======================================================================
    GF Tracker – Einzeldatei-Version: Browser-Backend
    Bildet die Server-Schnittstellen (/api/...) im Browser nach und speichert
    alle Daten im localStorage dieses Browsers. Mehrere Tabs desselben
@@ -2917,7 +3513,7 @@ return { build, ref, colName };
 "use strict";
 const S = globalThis.TrackerShared;
 const DB_KEY = "gft-sa-db", SESSION_KEY = "gft-sa-user";
-const COLLECTIONS = ["users", "teams", "projects", "sprints", "issues", "filters", "notifications"];
+const COLLECTIONS = ["users", "teams", "customers", "absences", "projects", "sprints", "issues", "filters", "notifications"];
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const COMPANY = "Druckluft Chemnitz";
 const BASE = location.href.split(/[?#]/)[0];
@@ -2996,7 +3592,7 @@ function currentUser(d) {
   return u && u.active ? u : null;
 }
 
-function canWrite(user, type, op, cur, data) {
+function canWrite(user, type, op, cur, data, d = load()) {
   const admin = user.role === "ADMIN";
   if (type === "users") {
     if (op === "put") return "Benutzer werden über die Benutzerverwaltung angelegt.";
@@ -3008,6 +3604,12 @@ function canWrite(user, type, op, cur, data) {
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
   if (type === "projects" && !admin) return "Nur Administratoren dürfen Projekte anlegen, ändern oder löschen.";
+  if (type === "customers" && op === "delete" && !admin) return "Kunden können nur Administratoren löschen.";
+  if (type === "absences" && !admin) {
+    const target = (cur || data)?.userId; const lead = (all(d, "teams")).some((t) => t.leadId === user.id && t.memberIds.includes(target));
+    if (cur?.source === "factorial") return "Abwesenheiten aus Factorial werden dort gepflegt.";
+    if (target !== user.id && !lead) return "Abwesenheiten anderer Personen pflegen Teamleitung oder Administratoren.";
+  }
   if (type === "teams" && !admin) {
     if (op !== "patch" || !cur || cur.leadId !== user.id) return "Teams verwalten Administratoren; die Teamleitung kann Mitglieder ändern.";
     const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
@@ -3040,6 +3642,16 @@ function sanitize(d, type, obj, cur) {
     if (!S.PROJECT_TYPES[obj.type]) throw new HttpError(400, "Unbekannter Projekttyp.");
   }
   if (type === "users" && cur) obj.email = cur.email;
+  if (type === "customers") {
+    obj.name = String(obj.name || "").trim().slice(0, 200); if (!obj.name) throw new HttpError(400, "Kundenname fehlt.");
+    obj.no = String(obj.no ?? "").trim().slice(0, 40);
+    obj.contacts = (Array.isArray(obj.contacts) ? obj.contacts : []).filter((k) => k && ID_RE.test(String(k.id))).slice(0, 200);
+    obj.assets = (Array.isArray(obj.assets) ? obj.assets : []).filter((a) => a && ID_RE.test(String(a.id))).slice(0, 500);
+  }
+  if (type === "absences") {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(obj.start || "") || !/^\d{4}-\d{2}-\d{2}$/.test(obj.end || "") || obj.end < obj.start) throw new HttpError(400, "Ungültiger Zeitraum.");
+    obj.type = String(obj.type || "Abwesend").slice(0, 40); obj.source = cur?.source || (obj.source === "factorial" ? "manual" : obj.source || "manual");
+  }
   if (type === "teams") {
     obj.name = String(obj.name || "").trim().slice(0, 80); if (!obj.name) throw new HttpError(400, "Teamname fehlt.");
     obj.memberIds = [...new Set((Array.isArray(obj.memberIds) ? obj.memberIds : []).filter((x) => typeof x === "string" && ID_RE.test(x)))];
@@ -3076,6 +3688,11 @@ function applyOp(d, user, op) {
   } else throw new HttpError(400, "Unbekannte Operation.");
   next.id = id; next = sanitize(d, type, next, cur);
   put(d, type, next);
+  // Wartungsplan fortschreiben, wenn ein Wartungsvorgang erledigt wurde
+  if (type === "issues" && cur && next.assetId && next.customerId && next.type === "MAINT") {
+    const p = get(d, "projects", next.projectId); const cat = (i) => S.statusInfo(p, i.status).cat;
+    if (p && cat(cur) !== "done" && cat(next) === "done") { const c = get(d, "customers", next.customerId); const upd = c && S.completeMaintenance(c, next.assetId, S.dayKey(next.resolvedAt || new Date())); if (upd) put(d, "customers", upd); }
+  }
   return { type, id, data: type === "users" ? publicUser(next) : next };
 }
 
@@ -3103,6 +3720,14 @@ function deadlineJob() {
         if (s.breached) createNotification(d, who, "sla", `SLA verletzt (${name}): ${key}`, i.summary, i.id, `slab:${kind}:${i.id}:${i.priority}`);
         else if (s.risk) createNotification(d, who, "sla", `SLA gefährdet (${name}): ${key}`, `${i.summary} – noch ${S.fmtDur(s.remaining)}`, i.id, `slar:${kind}:${i.id}:${i.priority}`);
       }
+    }
+    // Wartungsplan: fällige Wartungen als Vorgang anlegen
+    const mp = all(d, "projects").find((p) => p.type === "service" && p.autoMaint);
+    if (mp) for (const { customer, asset, due } of S.maintenanceDue({ customers: all(d, "customers"), issues: all(d, "issues"), projects: all(d, "projects"), today: t, leadDays: mp.maintLeadDays ?? 21 })) {
+      const i = S.newIssue({ project: mp, no: reserveNumber(d, mp.id), reporterId: null, ...S.maintenanceIssueData(customer, asset, due) }); put(d, "issues", i);
+      const c2 = JSON.parse(JSON.stringify(customer)); c2.assets.find((a) => a.id === asset.id).autoCreatedFor = due; put(d, "customers", c2);
+      const team = i.teamId ? get(d, "teams", i.teamId) : null;
+      for (const u of new Set([...(team?.memberIds || []), mp.leadId].filter(Boolean))) createNotification(d, u, "new", `Wartung fällig: ${issueKey(d, i)}`, `${customer.name} – ${asset.name} bis ${due.split("-").reverse().join(".")}`, i.id);
     }
   });
 }
@@ -3137,7 +3762,8 @@ function portalCreate(b) {
     const priority = S.URGENCY.some((u) => u.id === b.urgency) ? b.urgency : "MEDIUM";
     const i = S.newIssue({ project: p, no: reserveNumber(d, p.id), type, summary, priority, reporterId: null, labels: ["portal"],
       description: [str(b.asset, 200) ? `Anlage/Standort: ${str(b.asset, 200)}` : "", description].filter(Boolean).join("\n\n"),
-      customer: { name, company, email, phone: str(b.phone, 60) } });
+      customer: { name, company, email, phone: str(b.phone, 60) },
+      customerId: all(d, "customers").find((c) => (c.email || "").toLowerCase() === email || (c.contacts || []).some((k) => (k.email || "").toLowerCase() === email))?.id || null });
     put(d, "issues", i);
     for (const u of all(d, "users").filter((u) => u.active && (u.role === "AGENT" || u.id === p.leadId))) createNotification(d, u.id, "new", `Neue Anfrage: ${p.key}-${i.no}`, `${company} · ${name}: ${summary}`, i.id);
     const link = portalLink(d, i.id);
@@ -3175,7 +3801,7 @@ function importAll(data, admin) {
     const users = data.users.map((u) => ({ ...publicUser({ notifyEmail: true, active: true, color: S.hashColor(u.email), ...u }), email: String(u.email).toLowerCase() }));
     if (!users.some((u) => u.id === admin.id)) users.push(publicUser(admin));
     for (const u of users) put(d, "users", u);
-    for (const t of ["teams", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) put(d, t, o);
+    for (const t of ["teams", "customers", "absences", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) put(d, t, o);
     d.counters = {};
   });
   return { imported: data.issues.length, usersWithoutPassword: [] };
@@ -3229,7 +3855,13 @@ function handle(method, url, body) {
     });
   }
   pm = p.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/reserve$/);
-  if (pm && method === "POST") return tx((d) => { if (!get(d, "projects", pm[1])) throw new HttpError(404, "Projekt nicht gefunden."); d.rev++; return { no: reserveNumber(d, pm[1]) }; });
+  if (pm && method === "POST") return tx((d) => { if (!get(d, "projects", pm[1])) throw new HttpError(404, "Projekt nicht gefunden."); d.rev++;
+    const count = Math.min(5000, Math.max(1, Number(url.searchParams.get("count")) || 1)); const first = reserveNumber(d, pm[1]); d.counters[pm[1]] = first + count; return { no: first, count }; });
+  if (p === "/api/admin/users/import" && method === "POST") { needAdmin(); return tx((d) => { let created = 0, updated = 0;
+    for (const x of body.users || []) { const name = str(x.name, 120), email = str(x.email, 200).toLowerCase(); const role = S.ROLES[x.role] ? x.role : "MEMBER"; if (!name || !email.includes("@")) continue;
+      const ex = all(d, "users").find((u) => u.email.toLowerCase() === email);
+      if (ex) { put(d, "users", { ...ex, name, role: ex.id === user.id ? ex.role : role, active: true }); updated++; } else { put(d, "users", { id: S.uid(), name, email, role, active: true, color: S.hashColor(email), notifyEmail: true }); created++; } }
+    return { created, updated, skipped: [] }; }); }
   if (p === "/api/admin/users" && method === "POST") {
     needAdmin();
     const name = str(body.name, 120), email = str(body.email, 200).toLowerCase();

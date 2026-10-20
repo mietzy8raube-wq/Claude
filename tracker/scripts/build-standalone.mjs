@@ -114,6 +114,9 @@ ${read("public/shared.js")}
 ${read("public/xlsx.js")}
 </script>
 <script>
+${read("public/importer.js")}
+</script>
+<script>
 ${read("standalone/backend.js")}
 </script>
 <script>${loader}</script>

@@ -507,7 +507,11 @@ async function handleApi(req, res, url, session) {
     return { rev: store.rev(), results };
   }
   pm = p.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/reserve$/);
-  if (pm && m === "POST") { if (!projectById(pm[1])) throw new HttpError(404, "Projekt nicht gefunden."); return { no: store.tx(() => store.reserveNumber(pm[1])) }; }
+  if (pm && m === "POST") {
+    if (!projectById(pm[1])) throw new HttpError(404, "Projekt nicht gefunden.");
+    const count = Math.min(5000, Math.max(1, Number(url.searchParams.get("count")) || 1)); // Block für Importe
+    return { no: store.tx(() => { const first = store.reserveNumber(pm[1]); if (count > 1) store.s.setCounter.run(pm[1], first + count); return first; }), count };
+  }
   if (p === "/api/events" && m === "GET") return { __sse: true };
 
   // Administration
@@ -523,6 +527,19 @@ async function handleApi(req, res, url, session) {
     store.tx(() => { store.put("users", u); store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(u.id, email, hashPassword(b.password), new Date().toISOString()); });
     broadcast(); log(`Benutzer angelegt: ${email} (${b.role}) durch ${user.email}`);
     return { user: publicUser(u) };
+  }
+  if (p === "/api/admin/users/import" && m === "POST") {
+    needAdmin(); const b = await readJson(req, 4e6); if (!Array.isArray(b.users) || b.users.length > 2000) throw new HttpError(400, "Ungültige Liste.");
+    let created = 0, updated = 0; const skipped = [];
+    store.tx(() => { for (const x of b.users) {
+      const name = str(x.name, 120), email = str(x.email, 200).toLowerCase(); const role = S.ROLES[x.role] ? x.role : "MEMBER";
+      if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { skipped.push(email || name); continue; }
+      const ex = store.all("users").find((u) => u.email.toLowerCase() === email);
+      if (ex) { store.put("users", { ...ex, name, role: ex.id === user.id ? ex.role : role, active: true }); updated++; }
+      else { store.put("users", { id: S.uid(), name, email, role, active: true, color: S.hashColor(email), notifyEmail: true }); created++; }
+    } });
+    broadcast(); log(`Mitarbeiter-Import durch ${user.email}: ${created} neu, ${updated} aktualisiert`);
+    return { created, updated, skipped };
   }
   pm = p.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/password$/);
   if (pm && m === "POST") {

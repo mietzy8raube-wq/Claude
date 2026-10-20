@@ -362,3 +362,14 @@ h1 .tavatar { margin-right: 10px; }
 @media (max-width: 1000px) { .cust-grid { grid-template-columns: minmax(0, 1fr); } }
 .cust-grid > *, .cust-grid .card { min-width: 0; } .kv > span { overflow-wrap: anywhere; }
 .cust-grid > .grid { grid-template-columns: minmax(0, 1fr); }
+
+/* Import */
+.imp-step { margin-bottom: 14px; }
+.imp-h { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 15px; }
+.imp-n { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--surface-2); color: var(--fg-2); font-size: 13px; flex: none; }
+.imp-h.on .imp-n { background: var(--primary); color: var(--primary-fg); } .imp-h.done .imp-n { background: var(--ok-soft); color: var(--ok); }
+.imp-type { display: grid; gap: 4px; text-align: left; padding: 12px 14px; font: inherit; color: inherit; cursor: pointer; border: 2px solid transparent; }
+.imp-type.on { border-color: var(--primary); background: var(--primary-soft); }
+.dropzone { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; padding: 26px 16px; border: 2px dashed var(--border); border-radius: 10px; cursor: pointer; color: var(--fg-2); text-align: center; }
+.dropzone:hover, .dropzone.drop-on { border-color: var(--primary); background: var(--primary-soft); }
+.imp-map select { min-width: 200px; }

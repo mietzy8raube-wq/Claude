@@ -351,7 +351,13 @@ function handle(method, url, body) {
     });
   }
   pm = p.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/reserve$/);
-  if (pm && method === "POST") return tx((d) => { if (!get(d, "projects", pm[1])) throw new HttpError(404, "Projekt nicht gefunden."); d.rev++; return { no: reserveNumber(d, pm[1]) }; });
+  if (pm && method === "POST") return tx((d) => { if (!get(d, "projects", pm[1])) throw new HttpError(404, "Projekt nicht gefunden."); d.rev++;
+    const count = Math.min(5000, Math.max(1, Number(url.searchParams.get("count")) || 1)); const first = reserveNumber(d, pm[1]); d.counters[pm[1]] = first + count; return { no: first, count }; });
+  if (p === "/api/admin/users/import" && method === "POST") { needAdmin(); return tx((d) => { let created = 0, updated = 0;
+    for (const x of body.users || []) { const name = str(x.name, 120), email = str(x.email, 200).toLowerCase(); const role = S.ROLES[x.role] ? x.role : "MEMBER"; if (!name || !email.includes("@")) continue;
+      const ex = all(d, "users").find((u) => u.email.toLowerCase() === email);
+      if (ex) { put(d, "users", { ...ex, name, role: ex.id === user.id ? ex.role : role, active: true }); updated++; } else { put(d, "users", { id: S.uid(), name, email, role, active: true, color: S.hashColor(email), notifyEmail: true }); created++; } }
+    return { created, updated, skipped: [] }; }); }
   if (p === "/api/admin/users" && method === "POST") {
     needAdmin();
     const name = str(body.name, 120), email = str(body.email, 200).toLowerCase();
