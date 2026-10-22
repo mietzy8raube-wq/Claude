@@ -22,13 +22,13 @@ function patch(name, src, rules) {
 }
 
 const app = patch("app.js", read("public/app.js"), [
-  ['location.href = "/login"', 'location.href = "?login"', 2],
+  ['const LOGIN_URL = TEAMS ? "/teams/tab" : "/login";', 'const LOGIN_URL = "?login";'],
   ['href="/portal"', 'href="?portal"', 3],
   ["/portal?p=${p.key}", "?portal&p=${p.key}", 2],
   ["${esc(location.origin)}/portal?embed=1", "${esc(GFTLocal.BASE)}?portal&embed=1"],
   ["${esc(location.origin)}/portal", "${esc(GFTLocal.BASE)}?portal", 2],
-  ['location.href = "/api/admin/export"', 'api("/api/admin/export")'],
-  ['if ("serviceWorker" in navigator)', "if (false)"],
+  ['location.href = authUrl("/api/admin/export")', 'api("/api/admin/export")'],
+  ['if ("serviceWorker" in navigator && !TEAMS)', "if (false)"],
 ]);
 const portal = patch("portal.js", read("public/portal.js"), [
   ['(location.pathname.match(/^\\/portal\\/r\\/([A-Za-z0-9_-]{20,64})$/) || [])[1]', '(/^[A-Za-z0-9_-]{20,64}$/.test(params.get("r") || "") ? params.get("r") : null)'],

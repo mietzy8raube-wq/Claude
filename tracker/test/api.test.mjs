@@ -168,6 +168,33 @@ test("Erscheinungsbild: Name, Farbe, Logo – nur Administration; SVG mit Skript
   await anna.req("/api/admin/brand", { method: "POST", body: { appName: "", company: "", color: "#0c66e4" } });
 });
 
+test("Microsoft Teams: App-Paket, Anmeldung per Token ohne Cookie, Einbettung nur für Teams", async () => {
+  assert.equal((await fetch(`${BASE}/api/admin/teams/package`, { headers: { cookie: lisa.cookie } })).status, 403);
+  const zr = await fetch(`${BASE}/api/admin/teams/package`, { headers: { cookie: anna.cookie } }); assert.equal(zr.status, 200); assert.equal(zr.headers.get("content-type"), "application/zip");
+  const zip = Buffer.from(await zr.arrayBuffer()); const files = {};
+  for (let o = 0; zip.readUInt32LE(o) === 0x04034b50;) { const size = zip.readUInt32LE(o + 18), nl = zip.readUInt16LE(o + 26); files[zip.subarray(o + 30, o + 30 + nl).toString()] = zip.subarray(o + 30 + nl, o + 30 + nl + size); o += 30 + nl + size; }
+  assert.deepEqual(Object.keys(files).sort(), ["color.png", "manifest.json", "outline.png"]);
+  const mf = JSON.parse(files["manifest.json"]); assert.equal(mf.manifestVersion, "1.16"); assert.match(mf.id, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(mf.validDomains, [new URL(BASE).host]); assert.equal(mf.staticTabs.length, 3); assert.equal(mf.staticTabs[0].contentUrl, `${BASE}/teams/tab?view=your-work`);
+  assert.equal(mf.configurableTabs[0].configurationUrl, `${BASE}/teams/config`);
+  assert.equal(files["outline.png"].subarray(1, 4).toString(), "PNG"); assert.equal(files["outline.png"].readUInt32BE(16), 32);
+  // Token-Anmeldung (wie im Anmelde-Popup) und Nutzung ohne Cookie
+  assert.equal((await new Client().req("/api/teams/token", { method: "POST" })).status, 401);
+  const { token } = (await anna.req("/api/teams/token", { method: "POST" })).data; assert.ok(token.length > 30);
+  const me = await fetch(`${BASE}/api/me`, { headers: { "X-GFT-Token": token } }); assert.equal((await me.json()).user.email, "anna.mueller@druckluft-chemnitz.de");
+  assert.equal((await fetch(`${BASE}/api/state?part=notifications&token=${token}`)).status, 401, "Token in der Adresse nur für Bilder/Downloads/Live-Updates");
+  assert.equal((await fetch(`${BASE}/api/sync`, { method: "POST", headers: { "X-GFT-Token": token, "Content-Type": "application/json" }, body: "{}" })).status, 403, "CSRF-Kopf weiterhin nötig");
+  assert.ok((await anna.req("/api/me/sessions")).data.sessions.some((x) => x.device === "Microsoft Teams"));
+  // Einbettung: Teams-Seiten dürfen in Teams, die normale App nirgends
+  const tab = await fetch(`${BASE}/teams/tab?view=dashboard`); assert.equal(tab.status, 200); assert.equal(tab.headers.get("x-frame-options"), null); assert.match(tab.headers.get("content-security-policy"), /frame-ancestors 'self' https:\/\/teams\.microsoft\.com/);
+  assert.equal((await fetch(`${BASE}/teams/app`)).status, 200);
+  assert.equal((await fetch(`${BASE}/`, { headers: { cookie: anna.cookie } })).headers.get("x-frame-options"), "DENY");
+  const start = await fetch(`${BASE}/teams/auth-start`, { redirect: "manual" }); assert.equal(start.headers.get("location"), "/login?next=%2Fteams%2Fauth-end");
+  assert.equal((await fetch(`${BASE}/vendor/MicrosoftTeams.min.js`)).status, 200);
+  const out = await fetch(`${BASE}/api/logout`, { method: "POST", headers: { "X-GFT-Token": token, "X-GFT": "1" } }); assert.equal(out.status, 200);
+  assert.equal((await fetch(`${BASE}/api/me`, { headers: { "X-GFT-Token": token } })).status, 401, "Abmelden beendet die Teams-Sitzung");
+});
+
 test("Kundenportal: Anfrage stellen, verfolgen, antworten – interne Notizen bleiben verborgen", async () => {
   const pub = new Client();
   const bad = await pub.req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "A", company: "B", email: "kein-mail", summary: "x", description: "y" } });

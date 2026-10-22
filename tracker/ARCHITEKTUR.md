@@ -638,6 +638,43 @@ PWABuilder für den Microsoft Store oder Google Play verpacken. Ein eigenes
 Windows-Programm (.exe) bringt gegenüber der installierten Web-App keinen
 Vorteil, aber zusätzlichen Aufwand (Signierung, Verteilung, Updates).
 
+### 13.1a Microsoft Teams (fertig eingebaut)
+
+*Integrationen → Microsoft Teams → „Teams-App herunterladen (ZIP)“* erzeugt ein
+fertiges App-Paket (Name, Farbe aus dem Erscheinungsbild). Hochladen im
+**Teams Admin Center → Teams-Apps → Apps verwalten → Hochladen**; über eine
+*Setuprichtlinie* lässt sich die App für alle in der linken Leiste anheften.
+
+- **Persönliche App** mit den Reitern *Mein Tag*, *Suche*, *Dashboard*.
+- **Reiter in Kanälen und Chats**: beim Hinzufügen die Ansicht wählen, z. B.
+  „SD – Warteschlange“, „SD – Einsatzplanung“ oder ein Projekt-Board.
+- **Anmeldung** einmalig über ein kleines Fenster (E-Mail/Passwort oder „Mit
+  Microsoft anmelden“). Weil Teams die App in einem Rahmen anzeigt, in dem
+  Browser Cookies oft sperren, nutzt die App dort ein eigenes Sitzungs-Token
+  (Kopfzeile `X-GFT-Token`; sichtbar unter *Angemeldete Geräte* als „Microsoft
+  Teams“, jederzeit abmeldbar).
+- Zurück/Vor-Knöpfe in der Kopfzeile ersetzen die fehlende Browserleiste.
+- Voraussetzung: `APP_URL` mit **https://**. Das Teams-SDK liegt unter
+  `public/vendor/` (MIT-Lizenz), es wird nichts von fremden Servern geladen.
+- Meldungen in einen Kanal: unter *Webhooks* mit Format „Microsoft Teams“.
+
+### 13.1b Bedienung: Suche, Spalten, Navigation, Erscheinungsbild
+
+- **Suche** (Kopfzeile oder Menü *Suche*): einfach lostippen – Vorschläge
+  erscheinen sofort (Vorgänge und Kunden, Pfeiltasten + Enter). Gesucht wird in
+  Nummer, Zusammenfassung, Beschreibung, Kommentaren, Kunde, Anlage/Seriennummer,
+  Personen, Status und Dateinamen; mehrere Wörter müssen alle vorkommen,
+  `-wort` schließt aus, Umlaute und Groß-/Kleinschreibung sind egal. Dazu
+  Auswahlfelder (Projekt, Status, Verantwortlich, Priorität, Typ, Team) und
+  „Erweiterte Suche (JQL)“ für Profis.
+- **Spalten** jeder Ergebnisliste frei wählbar („Spalten ▾“), gemerkt je Browser.
+- **Zurück/Vor** funktioniert überall – auch für geöffnete Vorgänge
+  (Adresse `…?issue=SD-12`, als Link teilbar), Warteschlangen und Reiter.
+- **Erscheinungsbild** (*Einstellungen*, Administration): Name der App,
+  Firmenname, Firmenfarbe und Logo – wirkt in App, Anmeldung, Kundenportal,
+  E-Mails, installierter App und Teams-App. **QR-Code** unter „Als App nutzen“
+  zum schnellen Installieren auf dem Handy.
+
 ### 13.2 Kundenportal auf Ihrer Website (fertig eingebaut)
 
 | Variante | So geht's |
@@ -722,5 +759,5 @@ nächste Wartung weiter.
 - Eine fertige Anbindung an Ihre konkrete Warenwirtschaft bzw. Buchhaltung
   (z. B. DATEV, lexoffice, sevDesk, Sage, weclapp, Microsoft Dynamics) – die
   Schnittstellen dafür sind da; der Adapter hängt vom System ab.
-- Tracker als Registerkarte direkt in Microsoft Teams (setzt die Microsoft-Anmeldung voraus).
-- Anhänge aus E-Mails im Vorgang speichern (derzeit Hinweis „Anhänge im Postfach“).
+- Persönliche Benachrichtigungen im Teams-Aktivitätsfeed (setzt eine Bot-/Graph-Registrierung
+  voraus); Kanalmeldungen über Webhooks sind vorhanden.

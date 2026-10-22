@@ -70,11 +70,18 @@ const LOCAL_KEY = "gft-local";
 const localState = (() => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY)) || { recent: {} }; } catch { return { recent: {} }; } })();
 function saveLocal() { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(localState)); } catch {} }
 
+/* In Microsoft Teams (Pfad /teams/app) meldet sich die App mit einem Token statt Cookie an – Cookies sind dort oft gesperrt. */
+const TEAMS = location.pathname === "/teams/app";
+const TEAMS_TOKEN = TEAMS ? (() => { try { return localStorage.getItem("gft-teams-token"); } catch { return null; } })() : null;
+const authHeaders = () => (TEAMS_TOKEN ? { "X-GFT-Token": TEAMS_TOKEN } : {});
+/** Links auf Dateien/Downloads: in Teams mit Token (Bilder und Downloads können keinen Kopf senden). */
+const authUrl = (u) => (TEAMS_TOKEN ? `${u}${u.includes("?") ? "&" : "?"}token=${encodeURIComponent(TEAMS_TOKEN)}` : u);
+const LOGIN_URL = TEAMS ? "/teams/tab" : "/login";
 async function api(path, { method = "GET", body } = {}) {
   let res;
-  try { res = await fetch(path, { method, credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GFT": "1" }, body: body === undefined ? undefined : JSON.stringify(body) }); }
+  try { res = await fetch(path, { method, credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GFT": "1", ...authHeaders() }, body: body === undefined ? undefined : JSON.stringify(body) }); }
   catch (e) { throw Object.assign(new Error("Keine Verbindung zum Server."), { offline: true }); }
-  if (res.status === 401 && !path.startsWith("/api/me/password")) { location.href = "/login"; throw new Error("Nicht angemeldet."); }
+  if (res.status === 401 && !path.startsWith("/api/me/password")) { if (TEAMS) { try { localStorage.removeItem("gft-teams-token"); } catch {} } location.href = LOGIN_URL; throw new Error("Nicht angemeldet."); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw Object.assign(new Error(data.error || `Fehler ${res.status}`), { status: res.status });
   return data;
@@ -185,7 +192,7 @@ async function pull() {
   finally { sync.pulling = false; if (sync.pullAgain) { sync.pullAgain = false; pull(); } }
 }
 function connectEvents() {
-  const es = new EventSource("/api/events");
+  const es = new EventSource(authUrl("/api/events"));
   es.addEventListener("rev", (e) => { if (Number(e.data) > sync.rev) pull(); else setOnline(true); });
   es.onerror = () => setOnline(false);
   setInterval(pull, 30e3);
@@ -207,7 +214,7 @@ function renderSoft() {
 document.addEventListener("focusout", () => setTimeout(() => { if (ui.dirty && !["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) { ui.dirty = false; render(); } }, 50));
 window.addEventListener("pagehide", () => {
   const ops = [...sync.pending, ...collectOps()];
-  if (ops.length) fetch("/api/sync", { method: "POST", keepalive: true, credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GFT": "1" }, body: JSON.stringify({ ops }) });
+  if (ops.length) fetch("/api/sync", { method: "POST", keepalive: true, credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GFT": "1", ...authHeaders() }, body: JSON.stringify({ ops }) });
 });
 
 const ui = { modal: null, openIssue: null, board: { q: "", mine: false, recent: false, users: [], lane: "none" }, queue: "open", yourWork: "assigned", editingDesc: false, dirty: false, rowLimit: 250 };
@@ -921,6 +928,16 @@ function viewIntegrations() {
         <li>Server neu starten. Mitarbeiter melden sich dann mit ihrem Microsoft-Konto an (die E-Mail muss im GF Tracker als Person angelegt sein).</li></ol></details>
     </div>
 
+    <div class="card pad isec"><h3 class="h3">Microsoft Teams – Tracker als App in Teams</h3>
+      <p class="small" style="margin:0 0 8px">Der Tracker erscheint in Teams als eigene App in der linken Leiste (<b>Mein Tag</b>, <b>Suche</b>, <b>Dashboard</b>) und lässt sich als <b>Reiter in jedem Kanal oder Chat</b> anheften – z. B. die Service-Warteschlange im Kanal „Service“ oder das Projekt-Board im Projektkanal. Anmeldung einmalig mit dem bestehenden Zugang bzw. „Mit Microsoft anmelden“.</p>
+      <div class="row"><a class="btn sm primary" href="${authUrl("/api/admin/teams/package")}" download>${icon("download")} Teams-App herunterladen (ZIP)</a><span class="small muted">Name, Farbe und Symbol kommen aus dem <a href="#/settings">Erscheinungsbild</a>.</span></div>
+      <details class="ihelp"><summary>So kommt die App in Teams</summary><ol>
+        <li><b>Für alle (empfohlen):</b> Teams Admin Center → <i>Teams-Apps → Apps verwalten</i> → „Hochladen“ → ZIP wählen. Optional unter <i>Setuprichtlinien</i> an die linke Leiste anheften – dann haben alle den Tracker automatisch.</li>
+        <li><b>Nur zum Ausprobieren:</b> In Teams → <i>Apps → Apps verwalten → App hochladen → Benutzerdefinierte App hochladen</i> (falls von der IT erlaubt).</li>
+        <li><b>Im Kanal:</b> Im Kanal auf „+“ (Registerkarte hinzufügen) → App wählen → Ansicht auswählen (z. B. „SD – Warteschlange“).</li>
+        <li>Benachrichtigungen in einen Teams-Kanal (neue Störung, eskaliert, erledigt …) richten Sie unten unter <i>Webhooks</i> mit dem Format „Microsoft Teams“ ein.</li>
+        <li>Nach Änderungen am Erscheinungsbild die App neu herunterladen und in Teams aktualisieren.</li>
+        ${I.appUrl.startsWith("https://") ? "" : "<li><b>Wichtig:</b> Teams verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details></div>
     <div class="card pad isec"><h3 class="h3">Outlook-Add-in</h3>
       <p class="small" style="margin:0 0 8px">In jeder E-Mail: Kunde zum Absender, offene Vorgänge, „Als Vorgang anlegen“ (inkl. Anhänge), „An Vorgang anhängen“. Funktioniert im klassischen und neuen Outlook für Windows, Outlook für Mac und Outlook im Web.</p>
       <div class="row"><code class="copy" data-act="copy" data-v="${esc(I.appUrl)}/outlook/manifest.xml">${esc(I.appUrl)}/outlook/manifest.xml</code><a class="btn sm" href="/outlook/manifest.xml">Manifest herunterladen</a></div>
@@ -1177,16 +1194,16 @@ function importSheet(n) {
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const isImg = (a) => /^image\/(png|jpeg|gif|webp)$/.test(a.type);
 function attTile(i, a) {
-  const src = `/api/files/${a.id}`; const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
-  return `<div class="att">${isImg(a) ? `<a href="${src}?inline=1" target="_blank" rel="noopener" class="att-thumb"><img src="${src}?inline=1" alt="${esc(a.name)}" loading="lazy"></a>` : `<a href="${src}${a.type === "application/pdf" ? "?inline=1" : ""}" target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
-    <div class="att-meta"><a href="${src}" class="trunc b" title="${esc(a.name)}" download>${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
+  const src = `/api/files/${a.id}`; const u = (q = "") => authUrl(src + q); const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
+  return `<div class="att">${isImg(a) ? `<a href="${u("?inline=1")}" target="_blank" rel="noopener" class="att-thumb"><img src="${u("?inline=1")}" alt="${esc(a.name)}" loading="lazy"></a>` : `<a href="${u(a.type === "application/pdf" ? "?inline=1" : "")}" target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
+    <div class="att-meta"><a href="${u()}" class="trunc b" title="${esc(a.name)}" download>${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
     ${canDel && a.source === "upload" ? `<button class="btn subtle sm icon" data-act="att-delete" data-id="${i.id}" data-k="${a.id}" title="Entfernen" aria-label="Entfernen">${icon("trash")}</button>` : ""}</div>`;
 }
 async function uploadFiles(issueId, files) {
   let ok = 0;
   for (const f of files) {
     try {
-      const res = await fetch(`/api/issues/${issueId}/attachments`, { method: "POST", credentials: "same-origin", headers: { "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
+      const res = await fetch(`/api/issues/${issueId}/attachments`, { method: "POST", credentials: "same-origin", headers: { ...authHeaders(), "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
       const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ok++;
     } catch (e) { toast(`${f.name}: ${e.message}`); }
   }
@@ -1902,7 +1919,7 @@ function viewSystem() {
     <div class="grid g2" style="margin-bottom:14px">
       <div class="card pad"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">Sicherungen</h3><button class="btn sm primary" data-act="sys-backup">Jetzt sichern</button></div>
         <p class="small muted" style="margin:0 0 8px">Jede Nacht automatisch: Datenbank-Kopie (die letzten ${y.backups.keep} bleiben) und alle Anhänge (${y.backups.mirror.count} Dateien, ${fmtBytes(y.backups.mirror.bytes)}) in <code>data/backups</code>. Diesen Ordner zusätzlich außerhalb des Servers sichern (NAS/Cloud).</p>
-        <div class="tbl-wrap" style="max-height:260px;overflow:auto"><table><tbody>${y.backups.list.map((b) => `<tr><td class="small">${esc(b.name)}</td><td class="small muted">${fmtTs(b.at)}</td><td class="small muted">${fmtBytes(b.bytes)}</td><td><a class="btn subtle sm" href="/api/admin/backups/${encodeURIComponent(b.name)}" download>Herunterladen</a></td></tr>`).join("") || '<tr><td class="muted small">Noch keine Sicherung.</td></tr>'}</tbody></table></div></div>
+        <div class="tbl-wrap" style="max-height:260px;overflow:auto"><table><tbody>${y.backups.list.map((b) => `<tr><td class="small">${esc(b.name)}</td><td class="small muted">${fmtTs(b.at)}</td><td class="small muted">${fmtBytes(b.bytes)}</td><td><a class="btn subtle sm" href="${authUrl(`/api/admin/backups/${encodeURIComponent(b.name)}`)}" download>Herunterladen</a></td></tr>`).join("") || '<tr><td class="muted small">Noch keine Sicherung.</td></tr>'}</tbody></table></div></div>
       <div class="card pad"><h3 class="h3">Daten &amp; Leistung</h3>
         <div class="kv" style="grid-template-columns:max-content 1fr">${[["Vorgänge", `${y.counts.issues}${y.snapshot ? ` · ${y.snapshot.archived} im Archiv (älter als ${y.archiveDays} Tage erledigt)` : ""}`], ["Kunden", y.counts.customers], ["Personen / Teams", `${y.counts.users} / ${y.counts.teams}`], ["Projekte", y.counts.projects], ["Benachrichtigungen", y.counts.notifications],
           ["Startdaten", y.snapshot ? `${fmtBytes(y.snapshot.gz)} übertragen (${fmtBytes(y.snapshot.bytes)} entpackt), erstellt in ${y.snapshot.ms} ms` : "–"], ["Webhooks", `${y.webhooks.pending || 0} wartend · ${y.webhooks.failed || 0} fehlgeschlagen`], ["E-Mail-Versand", y.mail ? "eingerichtet" : "nicht eingerichtet"]]
@@ -2551,9 +2568,9 @@ document.addEventListener("click", (e) => {
       if (!ui.archiveLoaded) { ensureArchive().then(() => el.click()); break; }
       exportXlsx(db.issues.filter((i) => activeIn(i, per)), `auswertung-gesamt-${per.label.toLowerCase().replace(/\s+/g, "-")}-${today()}.xlsx`, `Alle Projekte · ${per.label}`, { period: per, scope: db.issues }); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
-    case "export-json": location.href = "/api/admin/export"; break;
+    case "export-json": location.href = authUrl("/api/admin/export"); break;
     case "import-json": $("#json-file").click(); break;
-    case "logout": api("/api/logout", { method: "POST" }).finally(() => (location.href = "/login")); break;
+    case "logout": api("/api/logout", { method: "POST" }).finally(() => { if (TEAMS) { try { localStorage.removeItem("gft-teams-token"); } catch {} } location.href = LOGIN_URL; }); break;
     case "user-invite": { const u = user(id); el.closest("details")?.removeAttribute("open");
       api(`/api/admin/users/${id}/invite`, { method: "POST" }).then((r) => { ui.accounts = null; inviteModal(u, r); }).catch((err) => toast(err.message)); break; }
     case "user-logout": { const u = user(id); if (!confirm(`${u.name} auf allen Geräten abmelden?`)) break;
@@ -2593,7 +2610,7 @@ document.addEventListener("change", (e) => {
   if (el.dataset.act === "hook-active") { api(`/api/admin/webhooks/${el.dataset.id}`, { method: "PATCH", body: { active: el.checked } }).then(loadIntegrations).catch((err) => toast(err.message)); return; }
   if (el.dataset.act === "factorial-create") { api("/api/admin/integrations/settings", { method: "POST", body: { factorialCreateUsers: el.checked } }).then((r) => { ui.integ = r; render(); }).catch((err) => toast(err.message)); return; }
   if (el.id === "brand-logo" && el.files.length) { const file = el.files[0]; el.value = "";
-    fetch("/api/admin/brand/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-GFT": "1" }, body: file }).then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); applyBrand(b); render(); toast("Logo gespeichert"); }).catch((err) => toast(err.message)); return; }
+    fetch("/api/admin/brand/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-GFT": "1", ...authHeaders() }, body: file }).then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); applyBrand(b); render(); toast("Logo gespeichert"); }).catch((err) => toast(err.message)); return; }
   if (el.form?.id === "brand-form" && el.name === "color") { el.form.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x.dataset.v === el.value)); applyBrand({ ...ui.brand, color: el.value }); return; }
   if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
@@ -2819,7 +2836,7 @@ let installPrompt = null;
 window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; if (route().parts[0] === "settings") render(); });
 window.addEventListener("appinstalled", () => { installPrompt = null; toast("GF Tracker wurde als App installiert."); });
 const isStandalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
-if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+if ("serviceWorker" in navigator && !TEAMS) window.addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
 
 /* ---------- Start ---------- */
 try { const th = localStorage.getItem("gft-theme"); if (th) document.documentElement.dataset.theme = th; } catch {}

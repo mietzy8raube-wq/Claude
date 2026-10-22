@@ -196,11 +196,11 @@ export function createM365(ctx) {
   /* ---------- 3. Anmeldung mit Microsoft ---------- */
   const pending = new Map(); // state → { verifier, nonce, exp }
   const loginHost = mailer.loginHost; const tenant = mailer.cfg.tenantId; const redirectUri = `${cfg.appUrl}/auth/microsoft/callback`;
-  function ssoStart() {
+  function ssoStart(next = null) {
     const state = b64url(randomBytes(18)), nonce = b64url(randomBytes(18)), verifier = b64url(randomBytes(32));
     const challenge = b64url(createHash("sha256").update(verifier).digest());
     for (const [k, v] of pending) if (v.exp < Date.now()) pending.delete(k);
-    pending.set(state, { verifier, nonce, exp: Date.now() + 10 * 60e3 });
+    pending.set(state, { verifier, nonce, next, exp: Date.now() + 10 * 60e3 });
     const q = new URLSearchParams({ client_id: mailer.cfg.clientId, response_type: "code", redirect_uri: redirectUri, response_mode: "query", scope: "openid profile email", state, nonce, code_challenge: challenge, code_challenge_method: "S256", prompt: "select_account" });
     return `${loginHost}/${tenant}/oauth2/v2.0/authorize?${q}`;
   }
@@ -221,7 +221,7 @@ export function createM365(ctx) {
     const user = store.all("users").find((u) => u.active && u.email.toLowerCase() === email);
     if (!user) { ilog("sso", "warn", `Anmeldung mit Microsoft abgelehnt: ${email || "ohne E-Mail"} ist keine aktive Person im GF Tracker`); throw Object.assign(new Error("unknown"), { code: "unknown", email }); }
     ilog("sso", "info", `Anmeldung mit Microsoft: ${email}`);
-    return sessions.create(user.id);
+    return Object.assign(new String(sessions.create(user.id)), { next: p.next || null }); // Cookie + Rücksprungziel
   }
 
   return { settings, pollMailbox, calendarTouch, runCalendar, pullCalendarChanges, ssoStart, ssoCallback, cleanBody, localDateTime };

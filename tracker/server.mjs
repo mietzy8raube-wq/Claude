@@ -95,6 +95,10 @@ const SECURITY_HEADERS = {
   "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
   "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "X-Frame-Options": "DENY", "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
+// In Teams eingebettete Seiten: Teams darf einbetten (das Teams-SDK liegt unter /vendor)
+const TEAMS_HEADERS = { "X-Frame-Options": undefined, "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self'; frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://teams.cloud.microsoft https://*.cloud.microsoft https://*.office.com https://teams.live.com https://*.skype.com; base-uri 'none'; form-action 'self'" };
+/** Nur relative Rücksprungziele innerhalb der App zulassen (kein offener Redirect). */
+const safeNext = (n) => (typeof n === "string" && /^\/(teams\/)?[A-Za-z0-9/_-]*$/.test(n) && !n.startsWith("//") ? n : null);
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 const COMPRESSIBLE = /^(application\/(json|javascript|xml|manifest\+json)|text\/|image\/svg)/;
 const acceptsGzip = (res) => /\bgzip\b/.test(String(res.req?.headers["accept-encoding"] || ""));
@@ -142,6 +146,47 @@ const ops = createOps({ store, cfg: CFG, log, filesDir: FILES, version: VERSION,
   snapshot: snapshot ? { ms: snapshot.ms, issues: snapshot.issues, archived: snapshot.archived, bytes: snapshot.json.length, gz: snapshot.gz.length } : null,
   archiveDays: ARCHIVE_DAYS, online: new Set([...clients].map((c) => c.userId)).size, mail: mailer.configured }) });
 const audit = ops.audit;
+
+/* ---------- Microsoft Teams: App-Paket (manifest.json + Symbole als ZIP) ---------- */
+function zipStore(files) { // ZIP ohne Kompression – reicht für drei kleine Dateien
+  const parts = [], central = []; let off = 0;
+  for (const { name, data } of files) {
+    const n = Buffer.from(name), crc = zlib.crc32(data) >>> 0, h = Buffer.alloc(30);
+    h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt32LE(crc, 14); h.writeUInt32LE(data.length, 18); h.writeUInt32LE(data.length, 22); h.writeUInt16LE(n.length, 26);
+    const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 4); c.writeUInt16LE(20, 6); c.writeUInt32LE(crc, 16); c.writeUInt32LE(data.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(n.length, 28); c.writeUInt32LE(off, 42);
+    parts.push(h, n, data); central.push(c, n); off += 30 + n.length + data.length;
+  }
+  const cd = Buffer.concat(central), e = Buffer.alloc(22); e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(files.length, 8); e.writeUInt16LE(files.length, 10); e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(off, 16);
+  return Buffer.concat([...parts, cd, e]);
+}
+function pngRGBA(w, h, px) { // px(x, y) → [r, g, b, a]
+  const rows = []; for (let y = 0; y < h; y++) { const r = Buffer.alloc(1 + w * 4); for (let x = 0; x < w; x++) Buffer.from(px(x, y)).copy(r, 1 + x * 4); rows.push(r); }
+  const chunk = (t, d) => { const len = Buffer.alloc(4); len.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const crc = Buffer.alloc(4); crc.writeUInt32BE(zlib.crc32(td) >>> 0); return Buffer.concat([len, td, crc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.concat(rows))), chunk("IEND", Buffer.alloc(0))]);
+}
+function teamsPackage() {
+  let id = store.meta("teamsAppId"); if (!id) { id = crypto.randomUUID(); store.meta("teamsAppId", id); }
+  const b = brand(); const host = new URL(CFG.appUrl).host; const name = b.appName.slice(0, 30);
+  const tab = (entityId, label, view) => ({ entityId, name: label, contentUrl: `${CFG.appUrl}/teams/tab?view=${encodeURIComponent(view)}`, websiteUrl: `${CFG.appUrl}/#/${view}`, scopes: ["personal"] });
+  const manifest = {
+    $schema: "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json", manifestVersion: "1.16",
+    version: `1.${Number(store.meta("teamsAppVersion") || 0)}.${Math.floor(Date.now() / 864e5) % 65535}`, id,
+    developer: { name: CFG.company.slice(0, 32), websiteUrl: CFG.appUrl, privacyUrl: `${CFG.appUrl}/portal`, termsOfUseUrl: `${CFG.appUrl}/portal` },
+    name: { short: name, full: `${name} – Vorgänge, Service und Projekte` },
+    description: { short: "Vorgänge, Kundenanfragen und Projekte direkt in Teams", full: `${name} in Microsoft Teams: Mein Tag, Suche, Dashboard und Projekt-Boards als Reiter – persönlich oder im Kanal fürs ganze Team. Anmeldung mit dem bestehenden Zugang bzw. mit Microsoft.` },
+    icons: { color: "color.png", outline: "outline.png" }, accentColor: b.color,
+    staticTabs: [tab("mytasks", "Mein Tag", "your-work"), tab("search", "Suche", "filters?state=open"), tab("dashboard", "Dashboard", "dashboard")],
+    configurableTabs: [{ configurationUrl: `${CFG.appUrl}/teams/config`, canUpdateConfiguration: true, scopes: ["team", "groupChat"] }],
+    permissions: ["identity"], validDomains: [host],
+  };
+  const color = fs.readFileSync(path.join(PUBLIC, "icons", "icon-192.png"));
+  // Umriss-Symbol (32×32, weiß auf transparent): Blitz wie im App-Symbol
+  const bolt = [[18, 3], [7, 18], [15, 18], [13, 29], [25, 13], [17, 13], [19, 3]];
+  const inside = (x, y) => { let c = false; for (let i = 0, j = bolt.length - 1; i < bolt.length; j = i++) { const [xi, yi] = bolt[i], [xj, yj] = bolt[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
+  const outline = pngRGBA(32, 32, (x, y) => { let n = 0; for (const [dx, dy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) if (inside(x + dx, y + dy)) n++; return [255, 255, 255, Math.round((n / 4) * 255)]; });
+  return zipStore([{ name: "manifest.json", data: Buffer.from(JSON.stringify(manifest, null, 2)) }, { name: "color.png", data: color }, { name: "outline.png", data: outline }]);
+}
 
 /* ---------- Erscheinungsbild: App-Name, Firmenname, Farbe, Logo ---------- */
 const ENV_COMPANY = CFG.company; const LOGO_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg", "image/webp": "webp" };
@@ -782,6 +827,9 @@ async function handleApi(req, res, url, session) {
     store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash);
     audit(user, "password.changed", "", clientIp(req)); return { ok: true };
   }
+  if (p === "/api/teams/token" && m === "POST") { // Anmeldung für die Teams-App (ohne Cookie, Token im Kopf)
+    const token = sessions.createToken(user.id, null, clientIp(req), "Microsoft Teams"); audit(user, "login", "Microsoft Teams", clientIp(req)); return { token };
+  }
   if (p === "/api/me/sessions" && m === "GET") return { sessions: sessions.list(user.id, session.tokenHash) };
   if (p === "/api/me/sessions/others" && m === "DELETE") { store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash); return { ok: true }; }
   pm = p.match(/^\/api\/me\/sessions\/([a-f0-9]{16})$/);
@@ -915,6 +963,7 @@ async function handleApi(req, res, url, session) {
     dropOld(); const name = `brand-logo.${ext}`; fs.writeFileSync(path.join(CFG.dataDir, name), data); store.meta("brandLogo", name);
     applyBrand(); audit(user, "settings", "Logo hochgeladen", clientIp(req)); broadcast(); return brand();
   }
+  if (p === "/api/admin/teams/package" && m === "GET") { needAdmin(); audit(user, "settings", "Teams-App-Paket heruntergeladen", clientIp(req)); return { __zip: teamsPackage(), name: "gf-tracker-teams.zip" }; }
   if (p === "/api/admin/automation" && m === "GET") { needAdmin(); return { rules: automation.rules(), kinds: RULE_KINDS, triggers: TRIGGERS, recent: automation.recent(60) }; }
   if (p === "/api/admin/automation" && m === "PUT") {
     needAdmin(); const b = await readJson(req, 64e3); let rules;
@@ -939,7 +988,7 @@ async function handleApi(req, res, url, session) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
-    const session = sessions.resolve(req);
+    const session = sessions.resolve(req, url);
     if (url.pathname.startsWith("/api/")) {
       const out = await handleApi(req, res, url, session);
       const extra = session?.setCookie ? { "Set-Cookie": session.setCookie } : {};
@@ -952,6 +1001,7 @@ const server = http.createServer(async (req, res) => {
       if (out && out.__status) return send(res, out.__status, out.body, extra);
       if (out && out.__file) return sendAttachment(req, res, out.__file, url);
       if (out && out.__snapshot) return sendSnapshot(res);
+      if (out && out.__zip) return send(res, 200, out.__zip, { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${out.name}"`, "Cache-Control": "no-store" });
       if (out && out.__dbfile) { res.writeHead(200, { "Content-Type": "application/vnd.sqlite3", "Content-Length": fs.statSync(out.__dbfile).size, "Content-Disposition": `attachment; filename="${out.name}"`, "Cache-Control": "no-store", ...SECURITY_HEADERS }); return fs.createReadStream(out.__dbfile).pipe(res); }
       if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });
       if (out && out.__download) return send(res, 200, JSON.stringify(out.body, null, 2), { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${out.__download}"`, "Cache-Control": "no-store", ...extra });
@@ -977,10 +1027,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === "/auth/microsoft") {
       if (!m365.settings().sso) return send(res, 302, "", { Location: "/login" });
-      return send(res, 302, "", { Location: m365.ssoStart() });
+      return send(res, 302, "", { Location: m365.ssoStart(safeNext(url.searchParams.get("next"))) });
     }
     if (url.pathname === "/auth/microsoft/callback") {
-      try { const cookie = await m365.ssoCallback(url); return send(res, 302, "", { Location: "/", "Set-Cookie": cookie }); }
+      try { const cookie = await m365.ssoCallback(url); return send(res, 302, "", { Location: cookie.next || "/", "Set-Cookie": String(cookie) }); }
       catch (e) { return send(res, 302, "", { Location: `/login?sso=${encodeURIComponent(e.code === "unknown" ? `Für ${e.email || "dieses Konto"} gibt es noch keinen Zugang im GF Tracker. Bitte an die Administration wenden.` : e.message)}` }); }
     }
     if (url.pathname === "/brand/logo") {
@@ -994,6 +1044,10 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, JSON.stringify(mf), { "Content-Type": "application/manifest+json", "Cache-Control": "no-cache" });
     }
     if (url.pathname === "/login") return serveFile(req, res, "login.html");
+    // Microsoft Teams: Reiter, Konfiguration, Anmelde-Popup und die App selbst – dürfen in Teams eingebettet werden
+    if (url.pathname === "/teams/auth-start") { const sso = m365.settings().sso; return send(res, 302, "", { Location: sso ? `/auth/microsoft?next=${encodeURIComponent("/teams/auth-end")}` : `/login?next=${encodeURIComponent("/teams/auth-end")}` }); }
+    if (["/teams/tab", "/teams/config", "/teams/auth-end"].includes(url.pathname)) return serveFile(req, res, "teams.html", TEAMS_HEADERS);
+    if (url.pathname === "/teams/app") return serveFile(req, res, "index.html", TEAMS_HEADERS);
     if (url.pathname === "/password") return serveFile(req, res, "password.html", { "Referrer-Policy": "no-referrer" });
     if (url.pathname === "/portal" || url.pathname.startsWith("/portal/")) {
       // Das Portal darf auf freigegebenen Websites eingebettet werden; die App selbst nie.

@@ -3,6 +3,7 @@
 import { randomBytes, scryptSync, timingSafeEqual, createHash } from "node:crypto";
 
 const COOKIE = "gft_session";
+const TOKEN_QUERY_PATHS = /^\/api\/(events|files\/[A-Za-z0-9_-]+|admin\/backups\/[A-Za-z0-9T._-]+|admin\/export)$/;
 const SESSION_DAYS = 14;
 const SCRYPT = { N: 16384, r: 8, p: 1 };
 
@@ -65,16 +66,26 @@ export class Sessions {
     this.s.del.run(row.token_hash); return true;
   }
   /** Prüft das Sitzungscookie; verlängert die Sitzung, wenn weniger als die Hälfte übrig ist. */
-  resolve(req) {
-    const token = parseCookies(req.headers.cookie)[COOKIE]; if (!token) return null;
+  /** Sitzung aus Cookie – oder, für eingebettete Nutzung in Microsoft Teams (dort sind Cookies oft gesperrt), aus dem
+      Kopf X-GFT-Token bzw. für Bilder/Downloads/Live-Updates aus ?token=. */
+  resolve(req, url = null) {
+    const cookieToken = parseCookies(req.headers.cookie)[COOKIE];
+    const token = cookieToken || String(req.headers["x-gft-token"] || "") || (url && TOKEN_QUERY_PATHS.test(url.pathname) ? url.searchParams.get("token") : "");
+    if (!token) return null;
     const h = sha256(token); const row = this.s.get.get(h);
     if (!row || row.expires_at < Date.now()) return null;
     if (Date.now() - (row.last_seen || 0) > 5 * 60e3) this.s.seen.run(Date.now(), h); // höchstens alle 5 Minuten schreiben
     let setCookie = null;
-    if (row.expires_at - Date.now() < (SESSION_DAYS / 2) * 864e5) { const exp = Date.now() + SESSION_DAYS * 864e5; this.s.touch.run(exp, h); setCookie = this.cookie(token, exp); }
+    if (row.expires_at - Date.now() < (SESSION_DAYS / 2) * 864e5) { const exp = Date.now() + SESSION_DAYS * 864e5; this.s.touch.run(exp, h); if (cookieToken) setCookie = this.cookie(token, exp); }
     return { userId: row.user_id, tokenHash: h, setCookie };
   }
-  destroy(req) { const token = parseCookies(req.headers.cookie)[COOKIE]; if (token) this.s.del.run(sha256(token)); return this.cookie("", 0); }
+  destroy(req) { const token = parseCookies(req.headers.cookie)[COOKIE] || req.headers["x-gft-token"]; if (token) this.s.del.run(sha256(String(token))); return this.cookie("", 0); }
+  /** Sitzung ohne Cookie (Rückgabe: Token) – für die Teams-App. */
+  createToken(userId, req = null, ip = null, label = null) {
+    const token = randomToken(); const now = Date.now();
+    this.s.insert.run(sha256(token), userId, now + SESSION_DAYS * 864e5, now, now, ip, label || (req ? String(req.headers["user-agent"] || "").slice(0, 300) : null));
+    return token;
+  }
   destroyUser(userId) { this.s.delUser.run(userId); }
   cleanup() { this.s.cleanup.run(Date.now()); }
   cookie(token, exp) {
@@ -85,6 +96,7 @@ export class Sessions {
 /** „Chrome auf Windows“ statt des vollständigen User-Agent. */
 export function describeAgent(ua) {
   if (!ua) return "Unbekanntes Gerät";
+  if (ua.startsWith("Microsoft Teams")) return "Microsoft Teams";
   const b = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : /Outlook|Microsoft Office/.test(ua) ? "Outlook" : "Browser";
   const os = /iPhone|iPad/.test(ua) ? "iPhone/iPad" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Mac OS X/.test(ua) ? "Mac" : /Linux/.test(ua) ? "Linux" : "";
   return os ? `${b} auf ${os}` : b;
