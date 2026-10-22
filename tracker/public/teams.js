@@ -21,7 +21,9 @@ async function init() {
 
 /** Reiter: angemeldet → App öffnen, sonst Anmelden anbieten. */
 async function tab() {
-  const view = params.get("view") || "your-work";
+  let view = params.get("view") || "your-work";
+  // Klick auf eine Teams-Benachrichtigung: Vorgang direkt öffnen (subPageId = Vorgangsschlüssel)
+  try { if (inTeams) { const sub = (await T.app.getContext()).page?.subPageId; if (/^[A-Z][A-Z0-9]*-\d+$/.test(sub || "")) view = `your-work?issue=${sub}`; } } catch {}
   const ok = store.get() && (await api("/api/me").then((r) => r.ok).catch(() => false));
   if (ok) { if (inTeams) T.app.notifySuccess?.(); location.replace(`/teams/app#/${view.replace(/^#?\/?/, "")}`); return; }
   store.set(null); if (inTeams) T.app.notifySuccess?.();

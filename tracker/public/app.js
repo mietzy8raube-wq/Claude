@@ -938,12 +938,16 @@ function viewIntegrations() {
     <div class="card pad isec"><h3 class="h3">Microsoft Teams – Tracker als App in Teams</h3>
       <p class="small" style="margin:0 0 8px">Der Tracker erscheint in Teams als eigene App in der linken Leiste (<b>Mein Tag</b>, <b>Suche</b>, <b>Dashboard</b>) und lässt sich als <b>Reiter in jedem Kanal oder Chat</b> anheften – z. B. die Service-Warteschlange im Kanal „Service“ oder das Projekt-Board im Projektkanal. Anmeldung einmalig mit dem bestehenden Zugang bzw. „Mit Microsoft anmelden“.</p>
       <div class="row"><a class="btn sm primary" href="${authUrl("/api/admin/teams/package")}" download>${icon("download")} Teams-App herunterladen (ZIP)</a><span class="small muted">Name, Farbe und Symbol kommen aus dem <a href="#/settings">Erscheinungsbild</a>.</span></div>
+      <form id="integ-teams" class="grid" style="gap:6px;margin-top:12px"><label class="row nowrap small"><input type="checkbox" name="teamsNotify" ${M.teamsNotify ? "checked" : ""} ${M.appConfigured ? "" : "disabled"}> <span><b>Benachrichtigungen im Teams-Aktivitätsfeed</b> (🔔): zugewiesen, erwähnt, fällig, SLA, neue Kundenanfragen – ein Klick öffnet den Vorgang direkt in Teams</span></label>
+        <div class="small muted">${M.appConfigured ? (M.teamsNotify ? `Aktiv · in den letzten 7 Tagen ${I.teams.sent7d} zugestellt${I.teams.failed7d ? `, ${I.teams.failed7d} nicht zustellbar (siehe Protokoll)` : ""}` : "Aus") + (I.teams.packaged ? "" : " · Zuerst die Teams-App herunterladen und in Teams hochladen.") : "Setzt die Microsoft-365-Anbindung voraus (siehe oben)."}</div>
+        <div><button class="btn sm" type="submit" ${M.appConfigured ? "" : "disabled"}>Speichern</button></div></form>
       <details class="ihelp"><summary>So kommt die App in Teams</summary><ol>
         <li><b>Für alle (empfohlen):</b> Teams Admin Center → <i>Teams-Apps → Apps verwalten</i> → „Hochladen“ → ZIP wählen. Optional unter <i>Setuprichtlinien</i> an die linke Leiste anheften – dann haben alle den Tracker automatisch.</li>
         <li><b>Nur zum Ausprobieren:</b> In Teams → <i>Apps → Apps verwalten → App hochladen → Benutzerdefinierte App hochladen</i> (falls von der IT erlaubt).</li>
         <li><b>Im Kanal:</b> Im Kanal auf „+“ (Registerkarte hinzufügen) → App wählen → Ansicht auswählen (z. B. „SD – Warteschlange“).</li>
         <li>Benachrichtigungen in einen Teams-Kanal (neue Störung, eskaliert, erledigt …) richten Sie unten unter <i>Webhooks</i> mit dem Format „Microsoft Teams“ ein.</li>
         <li>Nach Änderungen am Erscheinungsbild die App neu herunterladen und in Teams aktualisieren.</li>
+        <li><b>Für Benachrichtigungen im Aktivitätsfeed:</b> in der App-Registrierung (Entra ID) die Anwendungsberechtigung <code>TeamsActivity.Send</code> hinzufügen und Administratorzustimmung erteilen; danach die Teams-App <i>neu herunterladen und hochladen</i> (sie enthält dann die Verknüpfung zur App-Registrierung) und für alle bereitstellen bzw. anheften. Personen, bei denen die App nicht installiert ist, erhalten weiter E-Mail und App-Benachrichtigung.</li>
         ${I.appUrl.startsWith("https://") ? "" : "<li><b>Wichtig:</b> Teams verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details></div>
     <div class="card pad isec"><h3 class="h3">Outlook-Add-in</h3>
       <p class="small" style="margin:0 0 8px">In jeder E-Mail: Kunde zum Absender, offene Vorgänge, „Als Vorgang anlegen“ (inkl. Anhänge), „An Vorgang anhängen“. Funktioniert im klassischen und neuen Outlook für Windows, Outlook für Mac und Outlook im Web.</p>
@@ -1776,6 +1780,7 @@ function viewSettings() {
     <div class="card pad"><h3 id="sec-profile" style="font-size:15px;margin-bottom:10px">Mein Profil</h3>
       <form id="profile-form" class="grid" style="gap:10px"><label class="f">Name<input type="text" name="name" value="${esc(u.name)}" required maxlength="120"></label>
         <label class="f">E-Mail<input type="email" value="${esc(u.email)}" disabled></label>
+        <label class="row nowrap small"><input type="checkbox" name="notifyTeams" ${u.notifyTeams !== false ? "checked" : ""}> Benachrichtigungen auch in Microsoft Teams (Aktivität 🔔), sofern eingerichtet</label>
         <label class="row nowrap small"><input type="checkbox" name="notifyEmail" ${u.notifyEmail !== false ? "checked" : ""}> Benachrichtigungen zusätzlich per E-Mail erhalten${sync.mail ? "" : ' <span class="muted">(E-Mail-Versand ist noch nicht eingerichtet)</span>'}</label>
         <div><button class="btn primary" type="submit">Speichern</button></div></form>
       <h3 style="font-size:15px;margin:20px 0 10px">Passwort ändern</h3>
@@ -2796,6 +2801,7 @@ async function handleSubmit(e, f) {
     case "integ-m365": {
       const body = { mailInbox: fd.get("mailInbox"), calendarMinutes: Number(fd.get("calendarMinutes")), mailInEnabled: fd.get("mailInEnabled") === "on", calendarSync: fd.get("calendarSync") === "on", calendarPull: fd.get("calendarPull") === "on", calendarInviteCustomer: fd.get("calendarInviteCustomer") === "on", ...(f.ssoMicrosoft.disabled ? {} : { ssoMicrosoft: fd.get("ssoMicrosoft") === "on" }) };
       ui.integ = await api("/api/admin/integrations/settings", { method: "POST", body }); render(); toast("Gespeichert"); break; }
+    case "integ-teams": ui.integ = await api("/api/admin/integrations/settings", { method: "POST", body: { teamsNotify: fd.get("teamsNotify") === "on" } }); render(); toast("Gespeichert"); break;
     case "apikey-form": {
       const r = await api("/api/admin/api-keys", { method: "POST", body: { name: fd.get("name"), scope: fd.get("scope") } }); f.reset(); await loadIntegrations();
       const base = location.origin;
@@ -2833,7 +2839,7 @@ async function handleSubmit(e, f) {
       const r = await api("/api/admin/users", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), role: fd.get("role"), ...(pw ? { password: pw } : { invite: true }) } });
       applyServer({ type: "users", id: r.user.id, data: r.user }); f.reset(); ui.accounts = null; render();
       if (r.invite) inviteModal(r.user, r.invite); else toast(`${r.user.name} angelegt – Zugangsdaten bitte persönlich übergeben.`); break; }
-    case "profile-form": { const u = user(db.currentUserId); u.name = String(fd.get("name")).trim() || u.name; u.notifyEmail = !!fd.get("notifyEmail"); save(); render(); toast("Gespeichert"); break; }
+    case "profile-form": { const u = user(db.currentUserId); u.name = String(fd.get("name")).trim() || u.name; u.notifyEmail = !!fd.get("notifyEmail"); u.notifyTeams = !!fd.get("notifyTeams"); save(); render(); toast("Gespeichert"); break; }
     case "password-form": {
       if (fd.get("next") !== fd.get("repeat")) return toast("Die neuen Passwörter stimmen nicht überein.");
       await api("/api/me/password", { method: "POST", body: { current: fd.get("current"), next: fd.get("next") } }); f.reset(); toast("Passwort geändert. Andere Sitzungen wurden abgemeldet."); break; }

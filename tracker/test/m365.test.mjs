@@ -16,7 +16,7 @@ const INBOX = "service@druckluft-chemnitz.de";
 let proc, dataDir, mock, MOCK;
 
 // ---------- nachgebauter Microsoft-Server ----------
-const M = { messages: [], read: new Set(), sent: [], events: new Map(), calls: [], nonce: null, email: null };
+const M = { messages: [], read: new Set(), sent: [], events: new Map(), calls: [], nonce: null, email: null, activity: [] };
 let seq = 0;
 function startMock() {
   return new Promise((resolve) => {
@@ -48,6 +48,8 @@ function startMock() {
         if (m && req.method === "GET") return json(200, { value: (M.messages.find((x) => x.id === m[2])?.files || []) });
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/messages\/([^/]+)$/);
         if (m && req.method === "PATCH") { M.read.add(decodeURIComponent(m[2])); return json(200, {}); }
+        m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/teamwork\/sendActivityNotification$/);
+        if (m && req.method === "POST") { if (m[1] === "sarah.becker@druckluft-chemnitz.de") return json(404, { error: { code: "NotFound", message: "app not installed" } }); M.activity.push({ to: m[1], ...JSON.parse(body) }); return json(204); }
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/sendMail$/);
         if (m && req.method === "POST") { const b = JSON.parse(body); M.sent.push({ from: decodeURIComponent(m[1]), ...b.message, saveToSentItems: b.saveToSentItems }); return json(202); }
         m = u.pathname.match(/^\/v1\.0\/users\/([^/]+)\/events(?:\/([^/]+))?$/);
@@ -69,7 +71,7 @@ before(async () => {
   await startMock();
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "gft-m365-"));
   proc = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", "server.mjs"], { cwd: ROOT, stdio: "ignore", env: { ...process.env, PORT: String(PORT), HOST: "127.0.0.1", DATA_DIR: dataDir, SEED_DEMO: "1", APP_URL: BASE,
-    MS_TENANT_ID: "tenant1", MS_CLIENT_ID: "client1", MS_CLIENT_SECRET: "secret1", MAIL_SENDER: "noreply@druckluft-chemnitz.de", MS_LOGIN_HOST: MOCK, MS_GRAPH_BASE: `${MOCK}/v1.0`,
+    JOB_INTERVAL_MS: "400", MS_TENANT_ID: "tenant1", MS_CLIENT_ID: "client1", MS_CLIENT_SECRET: "secret1", MAIL_SENDER: "noreply@druckluft-chemnitz.de", MS_LOGIN_HOST: MOCK, MS_GRAPH_BASE: `${MOCK}/v1.0`,
     MAIL_INBOX: INBOX, MAILIN_INTERVAL_MS: "300", SSO_MICROSOFT: "1", TZ: "Europe/Berlin", FACTORIAL_API_KEY: "fact-key", CAL_PULL_INTERVAL_MS: "400", FACTORIAL_BASE_URL: MOCK, FACTORIAL_API_VERSION: "2026-10-01" } });
   for (let i = 0; i < 50; i++) { try { if ((await fetch(`${BASE}/api/health`)).ok) return; } catch {} await new Promise((r) => setTimeout(r, 100)); }
   throw new Error("Server startet nicht");
@@ -219,4 +221,24 @@ test("Zugänge per E-Mail: Einladung und „Passwort vergessen“ verschicken ei
   assert.equal((await anna.req("/api/login", { method: "POST", body: { email: "anna.mueller@druckluft-chemnitz.de", password: "Annas neues Passwort" } })).status, 200);
   await new Client().req("/api/password/forgot", { method: "POST", body: { email: "unbekannt@example.com" } });
   await new Promise((r) => setTimeout(r, 300)); assert.ok(!M.sent.some((x) => x.toRecipients[0].emailAddress.address === "unbekannt@example.com"));
+});
+
+test("Teams-Aktivitätsfeed: Benachrichtigungen kommen in Teams an (mit Direktlink), Abwahl je Person wird beachtet", async () => {
+  const pkg = await fetch(`${BASE}/api/admin/teams/package`, { headers: { cookie: anna.cookie } }); const zip = Buffer.from(await pkg.arrayBuffer());
+  const mf = JSON.parse(zip.subarray(30 + zip.readUInt16LE(26), 30 + zip.readUInt16LE(26) + zip.readUInt32LE(18)).toString());
+  assert.equal(mf.webApplicationInfo.id, "client1"); assert.equal(mf.activities.activityTypes[0].type, "gftNotification");
+  assert.equal((await anna.req("/api/admin/integrations/settings", { method: "POST", body: { teamsNotify: true } })).data.m365.teamsNotify, true);
+  const st = (await anna.req("/api/state")).data; const iss = st.issues.find((i) => i.projectId === "pSD");
+  const note = (id, userId, title) => ({ type: "notifications", id, op: "put", data: { id, userId, type: "assign", title, text: "Bitte übernehmen", issueId: iss.id, at: new Date().toISOString(), read: false } });
+  // Lisa hat Teams-Benachrichtigungen abgewählt, Sarah hat die App nicht installiert
+  const lisaC = new Client(); await lisaC.req("/api/login", { method: "POST", body: { email: "lisa.schmidt@druckluft-chemnitz.de", password: "Passwort123!" } });
+  await lisaC.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u3", op: "patch", patch: { set: { notifyTeams: false } } }] } });
+  await anna.req("/api/sync", { method: "POST", body: { ops: [note("tn1", "u5", "Ihnen zugewiesen: Test"), note("tn2", "u3", "Für Lisa"), note("tn3", "u6", "Für Sarah")] } });
+  const a = await until(() => M.activity.find((x) => x.templateParameters?.[0]?.value === "Ihnen zugewiesen: Test"));
+  assert.ok(a, "an Mehmet zugestellt"); assert.equal(a.to, "mehmet.yilmaz@druckluft-chemnitz.de"); assert.equal(a.activityType, "gftNotification");
+  const key = `SD-${iss.no}`; assert.ok(a.topic.value.startsWith(key)); assert.match(a.topic.webUrl, new RegExp(`^https://teams\\.microsoft\\.com/l/entity/${mf.id}/mytasks\\?`));
+  assert.equal(JSON.parse(new URL(a.topic.webUrl).searchParams.get("context")).subEntityId, key);
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.ok(!M.activity.some((x) => x.to.startsWith("lisa")), "Lisa hat abgewählt"); assert.equal(M.activity.filter((x) => x.templateParameters[0].value === "Ihnen zugewiesen: Test").length, 1, "nur einmal");
+  const integ = (await anna.req("/api/admin/integrations")).data; assert.ok(integ.teams.failed7d >= 1); assert.ok(integ.log.some((l) => l.source === "teams" && /nicht installiert/.test(l.message)));
 });

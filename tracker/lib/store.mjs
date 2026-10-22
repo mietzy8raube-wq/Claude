@@ -66,6 +66,7 @@ export class Store {
         this.db.exec("CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log (at)");
       },
       () => { this.db.exec("CREATE TABLE IF NOT EXISTS automation_log (rule_id TEXT NOT NULL, issue_id TEXT NOT NULL, key TEXT NOT NULL, at INTEGER NOT NULL, action TEXT, PRIMARY KEY (rule_id, issue_id, key))"); this.db.exec("CREATE INDEX IF NOT EXISTS automation_log_at ON automation_log (at)"); },
+      () => { this.db.exec("CREATE TABLE IF NOT EXISTS teams_log (notification_id TEXT PRIMARY KEY, sent_at INTEGER NOT NULL, ok INTEGER NOT NULL)"); },
     ];
     const cur = Number(this.db.prepare("SELECT value FROM meta WHERE key = 'schema'").get()?.value || 0);
     for (let v = cur; v < steps.length; v++) {

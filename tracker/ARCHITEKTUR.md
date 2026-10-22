@@ -657,6 +657,13 @@ fertiges App-Paket (Name, Farbe aus dem Erscheinungsbild). Hochladen im
 - Voraussetzung: `APP_URL` mit **https://**. Das Teams-SDK liegt unter
   `public/vendor/` (MIT-Lizenz), es wird nichts von fremden Servern geladen.
 - Meldungen in einen Kanal: unter *Webhooks* mit Format „Microsoft Teams“.
+- **Persönliche Benachrichtigungen im Teams-Aktivitätsfeed (🔔)**: zugewiesen,
+  erwähnt, fällig, SLA, neue Kundenanfragen – ein Klick öffnet den Vorgang direkt
+  in der Teams-App. Einschalten unter *Integrationen → Microsoft Teams*.
+  Voraussetzungen: Microsoft-365-Anbindung, Anwendungsberechtigung
+  `TeamsActivity.Send` mit Administratorzustimmung, Teams-App nach dem
+  Einschalten neu herunterladen und bereitstellen. Jede Person kann es im Profil
+  abwählen; E-Mail- und App-Benachrichtigungen laufen unabhängig davon weiter.
 
 ### 13.1b Bedienung: Suche, Spalten, Navigation, Erscheinungsbild
 
@@ -766,5 +773,3 @@ nächste Wartung weiter.
 - Eine fertige Anbindung an Ihre konkrete Warenwirtschaft bzw. Buchhaltung
   (z. B. DATEV, lexoffice, sevDesk, Sage, weclapp, Microsoft Dynamics) – die
   Schnittstellen dafür sind da; der Adapter hängt vom System ab.
-- Persönliche Benachrichtigungen im Teams-Aktivitätsfeed (setzt eine Bot-/Graph-Registrierung
-  voraus); Kanalmeldungen über Webhooks sind vorhanden.

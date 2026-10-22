@@ -22,6 +22,7 @@ export function createM365(ctx) {
     calendarMinutes: Number(meta("calendarMinutes") || env.CALENDAR_EVENT_MINUTES || 120),
     calendarInvite: meta("calendarInviteCustomer") === "1",
     calendarPull: meta("calendarPull") !== "0",
+    teamsNotify: meta("teamsNotify") === "1",
     sso: Boolean(mailer.appConfigured && (env.SSO_MICROSOFT === "1" || env.SSO_MICROSOFT === "true" || meta("ssoMicrosoft") === "1")),
   });
   const mapGet = (kind, id) => store.db.prepare("SELECT remote_id, extra FROM sync_map WHERE kind = ? AND local_id = ?").get(kind, id);

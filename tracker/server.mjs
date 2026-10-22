@@ -173,6 +173,9 @@ function teamsPackage() {
     staticTabs: [tab("mytasks", "Mein Tag", "your-work"), tab("search", "Suche", "filters?state=open"), tab("dashboard", "Dashboard", "dashboard")],
     configurableTabs: [{ configurationUrl: `${CFG.appUrl}/teams/config`, canUpdateConfiguration: true, scopes: ["team", "groupChat"] }],
     permissions: ["identity"], validDomains: [host],
+    // Benachrichtigungen im Aktivitätsfeed: verknüpft die Teams-App mit der App-Registrierung (MS_CLIENT_ID)
+    ...(mailer.appConfigured ? { webApplicationInfo: { id: env.MS_CLIENT_ID, resource: `api://${host}/${env.MS_CLIENT_ID}` },
+      activities: { activityTypes: [{ type: "gftNotification", description: "Benachrichtigung aus dem Tracker (zugewiesen, erwähnt, fällig, SLA …)", templateText: "{title}" }] } } : {}),
   };
   const color = fs.readFileSync(path.join(PUBLIC, "icons", "teams-color.png")); // 192×192, App-Logo
   const outline = fs.readFileSync(path.join(PUBLIC, "icons", "teams-outline.png")); // 32×32, weiß auf transparent
@@ -260,7 +263,7 @@ const userById = (id) => (id ? store.get("users", id) : null);
 const projectById = (id) => store.get("projects", id);
 const issueKey = (i) => `${projectById(i.projectId)?.key || "?"}-${i.no}`;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false, notifyTeams: u.notifyTeams !== false });
 const notifId = (key, userId) => "n" + sha256(`${key}:${userId}`).slice(0, 22);
 function createNotification(userId, type, title, text, issueId, key) {
   const id = key ? notifId(key, userId) : S.uid();
@@ -284,7 +287,7 @@ function canWrite(user, type, op, cur, data) {
     if (op === "delete") return "Benutzer können nur deaktiviert werden.";
     if (admin) return null;
     if (cur.id !== user.id) return "Nur Administratoren dürfen andere Benutzer ändern.";
-    const allowed = new Set(["name", "notifyEmail"]);
+    const allowed = new Set(["name", "notifyEmail", "notifyTeams"]);
     const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
@@ -517,6 +520,7 @@ setInterval(() => webhooks.work(), Number(env.WEBHOOK_INTERVAL_MS) || 10e3).unre
 function integrationStatus() {
   const meta = (k) => store.meta(k);
   return { appUrl: CFG.appUrl, events: WEBHOOK_EVENTS,
+    teams: { packaged: !!store.meta("teamsAppId"), sent7d: store.db.prepare("SELECT COUNT(*) AS n FROM teams_log WHERE ok = 1").get().n, failed7d: store.db.prepare("SELECT COUNT(*) AS n FROM teams_log WHERE ok = 0").get().n },
     mail: { configured: mailer.configured, sender: env.MAIL_SENDER || null },
     m365: { appConfigured: mailer.appConfigured, ...m365.settings(), lastPoll: store.meta("mailInLastPoll"), redirectUri: `${CFG.appUrl}/auth/microsoft/callback`, ssoEnv: env.SSO_MICROSOFT === "1" || env.SSO_MICROSOFT === "true" },
     apiKeys: apiV1.listKeys().map((k) => ({ ...k, createdBy: userById(k.created_by)?.name || null })),
@@ -542,6 +546,31 @@ async function notificationMailJob() {
     queueMail(u.email, subject, mailTemplate({ company: CFG.company, greeting: `Hallo ${u.name.split(" ")[0]},`, title: list.length === 1 ? list[0].title : `${list.length} neue Benachrichtigungen`, items, button: { url: CFG.appUrl, label: "GF Tracker öffnen" }, footer: "E-Mail-Benachrichtigungen können Sie in den Einstellungen abschalten." }));
   }
   await flushMailQueue();
+}
+/* ---------- Benachrichtigungen im Teams-Aktivitätsfeed (Microsoft Graph, TeamsActivity.Send) ---------- */
+const teamsWarned = new Map(); let teamsBusy = false;
+const teamsDeepLink = (key) => { const id = store.meta("teamsAppId"); const web = `${CFG.appUrl}/#/issue/${key}`; return id ? `https://teams.microsoft.com/l/entity/${id}/mytasks?webUrl=${encodeURIComponent(web)}&context=${encodeURIComponent(JSON.stringify({ subEntityId: key }))}` : web; };
+async function teamsNotifyJob() {
+  if (teamsBusy || !mailer.appConfigured || !m365.settings().teamsNotify || !store.meta("teamsAppId")) return; teamsBusy = true;
+  try {
+    const since = Math.max(Date.now() - 864e5, Number(store.meta("teamsNotifySince") || 0)); // beim Einschalten keine alten Meldungen nachschicken
+    const done = store.db.prepare("SELECT 1 FROM teams_log WHERE notification_id = ?"); const mark = store.db.prepare("INSERT OR IGNORE INTO teams_log (notification_id, sent_at, ok) VALUES (?, ?, ?)");
+    const due = store.all("notifications").filter((n) => !n.read && new Date(n.at).getTime() >= since && !done.get(n.id)).sort((a, b) => a.at.localeCompare(b.at)).slice(0, 50);
+    for (const n of due) {
+      const u = userById(n.userId); if (!u || !u.active || u.notifyTeams === false || !u.email) { mark.run(n.id, Date.now(), 0); continue; }
+      const i = n.issueId && store.get("issues", n.issueId); const key = i ? issueKey(i) : "";
+      try {
+        await mailer.graph("POST", `/users/${encodeURIComponent(u.email)}/teamwork/sendActivityNotification`, {
+          topic: { source: "text", value: (key ? `${key} ${i.summary}` : n.title).slice(0, 120), webUrl: key ? teamsDeepLink(key) : CFG.appUrl.startsWith("https://") ? teamsDeepLink("") : CFG.appUrl },
+          activityType: "gftNotification", previewText: { content: (n.text || n.title).slice(0, 150) }, templateParameters: [{ name: "title", value: n.title.slice(0, 120) }] });
+        mark.run(n.id, Date.now(), 1);
+      } catch (e) {
+        mark.run(n.id, Date.now(), 0); const last = teamsWarned.get(u.id) || 0;
+        if (Date.now() - last > 36e5) { teamsWarned.set(u.id, Date.now()); ilog("teams", "warn", `Teams-Benachrichtigung an ${u.email} nicht möglich: ${e.status === 403 ? "Berechtigung TeamsActivity.Send fehlt oder App nicht freigegeben" : e.status === 404 ? "Teams-App ist bei dieser Person nicht installiert" : e.message}`); }
+      }
+    }
+    store.db.prepare("DELETE FROM teams_log WHERE sent_at < ?").run(Date.now() - 7 * 864e5);
+  } finally { teamsBusy = false; }
 }
 function backupJob() {
   try { ops.backup(); } catch (e) { log("Sicherung fehlgeschlagen:", e.message); ilog("backup", "error", `Sicherung fehlgeschlagen: ${e.message}`); }
@@ -887,7 +916,8 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/admin/integrations/settings" && m === "POST") {
     needAdmin(); const b = await readJson(req, 8e3);
     if ("mailInbox" in b) { const v = str(b.mailInbox, 200).toLowerCase(); if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new HttpError(400, "Postfach: bitte eine E-Mail-Adresse angeben."); store.meta("mailInbox", v); }
-    for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft", "factorialCreateUsers", "calendarInviteCustomer", "calendarPull"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
+    for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft", "factorialCreateUsers", "calendarInviteCustomer", "calendarPull", "teamsNotify"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
+    if (b.teamsNotify && !store.meta("teamsNotifySince")) store.meta("teamsNotifySince", String(Date.now())); if (b.teamsNotify === false) store.meta("teamsNotifySince", "");
     if ("calendarMinutes" in b) store.meta("calendarMinutes", String(Math.min(600, Math.max(15, Number(b.calendarMinutes) || 120))));
     ilog("settings", "info", `Integrationseinstellungen geändert durch ${user.email}`); audit(user, "settings", `Integrationen: ${Object.keys(b).join(", ")}`, clientIp(req));
     if (b.calendarSync) for (const i of store.all("issues")) if (i.status === "SCHEDULED" && i.appointmentAt) m365.calendarTouch(i);
@@ -1054,7 +1084,7 @@ const server = http.createServer(async (req, res) => {
 
 setupInitialData();
 deadlineJob(); backupJob();
-setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } try { automationJob(); } catch (e) { log("Automatik:", e.message); ilog("automation", "error", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); }, 60e3).unref();
+setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } try { automationJob(); } catch (e) { log("Automatik:", e.message); ilog("automation", "error", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); teamsNotifyJob().catch((e) => log("Teams-Job:", e.message)); }, Number(env.JOB_INTERVAL_MS) || 60e3).unref();
 setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); ops.cleanup(); automation.cleanup(); }, 60 * 60e3).unref();
 server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
 const shutdown = () => { log("Beende…"); for (const c of clients) c.res.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };

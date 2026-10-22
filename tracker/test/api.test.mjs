@@ -144,7 +144,7 @@ test("Betrieb: Audit-Protokoll, Sicherung mit Anhängen, Systemstatus – nur Ad
   assert.equal((await lisa.req("/api/admin/audit")).status, 403); assert.equal((await lisa.req("/api/admin/system")).status, 403);
   const b = await anna.req("/api/admin/backup", { method: "POST" }); assert.equal(b.status, 200); assert.ok(b.data.copied >= 1, "Anhang gespiegelt");
   assert.ok(fs.readdirSync(path.join(dataDir, "backups", "files")).length >= 1);
-  const sys = (await anna.req("/api/admin/system")).data; assert.ok(sys.backups.list.some((x) => x.name === b.data.file)); assert.equal(sys.schema, 4); assert.ok(sys.counts.issues > 0);
+  const sys = (await anna.req("/api/admin/system")).data; assert.ok(sys.backups.list.some((x) => x.name === b.data.file)); assert.equal(sys.schema, 5); assert.ok(sys.counts.issues > 0);
   const dl = await fetch(`${BASE}/api/admin/backups/${b.data.file}`, { headers: { cookie: anna.cookie } }); assert.equal(dl.status, 200);
   assert.equal(Buffer.from(await dl.arrayBuffer()).subarray(0, 15).toString(), "SQLite format 3");
   assert.equal((await fetch(`${BASE}/api/admin/backups/..%2Ftracker.db`, { headers: { cookie: anna.cookie } })).status, 404);
