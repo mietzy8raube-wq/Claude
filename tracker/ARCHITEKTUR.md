@@ -660,6 +660,13 @@ fertiges App-Paket (Name, Farbe aus dem Erscheinungsbild). Hochladen im
 
 ### 13.1b Bedienung: Suche, Spalten, Navigation, Erscheinungsbild
 
+- **Hauptmenü ☰** (oben links): alle Bereiche auf einen Blick – Arbeiten (mit
+  Zählern), Projekte mit allen Ansichten, Teams, Suchen & Auswerten inkl.
+  gespeicherter Filter, Kunden & Service, Daten (Import/Export), Mein Konto und
+  für die Administration die Verwaltung. Mit eigenem Suchfeld („Funktion
+  finden“), Esc schließt.
+- **App-Logo**: Symbol in Kopfzeile, Anmeldung, Browser-Tab, installierter App
+  (PC, iPhone, Android), Outlook-Add-in und Teams-App (`public/icons/`).
 - **Suche** (Kopfzeile oder Menü *Suche*): einfach lostippen – Vorschläge
   erscheinen sofort (Vorgänge und Kunden, Pfeiltasten + Enter). Gesucht wird in
   Nummer, Zusammenfassung, Beschreibung, Kommentaren, Kunde, Anlage/Seriennummer,

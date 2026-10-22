@@ -29,6 +29,7 @@ const app = patch("app.js", read("public/app.js"), [
   ["${esc(location.origin)}/portal", "${esc(GFTLocal.BASE)}?portal", 2],
   ['location.href = authUrl("/api/admin/export")', 'api("/api/admin/export")'],
   ['if ("serviceWorker" in navigator && !TEAMS)', "if (false)"],
+  ['src="/icons/icon-64.png"', `src="data:image/png;base64,${fs.readFileSync(path.join(ROOT, "public/icons/icon-64.png")).toString("base64")}"`, 2],
 ]);
 const portal = patch("portal.js", read("public/portal.js"), [
   ['(location.pathname.match(/^\\/portal\\/r\\/([A-Za-z0-9_-]{20,64})$/) || [])[1]', '(/^[A-Za-z0-9_-]{20,64}$/.test(params.get("r") || "") ? params.get("r") : null)'],
@@ -63,7 +64,7 @@ const loader = `
     document.body.innerHTML = \`<main class="sa-login"><div class="card pad">
       <div class="row" style="gap:10px;margin-bottom:6px"><span class="sa-logo">⚡</span><h1 style="font-size:20px;margin:0">GF Tracker</h1></div>
       <p class="muted small" style="margin:0 0 16px">Wer arbeitet gerade? Person wählen – jeder Tab kann als andere Person angemeldet sein (z. B. Disponent und Techniker nebeneinander).</p>
-      <div class="sa-users">\${GFTLocal.users().map((u) => \`<button class="sa-user" data-id="\${esc(u.id)}"><span class="avatar" style="background:\${esc(u.color || "#0c66e4")}">\${esc(ini(u.name))}</span><span><b>\${esc(u.name)}</b><br><span class="small muted">\${esc(ROLE[u.role] || u.role)}</span></span></button>\`).join("")}</div>
+      <div class="sa-users">\${GFTLocal.users().map((u) => \`<button class="sa-user" data-id="\${esc(u.id)}"><span class="avatar" style="background:\${esc(u.color || "#2436e8")}">\${esc(ini(u.name))}</span><span><b>\${esc(u.name)}</b><br><span class="small muted">\${esc(ROLE[u.role] || u.role)}</span></span></button>\`).join("")}</div>
       <div class="row" style="margin-top:18px;justify-content:space-between"><a href="?portal" target="_blank" rel="noopener">Kundenportal öffnen ↗</a><button class="btn subtle sm" id="sa-reset">Beispieldaten zurücksetzen</button></div>
       <p class="small muted" style="margin:16px 0 0">Einzeldatei-Version: Alle Daten bleiben in diesem Browser auf diesem Gerät. Für mehrere Arbeitsplätze, Anmeldung mit Passwort und E-Mail-Versand die Server-Version verwenden. Sicherung: Einstellungen → Export.</p>
     </div></main>\`;
@@ -84,7 +85,7 @@ const html = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>GF Tracker</title>
 <meta name="description" content="Vorgangs- und Projektverfolgung mit Service-Desk – Einzeldatei-Version.">
-<meta name="theme-color" content="#0c66e4">
+<meta name="theme-color" content="#2436e8">
 <link rel="icon" href="${favicon}" type="image/svg+xml">
 <style>
 ${read("public/app.css")}

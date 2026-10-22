@@ -165,7 +165,7 @@ test("Erscheinungsbild: Name, Farbe, Logo – nur Administration; SVG mit Skript
   assert.equal((await (await fetch(`${BASE}/api/portal/config`)).json()).company, "Druckluft Chemnitz GmbH");
   const mf = await (await fetch(`${BASE}/manifest.webmanifest`)).json(); assert.equal(mf.short_name, "DLC Service"); assert.equal(mf.theme_color, "#1f4e8c");
   assert.equal((await anna.req("/api/admin/brand/logo", { method: "DELETE" })).data.logo, null);
-  await anna.req("/api/admin/brand", { method: "POST", body: { appName: "", company: "", color: "#0c66e4" } });
+  await anna.req("/api/admin/brand", { method: "POST", body: { appName: "", company: "", color: "#2436e8" } });
 });
 
 test("Microsoft Teams: App-Paket, Anmeldung per Token ohne Cookie, Einbettung nur für Teams", async () => {

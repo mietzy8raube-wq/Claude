@@ -159,12 +159,6 @@ function zipStore(files) { // ZIP ohne Kompression – reicht für drei kleine D
   const cd = Buffer.concat(central), e = Buffer.alloc(22); e.writeUInt32LE(0x06054b50, 0); e.writeUInt16LE(files.length, 8); e.writeUInt16LE(files.length, 10); e.writeUInt32LE(cd.length, 12); e.writeUInt32LE(off, 16);
   return Buffer.concat([...parts, cd, e]);
 }
-function pngRGBA(w, h, px) { // px(x, y) → [r, g, b, a]
-  const rows = []; for (let y = 0; y < h; y++) { const r = Buffer.alloc(1 + w * 4); for (let x = 0; x < w; x++) Buffer.from(px(x, y)).copy(r, 1 + x * 4); rows.push(r); }
-  const chunk = (t, d) => { const len = Buffer.alloc(4); len.writeUInt32BE(d.length); const td = Buffer.concat([Buffer.from(t), d]); const crc = Buffer.alloc(4); crc.writeUInt32BE(zlib.crc32(td) >>> 0); return Buffer.concat([len, td, crc]); };
-  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", zlib.deflateSync(Buffer.concat(rows))), chunk("IEND", Buffer.alloc(0))]);
-}
 function teamsPackage() {
   let id = store.meta("teamsAppId"); if (!id) { id = crypto.randomUUID(); store.meta("teamsAppId", id); }
   const b = brand(); const host = new URL(CFG.appUrl).host; const name = b.appName.slice(0, 30);
@@ -180,11 +174,8 @@ function teamsPackage() {
     configurableTabs: [{ configurationUrl: `${CFG.appUrl}/teams/config`, canUpdateConfiguration: true, scopes: ["team", "groupChat"] }],
     permissions: ["identity"], validDomains: [host],
   };
-  const color = fs.readFileSync(path.join(PUBLIC, "icons", "icon-192.png"));
-  // Umriss-Symbol (32×32, weiß auf transparent): Blitz wie im App-Symbol
-  const bolt = [[18, 3], [7, 18], [15, 18], [13, 29], [25, 13], [17, 13], [19, 3]];
-  const inside = (x, y) => { let c = false; for (let i = 0, j = bolt.length - 1; i < bolt.length; j = i++) { const [xi, yi] = bolt[i], [xj, yj] = bolt[j]; if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c; } return c; };
-  const outline = pngRGBA(32, 32, (x, y) => { let n = 0; for (const [dx, dy] of [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]]) if (inside(x + dx, y + dy)) n++; return [255, 255, 255, Math.round((n / 4) * 255)]; });
+  const color = fs.readFileSync(path.join(PUBLIC, "icons", "teams-color.png")); // 192×192, App-Logo
+  const outline = fs.readFileSync(path.join(PUBLIC, "icons", "teams-outline.png")); // 32×32, weiß auf transparent
   return zipStore([{ name: "manifest.json", data: Buffer.from(JSON.stringify(manifest, null, 2)) }, { name: "color.png", data: color }, { name: "outline.png", data: outline }]);
 }
 
@@ -192,7 +183,7 @@ function teamsPackage() {
 const ENV_COMPANY = CFG.company; const LOGO_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg", "image/webp": "webp" };
 function brand() {
   const logo = store.meta("brandLogo"); const f = logo && path.join(CFG.dataDir, logo); const ok = f && fs.existsSync(f);
-  return { appName: store.meta("brandAppName") || "GF Tracker", company: CFG.company, color: store.meta("brandColor") || "#0c66e4", logo: ok ? `/brand/logo?v=${Math.round(fs.statSync(f).mtimeMs)}` : null };
+  return { appName: store.meta("brandAppName") || "GF Tracker", company: CFG.company, color: store.meta("brandColor") || "#2436e8", logo: ok ? `/brand/logo?v=${Math.round(fs.statSync(f).mtimeMs)}` : null };
 }
 function applyBrand() {
   CFG.company = store.meta("brandCompany") || ENV_COMPANY; const b = brand();

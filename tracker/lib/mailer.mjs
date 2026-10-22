@@ -63,8 +63,8 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
  * preheader: Vorschautext in der Nachrichtenliste.
  */
 /** Firmenfarbe und Logo für alle E-Mails (aus den Einstellungen „Erscheinungsbild“). */
-const brand = { color: "#0c66e4", logoUrl: null };
-export function setMailBrand({ color, logoUrl } = {}) { brand.color = /^#[0-9a-f]{6}$/i.test(color || "") ? color : "#0c66e4"; brand.logoUrl = logoUrl || null; }
+const brand = { color: "#2436e8", logoUrl: null };
+export function setMailBrand({ color, logoUrl } = {}) { brand.color = /^#[0-9a-f]{6}$/i.test(color || "") ? color : "#2436e8"; brand.logoUrl = logoUrl || null; }
 export function mailTemplate({ company, greeting, title, lines = [], items = [], button, footer, preheader, replyHint }) {
   const font = "font-family:'Segoe UI',Calibri,Arial,sans-serif";
   const btn = button ? `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${esc(button.url)}" style="height:40px;v-text-anchor:middle;width:${Math.max(180, button.label.length * 9 + 40)}px;" arcsize="15%" stroke="f" fillcolor="${brand.color}"><w:anchorlock/><center style="color:#ffffff;${font};font-size:14px;font-weight:bold;">${esc(button.label)}</center></v:roundrect><![endif]--><!--[if !mso]><!-- --><a href="${esc(button.url)}" style="display:inline-block;background:${brand.color};color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:6px;${font};font-size:14px;font-weight:600;mso-hide:all">${esc(button.label)}</a><!--<![endif]-->` : "";

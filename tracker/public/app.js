@@ -10,6 +10,11 @@ const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL,
 
 /* ---------- Symbole ---------- */
 const ICONS = {
+  users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
+  building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
+  shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+  zap: '<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>',
   bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7z" fill="currentColor" stroke="none"/>',
   bookmark: '<path d="M6 3h12v18l-6-4-6 4z" fill="currentColor" stroke="none"/>',
   check: '<path d="M5 12l5 5 9-10"/>',
@@ -642,7 +647,7 @@ const baseHash = (h = location.hash) => { const [path, qs] = h.replace(/^#/, "")
 function setParam(k, v) { const { parts, params } = route(); params.delete("issue"); if (v === null || v === undefined || v === "") params.delete(k); else params.set(k, v); const q = params.toString(); go(`#/${parts.map(encodeURIComponent).join("/")}${q ? `?${q}` : ""}`); }
 let lastBase = null;
 function onNavigate() {
-  $("#topnav").classList.remove("menu-open"); $("#notifs")?.classList.remove("open");
+  $("#topnav").classList.remove("menu-open"); $("#notifs")?.classList.remove("open"); closeDrawer();
   const base = baseHash(); const key = route().params.get("issue");
   if (base !== lastBase) { lastBase = base; if (ui.modal && ui.modal !== "issue") closeModal(); ui.rowLimit = ROW_PAGE; render(); window.scrollTo(0, 0); }
   if (key) { const cur = ui.openIssue && issue(ui.openIssue); if (!cur || keyOf(cur) !== key || ui.modal !== "issue") findByKey(key).then((i) => (i ? openIssue(i.id, { push: false }) : toast(`Vorgang ${key} nicht gefunden.`))); }
@@ -660,7 +665,7 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <span class="navbtns"><button class="btn subtle icon" id="nav-back" data-act="nav-back" title="Zurück (Alt+←)" aria-label="Zurück">‹</button><button class="btn subtle icon" id="nav-fwd" data-act="nav-fwd" title="Vor (Alt+→)" aria-label="Vor">›</button></span>
-    <a class="logo" href="#/your-work">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<span class="mark">${icon("bolt")}</span>`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
+    <a class="logo" href="#/your-work">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
     ${link("your-work", "Mein Tag", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink nav-portal" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
     <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Neuer Vorgang</span></button>
     <a class="btn subtle icon show-m" href="#/filters?state=open" data-act="m-search" aria-label="Suchen">${icon("search")}</a><div class="search gs-wrap">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen: Text, Nummer, Kunde …" aria-label="Suchen" autocomplete="off"><div id="gsugg" class="gsugg" hidden></div></div>
@@ -672,11 +677,12 @@ function renderTop() {
   updateNavButtons();
   if (keep) { const g = $("#gsearch"); g.value = keep.v; if (keep.f) { g.focus(); g.setSelectionRange(keep.p, keep.p); } if (keep.sugg) showSuggestions(keep.v); }
 }
-function projectNav(p, view) {
-  const items = p.type === "software" ? [["board", "Board", "board"], ["backlog", "Backlog", "backlog"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
+/** Ansichten eines Projekts – für die Projektleiste und das Hauptmenü. */
+const projectViews = (p) => [...(p.type === "software" ? [["board", "Board", "board"], ["backlog", "Backlog", "backlog"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
     : p.type === "business" ? [["board", "Board", "board"], ["timeline", "Zeitleiste", "timeline"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]
-    : [["queue", "Warteschlangen", "queue"], ["dispatch", "Einsatzplanung", "timeline"], ["board", "Board", "board"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]];
-  items.push(["settings", "Projekteinstellungen", "gear"]);
+    : [["queue", "Warteschlangen", "queue"], ["dispatch", "Einsatzplanung", "timeline"], ["board", "Board", "board"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]), ["settings", "Projekteinstellungen", "gear"]];
+function projectNav(p, view) {
+  const items = projectViews(p);
   $("#psidebar").hidden = false;
   $("#psidebar").innerHTML = `<div class="phead"><span class="pavatar" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><div class="trunc"><div class="b trunc">${esc(p.name)}</div><div class="small muted">${PROJECT_TYPES[p.type].label}</div></div></div>
     <div class="label">Planung</div>${items.map(([v, l, ic]) => `<a href="#/p/${p.key}/${v}" class="${view === v ? "on" : ""}">${icon(ic)}${l}</a>`).join("")}
@@ -711,6 +717,7 @@ function render() {
   } catch (e) { console.error(e); html = `<div class="note err">Fehler beim Anzeigen: ${esc(e.message)}</div>`; }
   $("#view").innerHTML = html;
   setTitle();
+  if (parts[0] === "settings" && params.get("sec")) setTimeout(() => { const t = $(`#sec-${params.get("sec")}`); if (t) { t.scrollIntoView({ block: "start" }); t.classList.add("flash"); setTimeout(() => t.classList.remove("flash"), 1600); } }, 30);
   bindDnD();
   if (ui.openIssue && $("#modal").classList.contains("open") && ui.modal === "issue") renderIssue();
 }
@@ -1752,13 +1759,13 @@ function accountMenu(x) {
     <button data-act="set-password" data-id="${x.id}">Passwort direkt setzen</button>
     ${!st && a?.sessions && x.id !== db.currentUserId ? `<button data-act="user-logout" data-id="${x.id}">Auf allen Geräten abmelden</button>` : ""}</div></details>`;
 }
-const BRAND_COLORS = ["#0c66e4", "#1f4e8c", "#0b7a75", "#1a7f37", "#c9372c", "#d35400", "#6e3fbf", "#2b2f36"];
+const BRAND_COLORS = ["#2436e8", "#1f4e8c", "#0b7a75", "#1a7f37", "#c9372c", "#d35400", "#6e3fbf", "#2b2f36"];
 function brandCard() {
   const b = ui.brand || {}; const server = location.protocol.startsWith("http") && !window.GFT_STANDALONE;
-  return `<div class="card pad" style="grid-column:1/-1"><h3 style="font-size:15px;margin:0 0 4px">Erscheinungsbild</h3><p class="small muted" style="margin:0 0 12px">Name, Firmenfarbe und Logo erscheinen in der App, auf der Anmeldeseite, im Kundenportal, in E-Mails und in der installierten App.</p>
+  return `<div class="card pad" style="grid-column:1/-1"><h3 id="sec-brand" style="font-size:15px;margin:0 0 4px">Erscheinungsbild</h3><p class="small muted" style="margin:0 0 12px">Name, Firmenfarbe und Logo erscheinen in der App, auf der Anmeldeseite, im Kundenportal, in E-Mails und in der installierten App.</p>
     <form id="brand-form" class="brand-grid"><label class="f">Name der App<input type="text" name="appName" value="${esc(b.appName || "GF Tracker")}" maxlength="40" placeholder="z. B. DLC Service"></label>
       <label class="f">Firmenname (Portal, E-Mails)<input type="text" name="company" value="${esc(b.company || sync.company || "")}" maxlength="120"></label>
-      <div class="f"><span>Firmenfarbe</span><div class="row nowrap" style="gap:6px">${BRAND_COLORS.map((c) => `<button type="button" class="swatch ${c === (b.color || "#0c66e4") ? "on" : ""}" style="--c:${c}" data-act="brand-swatch" data-v="${c}" aria-label="Farbe ${c}"></button>`).join("")}<input type="color" name="color" value="${esc(b.color || "#0c66e4")}" aria-label="Eigene Farbe" style="width:40px;height:30px;padding:0"></div></div>
+      <div class="f"><span>Firmenfarbe</span><div class="row nowrap" style="gap:6px">${BRAND_COLORS.map((c) => `<button type="button" class="swatch ${c === (b.color || "#2436e8") ? "on" : ""}" style="--c:${c}" data-act="brand-swatch" data-v="${c}" aria-label="Farbe ${c}"></button>`).join("")}<input type="color" name="color" value="${esc(b.color || "#2436e8")}" aria-label="Eigene Farbe" style="width:40px;height:30px;padding:0"></div></div>
       <div class="f"><span>Logo <span class="muted small">(PNG, JPG, SVG; quer, mind. 64 px hoch)</span></span><div class="row nowrap">${b.logo ? `<img src="${esc(b.logo)}" alt="Logo" style="height:32px;max-width:160px;object-fit:contain;background:var(--surface-2);border-radius:4px;padding:2px">` : '<span class="small muted">kein Logo</span>'}
         <label class="btn sm" style="cursor:pointer">${icon("upload")} ${b.logo ? "Ersetzen" : "Hochladen"}<input type="file" id="brand-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden></label>${b.logo ? `<button type="button" class="btn subtle sm" data-act="brand-logo-del">Entfernen</button>` : ""}</div></div>
       <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit" ${server ? "" : "disabled"}>Speichern</button>${server ? `<span class="small muted">Vorschau: Farbe wird sofort angezeigt, gilt für alle nach dem Speichern.</span>` : '<span class="small muted">Das Erscheinungsbild wird in der Server-Version eingestellt.</span>'}</div></form></div>`;
@@ -1766,7 +1773,7 @@ function brandCard() {
 function viewSettings() {
   const u = me(); const isAdmin = u.role === "ADMIN";
   return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
-    <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Mein Profil</h3>
+    <div class="card pad"><h3 id="sec-profile" style="font-size:15px;margin-bottom:10px">Mein Profil</h3>
       <form id="profile-form" class="grid" style="gap:10px"><label class="f">Name<input type="text" name="name" value="${esc(u.name)}" required maxlength="120"></label>
         <label class="f">E-Mail<input type="email" value="${esc(u.email)}" disabled></label>
         <label class="row nowrap small"><input type="checkbox" name="notifyEmail" ${u.notifyEmail !== false ? "checked" : ""}> Benachrichtigungen zusätzlich per E-Mail erhalten${sync.mail ? "" : ' <span class="muted">(E-Mail-Versand ist noch nicht eingerichtet)</span>'}</label>
@@ -1776,12 +1783,12 @@ function viewSettings() {
         <input type="password" name="next" placeholder="Neues Passwort (mind. 10 Zeichen)" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort">
         <input type="password" name="repeat" placeholder="Neues Passwort wiederholen" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort wiederholen">
         <div><button class="btn" type="submit">Passwort ändern</button></div></form>
-      <h3 style="font-size:15px;margin:20px 0 6px">Angemeldete Geräte</h3>
+      <h3 id="sec-devices" style="font-size:15px;margin:20px 0 6px">Angemeldete Geräte</h3>
       ${(() => { const d = ui.mySessions; if (!d) { if (!ui.mySessionsLoading) { ui.mySessionsLoading = true; api("/api/me/sessions").then((r) => { ui.mySessions = r.sessions; }).catch(() => { ui.mySessions = "n/a"; }).finally(() => { ui.mySessionsLoading = false; if (route().parts[0] === "settings") render(); }); } return '<p class="small muted">Lade …</p>'; }
         if (d === "n/a") return '<p class="small muted" style="margin:0">Die Geräteübersicht gibt es in der Server-Version.</p>';
         return `${d.map((x) => `<div class="row nowrap" style="padding:6px 0;border-bottom:1px solid var(--border)"><div style="flex:1;min-width:0"><div class="b trunc">${esc(x.device)}${x.current ? ' <span class="chip green">dieses Gerät</span>' : ""}</div><div class="small muted">aktiv ${ago(new Date(x.lastSeen).toISOString())}${x.ip ? ` · ${esc(x.ip)}` : ""} · angemeldet seit ${fmtDay(dayKey(new Date(x.createdAt)))}</div></div>${x.current ? "" : `<button class="btn subtle sm" data-act="session-revoke" data-id="${x.id}">Abmelden</button>`}</div>`).join("")}
           ${d.length > 1 ? `<div style="margin-top:8px"><button class="btn sm" data-act="session-revoke-others">Alle anderen Geräte abmelden</button></div>` : ""}`; })()}
-      <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Kalender abonnieren</h3>
+      <h3 id="sec-calendar" style="font-size:15px;margin:20px 0 6px">Outlook-Kalender abonnieren</h3>
       ${(() => { const c = ui.calFeed; if (!c) { if (!ui.calFeedLoading) { ui.calFeedLoading = true; api("/api/me/calendar").then((r) => { ui.calFeed = r; if (route().parts[0] === "settings") render(); }).catch(() => {}); } return '<p class="small muted">Lade …</p>'; }
         if (c.standalone) return '<p class="small muted" style="margin:0">Das Kalender-Abo gibt es in der Server-Version.</p>';
         return `<p class="small muted" style="margin:0 0 6px">Ihre Einsätze, Fristen (mit Erinnerung am Vortag) und Abwesenheiten erscheinen als eigener Kalender in Outlook – auf PC, im Web und auf dem Handy.</p>
@@ -1791,7 +1798,7 @@ function viewSettings() {
           <li><b>Klassisches Outlook (Windows):</b> Kalender → „Kalender hinzufügen“ → „Aus dem Internet …“ → Link einfügen.</li><li><b>iPhone/Android:</b> erscheint automatisch, wenn das Outlook-Konto auf dem Handy eingerichtet ist.</li>
           <li>Outlook aktualisiert abonnierte Kalender selbst (je nach Version alle paar Stunden). Sofort und mit Erinnerung im eigenen Kalender erscheinen Einsätze, wenn die Administration die Outlook-Kalender-Anbindung eingeschaltet hat.</li>
           <li>Der Link ist persönlich – nicht weitergeben. Bei Bedarf „Neuen Link erzeugen“, dann ist der alte ungültig.</li></ol></details>`; })()}
-      <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Add-in</h3>
+      <h3 id="sec-outlook" style="font-size:15px;margin:20px 0 6px">Outlook-Add-in</h3>
       ${(() => { const o = ui.outlook; if (!o) { if (!ui.outlookLoading) { ui.outlookLoading = true; api("/api/me/outlook").then((r) => { ui.outlook = r; if (route().parts[0] === "settings") render(); }).catch(() => { ui.outlook = { standalone: true }; }); } return '<p class="small muted">Lade …</p>'; }
         if (o.standalone) return '<p class="small muted" style="margin:0">Das Outlook-Add-in gibt es in der Server-Version.</p>';
         return `<p class="small muted" style="margin:0 0 6px">In jeder E-Mail in Outlook: Kunde zum Absender mit offenen Vorgängen sehen, mit einem Klick einen Vorgang anlegen (inkl. Anhänge) oder die Mail an einen Vorgang hängen.</p>
@@ -1802,14 +1809,14 @@ function viewSettings() {
           <li><b>Nur für mich:</b> In Outlook im Web / neuem Outlook <code>aka.ms/olksideload</code> öffnen → „Meine Add-Ins“ → „Benutzerdefiniertes Add-In hinzufügen“ → „Aus Datei“ → heruntergeladenes Manifest wählen.</li>
           <li>Eine E-Mail öffnen → in der Menüleiste <b>GF Tracker</b> (ggf. unter „Apps“ / „…“) → Zugangsschlüssel einfügen. Die Anmeldung gilt danach auf allen Geräten mit diesem Outlook-Konto.</li>
           ${o.https ? "" : "<li><b>Hinweis:</b> Outlook verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details>`; })()}
-      <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
+      <h3 id="sec-app" style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
       ${location.protocol.startsWith("http") ? `<div class="row nowrap" style="align-items:flex-start;gap:14px;margin-bottom:8px"><div class="qr-box">${(() => { try { return QR.svg(location.origin + "/", { size: 132 }); } catch { return ""; } })()}</div><p class="small muted" style="margin:0;line-height:1.6"><b>Aufs Handy holen:</b> QR-Code mit der Kamera scannen, anmelden und dann „Zum Home-Bildschirm“ (iPhone) bzw. „App installieren“ (Android) wählen.<br><span class="small">${esc(location.origin)}</span></p></div>` : ""}
       ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
         : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
         <p class="small muted" style="margin:6px 0 0;line-height:1.6"><b>PC (Edge/Chrome):</b> in der Adresszeile auf das Symbol „App installieren“ klicken bzw. Menü ⋯ → Apps → „Diese Website als App installieren“. Danach eigenes Fenster, Startmenü- und Taskleisten-Eintrag.<br>
         <b>iPhone/iPad:</b> in Safari „Teilen“ → „Zum Home-Bildschirm“. <b>Android:</b> Chrome-Menü → „App installieren“.</p>`}
       <h3 style="font-size:15px;margin:20px 0 6px">Tastenkürzel</h3><div class="small" style="line-height:2"><span class="kbd">c</span> Vorgang erstellen · <span class="kbd">/</span> Suche · <span class="kbd">Esc</span> Schließen · <span class="kbd">Strg</span>+<span class="kbd">Enter</span> Kommentar senden</div></div>
-    <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Personen</h3>
+    <div class="card pad"><h3 id="sec-people" style="font-size:15px;margin-bottom:10px">Personen</h3>
       ${(() => { if (isAdmin && !ui.accounts && !ui.accountsLoading) { ui.accountsLoading = true; api("/api/admin/accounts").then((r) => { ui.accounts = r; }).catch(() => { ui.accounts = { standalone: true, accounts: {} }; }).finally(() => { ui.accountsLoading = false; if (route().parts[0] === "settings") render(); }); } return ""; })()}
       ${db.users.map((x) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border);${x.active ? "" : "opacity:.5"}">${avatar(x.id)}<div style="flex:1;min-width:0"><div class="b trunc">${esc(x.name)}</div><div class="small muted trunc">${esc(x.email)}</div>${isAdmin ? accountLine(x) : ""}</div>
         ${isAdmin ? `<select style="width:auto" data-act="user-role" data-id="${x.id}" ${x.id === u.id ? "disabled" : ""}>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === x.role ? "selected" : ""}>${v}</option>`).join("")}</select>
@@ -1942,15 +1949,59 @@ function openModal(html, wide = false, kind = "form") {
   $("#overlay").classList.add("open"); document.body.classList.add("modal-open");
   setTimeout(() => { if (!m.contains(document.activeElement)) m.focus({ preventScroll: true }); }, 40);
 }
+/* ---------- Hauptmenü (☰): alle Bereiche und Funktionen auf einen Blick ---------- */
+function drawerHtml() {
+  const { parts, params } = route(); const cur = `#/${parts.join("/")}`; const admin = me().role === "ADMIN"; const meId = db.currentUserId;
+  const mineOpen = db.issues.filter((i) => i.assigneeId === meId && !isDone(i)).length; const unassigned = db.issues.filter((i) => !i.assigneeId && !isDone(i) && i.type !== "EPIC").length;
+  const overdue = db.issues.filter((i) => isOverdue(i) && (i.assigneeId === meId || i.reporterId === meId)).length;
+  const it = (href, label, ic, { badge = 0, warn = false, act = "", data = "", ext = false, kw = "" } = {}) => {
+    const on = href && (cur === href.split("?")[0] || (href.startsWith(cur + "?") && cur !== "#/filters"));
+    const attrs = act ? `href="#" data-act="${act}" ${data}` : `href="${href}"${ext ? ' target="_blank" rel="noopener"' : ""}`;
+    return `<a class="dr-item ${on ? "on" : ""}" ${attrs} data-kw="${esc(norm(`${label} ${kw}`))}">${icon(ic)}<span class="trunc">${esc(label)}</span>${badge ? `<span class="dr-badge ${warn ? "warn" : ""}">${badge}</span>` : ""}${ext ? '<span class="small muted">↗</span>' : ""}</a>`;
+  };
+  const sec = (title, body, open = true) => `<details class="dr-sec" ${open ? "open" : ""}><summary>${title}</summary>${body}</details>`;
+  const projects = db.projects.map((p) => `<details class="dr-proj" ${parts[0] === "p" && parts[1] === p.key ? "open" : ""}><summary><span class="pavatar sm" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><span class="trunc">${esc(p.name)}</span><span class="dr-badge">${projIssues(p).filter((i) => !isDone(i) && i.type !== "EPIC").length}</span></summary>
+      ${projectViews(p).map(([v, l, ic]) => it(`#/p/${p.key}/${v}`, l, ic, { kw: `${p.key} ${p.name}` })).join("")}</details>`).join("");
+  const b = ui.brand || {};
+  return `<div class="dr-head">${b.logo ? `<img class="brand-logo" src="${esc(b.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<div class="trunc" style="flex:1"><div class="b trunc">${esc(b.appName || "GF Tracker")}</div><div class="small muted trunc">${esc(me().name)} · ${esc(ROLES[me().role] || "")}</div></div><button class="btn subtle icon" data-act="drawer-close" aria-label="Menü schließen">${icon("x")}</button></div>
+    <div class="dr-search">${icon("search")}<input type="search" id="drawer-q" placeholder="Funktion finden … (z. B. Import, Kunden, Board)" aria-label="Menü durchsuchen" autocomplete="off"></div>
+    <nav class="dr-body">
+      ${sec("Arbeiten", it("#/your-work", "Mein Tag", "home", { badge: mineOpen, kw: "start übersicht aufgaben" }) + it("#/your-work?tab=watching", "Beobachtet", "eye") + it("#/your-work?tab=recent", "Zuletzt angesehen", "clock")
+        + it("", "Neuer Vorgang", "plus", { act: "create", kw: "erstellen anlegen ticket aufgabe" }) + it("#/filters?filter=f-overdue", "Überfällig", "alert", { badge: overdue, warn: true }) + it("#/filters?filter=f-unassigned", "Nicht zugewiesen", "users", { badge: unassigned }))}
+      ${sec("Projekte", projects + it("#/projects", "Alle Projekte", "grid", { kw: "projekt anlegen übersicht" }))}
+      ${sec("Teams", db.teams.map((t) => it(`#/teams/${t.id}`, t.name, "users", { badge: db.issues.filter((i) => i.teamId === t.id && !i.assigneeId && !isDone(i)).length, kw: "team eingang" })).join("") + it("#/teams", "Alle Teams", "grid"), false)}
+      ${sec("Suchen &amp; Auswerten", it("#/filters?state=open", "Suche", "search", { kw: "finden text" }) + DEFAULT_FILTERS.slice(0, 3).map((f) => it(`#/filters?filter=${f.id}`, f.name, "filter")).join("")
+        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" })
+        + it("", "Excel-Auswertung", "chart", { act: "export-all-xlsx", kw: "export xlsx bericht quartal" }))}
+      ${sec("Kunden &amp; Service", it("#/customers", "Kunden &amp; Anlagen".replace("&amp;", "&"), "building", { badge: db.customers.length, kw: "kunde anlage wartung seriennummer" }) + it("", "Kunde anlegen", "plus", { act: "customer-new" })
+        + it("/portal", "Kundenportal", "send", { ext: true, kw: "störung melden kunden" }) + it("", "Kundenstamm als Excel", "list", { act: "export-customers", kw: "export" }))}
+      ${sec("Daten", it("#/import", "Daten importieren (Excel/CSV)", "upload", { kw: "import warenwirtschaft" }) + it("", "Alle Vorgänge als CSV", "list", { act: "export-all-csv", kw: "export" })
+        + it("#/settings?sec=calendar", "Kalender in Outlook", "clock", { kw: "outlook ics abo" }) + it("#/settings?sec=app", "Als App / aufs Handy", "grid", { kw: "installieren qr handy" }), false)}
+      ${sec("Mein Konto", it("#/settings?sec=profile", "Profil &amp; Benachrichtigungen".replace("&amp;", "&"), "gear") + it("#/settings?sec=devices", "Passwort &amp; Geräte".replace("&amp;", "&"), "shield", { kw: "sitzung abmelden" }) + it("#/settings?sec=outlook", "Outlook-Add-in", "send"), false)}
+      ${admin ? sec("Verwaltung", it("#/settings?sec=people", "Personen &amp; Zugänge".replace("&amp;", "&"), "users", { kw: "einladen benutzer rolle passwort" }) + it("#/settings?sec=brand", "Erscheinungsbild", "star", { kw: "logo farbe name" })
+        + it("#/integrations", "Integrationen", "link", { kw: "microsoft teams outlook factorial api webhook" }) + it("#/automation", "Automatik", "zap", { kw: "regeln zuweisung eskalation wiedervorlage" }) + it("#/system", "System &amp; Protokoll".replace("&amp;", "&"), "shield", { kw: "sicherung backup audit" })
+        + it("", "Sicherung herunterladen", "upload", { act: "export-json", kw: "backup json" }), false) : ""}
+    </nav>
+    <div class="dr-foot"><a class="dr-item" href="#" data-act="theme">${icon("sun")}<span>Hell / Dunkel</span></a><a class="dr-item" href="#" data-act="shortcuts">${icon("help")}<span>Tastenkürzel</span></a><a class="dr-item" href="#" data-act="logout">${icon("logout")}<span>Abmelden</span></a></div>`;
+}
+function openDrawer() {
+  let d = $("#drawer");
+  if (!d) { d = document.createElement("aside"); d.id = "drawer"; d.className = "drawer"; d.setAttribute("aria-label", "Hauptmenü"); document.body.append(d); const ov = document.createElement("div"); ov.id = "drawer-ov"; ov.className = "drawer-ov"; ov.addEventListener("click", closeDrawer); document.body.append(ov); }
+  d.innerHTML = drawerHtml(); d.classList.add("open"); $("#drawer-ov").classList.add("open"); document.body.classList.add("drawer-open");
+  setTimeout(() => (matchMedia("(pointer: fine)").matches ? $("#drawer-q") : d.querySelector(".dr-item.on") || d)?.focus?.(), 60);
+}
+function closeDrawer() { $("#drawer")?.classList.remove("open"); $("#drawer-ov")?.classList.remove("open"); document.body.classList.remove("drawer-open"); }
+const drawerOpen = () => !!$("#drawer")?.classList.contains("open");
+
 /* ---------- Erscheinungsbild (Firmenfarbe, Logo, Name) ---------- */
 const hexRgb = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
 const rgbHex = (a) => `#${a.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("")}`;
 const mixHex = (h, w, t) => rgbHex(hexRgb(h).map((v, k) => v + (hexRgb(w)[k] - v) * t));
 const lum = (h) => { const [r, g, b] = hexRgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
 function applyBrand(b = ui.brand) {
-  ui.brand = b || ui.brand || { appName: "GF Tracker", color: "#0c66e4", logo: null }; const c = ui.brand.color; const st = document.documentElement.style;
+  ui.brand = b || ui.brand || { appName: "GF Tracker", color: "#2436e8", logo: null }; const c = ui.brand.color; const st = document.documentElement.style;
   const dark = (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
-  if (!c || c === "#0c66e4") { for (const k of ["--primary", "--primary-hover", "--primary-soft", "--sel", "--primary-fg"]) st.removeProperty(k); }
+  if (!c || c === "#2436e8") { for (const k of ["--primary", "--primary-hover", "--primary-soft", "--sel", "--primary-fg"]) st.removeProperty(k); }
   else if (dark) { let x = c; for (let k = 0; k < 10 && lum(x) < 0.3; k++) x = mixHex(x, "#ffffff", 0.2); st.setProperty("--primary", x); st.setProperty("--primary-hover", mixHex(x, "#ffffff", 0.2)); st.setProperty("--primary-soft", mixHex(x, "#1d2125", 0.8)); st.setProperty("--sel", mixHex(x, "#1d2125", 0.8)); st.setProperty("--primary-fg", "#1d2125"); }
   else { st.setProperty("--primary", c); st.setProperty("--primary-hover", mixHex(c, "#000000", 0.15)); st.setProperty("--primary-soft", mixHex(c, "#ffffff", 0.9)); st.setProperty("--sel", mixHex(c, "#ffffff", 0.9)); st.setProperty("--primary-fg", lum(c) > 0.5 ? "#172b4d" : "#ffffff"); }
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", c);
@@ -2471,12 +2522,17 @@ document.addEventListener("click", (e) => {
   if (el.tagName === "SELECT" || (el.tagName === "INPUT" && el.type !== "checkbox")) return;
   const act = el.dataset.act, id = el.dataset.id;
   const cur = issue(ui.openIssue);
+  if (el.closest("#drawer")) { if (el.getAttribute("href") === "#") e.preventDefault(); if (!["theme", "drawer-close"].includes(act)) closeDrawer(); } // Menüaktion: Menü schließen, dann ausführen
   switch (act) {
     case "open": if (e.target.closest("button:not([data-act=open]), select, input")) return; e.preventDefault(); openIssue(id); break;
     case "close": if (el.tagName === "A") closeModal({ fromNav: true }); else dismissModal(); break; // Link: Navigation übernimmt den Verlauf
     case "reload": location.reload(); break;
     case "goto": e.preventDefault(); go(el.dataset.href); break;
-    case "menu": $("#topnav").classList.toggle("menu-open"); break;
+    case "menu": openDrawer(); break;
+    case "drawer-close": closeDrawer(); break;
+    case "shortcuts": openModal(`<div class="modal-h"><h2>Tastenkürzel</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+      <div class="modal-b"><div class="kv" style="grid-template-columns:max-content 1fr">${[["c", "Neuen Vorgang erstellen"], ["/", "Suchen (Suchfeld oben)"], ["Esc", "Fenster bzw. Menü schließen"], ["Alt + ← / →", "Zurück / Vor"], ["↑ ↓ Enter", "In den Suchvorschlägen wählen"], ["Strg + Enter", "Kommentar bzw. Formular absenden"]].map(([k, v]) => `<span><span class="kbd">${k}</span></span><span>${v}</span>`).join("")}</div></div>
+      <div class="modal-f"><button class="btn primary" data-act="close">OK</button></div>`); break;
     case "theme": { const c = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = c === "dark" ? "light" : "dark"; try { localStorage.setItem("gft-theme", document.documentElement.dataset.theme); } catch {} applyBrand(); break; }
     case "notifs": { const p = $("#notifs"); p.classList.toggle("open"); if (p.classList.contains("open")) renderNotifs(); break; }
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
@@ -2650,6 +2706,9 @@ document.addEventListener("input", (e) => {
   if (e.target.id === "ss-text") { clearTimeout(ssTimer); ssTimer = setTimeout(() => { // Ergebnisse beim Tippen, ohne für jeden Buchstaben einen Verlaufsschritt
     const { params } = route(); const v = $("#ss-text").value; if (v.trim()) params.set("text", v); else params.delete("text"); params.delete("issue");
     history.replaceState(history.state, "", `#/filters?${params}`); lastBase = baseHash(); const pos = $("#ss-text").selectionStart; render(); const inp = $("#ss-text"); inp.focus(); inp.setSelectionRange(pos, pos); }, 250); }
+  if (e.target.id === "drawer-q") { const q = norm(e.target.value.trim()); const d = $("#drawer");
+    d.querySelectorAll(".dr-item[data-kw]").forEach((a) => { a.hidden = !!q && !a.dataset.kw.includes(q); });
+    d.querySelectorAll(".dr-proj, .dr-sec").forEach((x) => { const any = [...x.querySelectorAll(".dr-item[data-kw]")].some((a) => !a.hidden); x.hidden = !!q && !any; if (q && any) x.open = true; }); }
   if (e.target.id === "gsearch") { clearTimeout(gsTimer); gsTimer = setTimeout(() => showSuggestions(e.target.value), 120); }
   if (e.target.id === "cust-q") { ui.custQ = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#cust-q"); s.focus(); s.setSelectionRange(pos, pos); }
   if (e.target.id === "board-q") { ui.board.q = e.target.value; const pos = e.target.selectionStart; render(); const s = $("#board-q"); s.focus(); s.setSelectionRange(pos, pos); }
@@ -2788,6 +2847,7 @@ async function handleSubmit(e, f) {
 }
 document.addEventListener("keydown", (e) => {
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName);
+  if (e.key === "Escape" && drawerOpen()) { closeDrawer(); return; }
   if (e.key === "Escape") { if ($("#notifs").classList.contains("open")) $("#notifs").classList.remove("open"); else if (ui.modal) { e.preventDefault(); dismissModal(); } }
   if (e.key === "Tab" && ui.modal) { // Fokus im Fenster halten
     const f = [...$("#modal").querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);

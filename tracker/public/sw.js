@@ -1,6 +1,6 @@
 /* Service Worker: macht den GF Tracker installierbar und lädt die App-Dateien
    auch bei schwacher Verbindung schnell. Daten (/api/…) werden NIE zwischengespeichert. */
-const CACHE = "gft-shell-v3";
+const CACHE = "gft-shell-v4";
 const ASSETS = ["/app.css", "/app.js", "/shared.js", "/xlsx.js", "/importer.js", "/favicon.svg", "/icons/icon-192.png", "/offline.html"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {

@@ -25,7 +25,7 @@ async function tab() {
   const ok = store.get() && (await api("/api/me").then((r) => r.ok).catch(() => false));
   if (ok) { if (inTeams) T.app.notifySuccess?.(); location.replace(`/teams/app#/${view.replace(/^#?\/?/, "")}`); return; }
   store.set(null); if (inTeams) T.app.notifySuccess?.();
-  $t.innerHTML = `<div class="logo" data-brand-logo="app"><span class="mark"><img src="/favicon.svg" alt="" width="28" height="28"></span>GF Tracker</div>
+  $t.innerHTML = `<div class="logo" data-brand-logo="app"><img class="app-icon" src="/icons/icon-64.png" alt="" width="32" height="32">GF Tracker</div>
     <h1>In Teams anmelden</h1><p class="muted" style="margin:0">Einmal anmelden – danach öffnet sich der Tracker hier direkt, auf allen Ihren Teams-Geräten wie gewohnt.</p>
     <div id="err" class="note err" hidden></div><button class="btn primary" id="login" style="height:38px">Anmelden</button>
     <p class="small muted" style="margin:0">Es öffnet sich ein kleines Fenster mit der Anmeldung (E-Mail und Passwort bzw. „Mit Microsoft anmelden“).</p>`;
@@ -63,7 +63,7 @@ async function config() {
   let projects = []; try { const r = await api("/api/state?part=base"); if (r.ok) projects = (await r.json()).projects || []; } catch {}
   const views = [["your-work", "Mein Tag"], ["filters?state=open", "Suche (offene Vorgänge)"], ["dashboard", "Dashboard"], ["teams", "Teams-Übersicht"], ["customers", "Kunden & Anlagen"],
     ...projects.flatMap((p) => p.type === "service" ? [[`p/${p.key}/queue`, `${p.key} – Warteschlange`], [`p/${p.key}/dispatch`, `${p.key} – Einsatzplanung`]] : [[`p/${p.key}/board`, `${p.key} – Board`], [`p/${p.key}/backlog`, `${p.key} – Backlog`]])];
-  $t.innerHTML = `<div class="logo" data-brand-logo="app"><span class="mark"><img src="/favicon.svg" alt="" width="28" height="28"></span>GF Tracker</div><h1>Reiter einrichten</h1>
+  $t.innerHTML = `<div class="logo" data-brand-logo="app"><img class="app-icon" src="/icons/icon-64.png" alt="" width="32" height="32">GF Tracker</div><h1>Reiter einrichten</h1>
     <label class="f">Was soll der Reiter zeigen?<select id="view">${views.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("")}</select></label>
     <label class="f">Name des Reiters<input type="text" id="name" value="${esc(views[0][1])}" maxlength="40"></label>
     ${projects.length ? "" : '<p class="small muted" style="margin:0">Tipp: Nach der ersten Anmeldung im Reiter stehen hier auch die einzelnen Projekt-Boards zur Auswahl.</p>'}
