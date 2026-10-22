@@ -2,6 +2,7 @@
 // GF Tracker – Server. Startet mit: node server.mjs  (Node.js ≥ 22.13)
 // Keine externen Pakete: HTTP, SQLite und Kryptografie kommen aus Node.js selbst.
 import http from "node:http";
+import zlib from "node:zlib";
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
@@ -90,11 +91,21 @@ const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff", "Referrer-Policy": "same-origin", "X-Frame-Options": "DENY", "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
 };
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
+const COMPRESSIBLE = /^(application\/(json|javascript|xml|manifest\+json)|text\/|image\/svg)/;
+const acceptsGzip = (res) => /\bgzip\b/.test(String(res.req?.headers["accept-encoding"] || ""));
 function send(res, status, body, headers = {}) {
   const h = { ...SECURITY_HEADERS, ...headers };
   for (const k of Object.keys(h)) if (h[k] === undefined) delete h[k];
   if (CFG.secureCookies) h["Strict-Transport-Security"] = "max-age=31536000";
   if (body !== undefined && typeof body !== "string" && !Buffer.isBuffer(body)) { body = JSON.stringify(body); h["Content-Type"] = "application/json; charset=utf-8"; h["Cache-Control"] = "no-store"; }
+  // Komprimieren spart bei großen Antworten 80–90 % Übertragung (wichtig unterwegs im Mobilfunk)
+  if (body && body.length > 2048 && !h["Content-Encoding"] && COMPRESSIBLE.test(h["Content-Type"] || "") && acceptsGzip(res)) {
+    h["Content-Encoding"] = "gzip"; h.Vary = "Accept-Encoding";
+    if (body.length > 256 * 1024) { // große Antworten im Hintergrund komprimieren, damit der Server für andere frei bleibt
+      return zlib.gzip(body, { level: 4 }, (err, gz) => { if (err) { delete h["Content-Encoding"]; res.writeHead(status, h); return res.end(body); } res.writeHead(status, h); res.end(gz); });
+    }
+    body = zlib.gzipSync(body, { level: 5 });
+  }
   res.writeHead(status, h); res.end(body);
 }
 function clientIp(req) { return (CFG.trustProxy && String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket.remoteAddress || "?"; }
@@ -105,12 +116,18 @@ async function readJson(req, limit = 2e6) {
   try { return JSON.parse(Buffer.concat(chunks).toString("utf8")); } catch { throw new HttpError(400, "Ungültiges JSON."); }
 }
 const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json", ".webmanifest": "application/manifest+json" };
+const staticGz = new Map();
 function serveFile(req, res, file, extraHeaders = {}) {
   const full = path.join(PUBLIC, file);
   if (!full.startsWith(PUBLIC + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) return send(res, 404, "Nicht gefunden", { "Content-Type": "text/plain; charset=utf-8" });
   const st = fs.statSync(full); const etag = `"${st.size}-${st.mtimeMs}"`;
   if (req.headers["if-none-match"] === etag) return send(res, 304, undefined, { ETag: etag, ...extraHeaders });
-  send(res, 200, fs.readFileSync(full), { "Content-Type": MIME[path.extname(full)] || "application/octet-stream", "Cache-Control": "no-cache", ETag: etag, ...extraHeaders });
+  const type = MIME[path.extname(full)] || "application/octet-stream";
+  if (COMPRESSIBLE.test(type) && acceptsGzip(res)) {
+    let gz = staticGz.get(full); if (!gz || gz.etag !== etag) { gz = { etag, data: zlib.gzipSync(fs.readFileSync(full), { level: 9 }) }; staticGz.set(full, gz); }
+    return send(res, 200, gz.data, { "Content-Type": type, "Content-Encoding": "gzip", Vary: "Accept-Encoding", "Cache-Control": "no-cache", ETag: etag, ...extraHeaders });
+  }
+  send(res, 200, fs.readFileSync(full), { "Content-Type": type, "Cache-Control": "no-cache", ETag: etag, ...extraHeaders });
 }
 
 /* ---------- Anhänge (Dateien im Datenordner, Metadaten am Vorgang) ---------- */
@@ -146,6 +163,33 @@ function sendAttachment(req, res, a, url) {
     "Content-Disposition": `${inline ? "inline" : "attachment"}; filename*=UTF-8''${encodeURIComponent(a.name)}`, "X-Content-Type-Options": "nosniff",
     "Content-Security-Policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox", "Cache-Control": "private, max-age=3600" });
   fs.createReadStream(full).pipe(res);
+}
+
+/* ---------- Startdaten und Archiv ---------- */
+// Erledigte Vorgänge, die länger als ARCHIVE_DAYS erledigt sind, werden beim Start nicht an die Browser
+// geschickt (bleiben vollständig gespeichert und werden bei Bedarf nachgeladen).
+const ARCHIVE_DAYS = Number(env.ARCHIVE_DAYS ?? 180);
+const archiveCutoff = () => new Date(Date.now() - ARCHIVE_DAYS * 864e5).toISOString();
+function isArchived(i, cutoff = archiveCutoff()) { if (!(ARCHIVE_DAYS > 0) || !i.resolvedAt || i.resolvedAt >= cutoff) return false; const p = projectById(i.projectId); return !!p && S.statusInfo(p, i.status).cat === "done"; }
+let snapshot = null;
+/** Gemeinsamer Startdatensatz für alle Browser – höchstens alle 3 Sekunden neu gebaut, fertig komprimiert.
+    Der Browser holt danach alle Änderungen seit der Revision des Datensatzes – so bleibt alles konsistent. */
+function stateSnapshot() {
+  if (snapshot && (snapshot.rev === store.rev() || Date.now() - snapshot.at < 3000)) return snapshot;
+  const t0 = Date.now(); const cutoff = archiveCutoff(); const out = { rev: store.rev() }; let archived = 0;
+  for (const t of COLLECTIONS) if (t !== "notifications") out[t] = store.all(t);
+  out.users = out.users.map(publicUser);
+  out.issues = out.issues.filter((i) => (isArchived(i, cutoff) ? (archived++, false) : true));
+  out.archive = { count: archived, days: ARCHIVE_DAYS };
+  const json = JSON.stringify(out);
+  snapshot = { rev: out.rev, at: Date.now(), json: Buffer.from(json), gz: zlib.gzipSync(json, { level: 5 }), ms: Date.now() - t0, issues: out.issues.length, archived };
+  if (snapshot.ms > 300) log(`Startdatensatz: ${snapshot.issues} Vorgänge (+${archived} im Archiv), ${(snapshot.json.length / 1048576).toFixed(1)} MB → ${(snapshot.gz.length / 1048576).toFixed(1)} MB komprimiert, ${snapshot.ms} ms`);
+  return snapshot;
+}
+function sendSnapshot(res) {
+  const snap = stateSnapshot(); const gz = acceptsGzip(res);
+  res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Accept-Encoding", ...(gz ? { "Content-Encoding": "gzip" } : {}), "Content-Length": (gz ? snap.gz : snap.json).length });
+  res.end(gz ? snap.gz : snap.json);
 }
 
 /* ---------- Live-Aktualisierung (Server-Sent Events) ---------- */
@@ -215,7 +259,7 @@ function sanitize(type, obj, cur) {
     obj.summary = obj.summary.slice(0, 255);
     if (cur) { obj.no = cur.no; obj.projectId = cur.projectId; }
     else {
-      const clash = store.all("issues").some((x) => x.projectId === obj.projectId && x.no === obj.no && x.id !== obj.id);
+      const clash = (() => { const x = store.issueByNo(obj.projectId, obj.no); return !!x && x.id !== obj.id; })();
       if (!Number.isInteger(obj.no) || obj.no < 1 || clash) obj.no = store.reserveNumber(obj.projectId);
     }
   }
@@ -694,6 +738,15 @@ async function handleApi(req, res, url, session) {
     store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash);
     return { ok: true };
   }
+  if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "base") return { __snapshot: true };
+  if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "notifications")
+    return { notifications: store.all("notifications").filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300) };
+  if (p === "/api/archive" && m === "GET") { // archivierte Vorgänge nachladen (optional für einen Kunden)
+    const cutoff = archiveCutoff(); const cust = url.searchParams.get("customer");
+    return { issues: store.all("issues").filter((i) => isArchived(i, cutoff) && (!cust || i.customerId === cust)) };
+  }
+  pm = p.match(/^\/api\/issues\/by-key\/([A-Za-z][A-Za-z0-9]*)-(\d+)$/);
+  if (pm && m === "GET") { const pr = store.all("projects").find((x) => x.key === pm[1].toUpperCase()); const i = pr && store.issueByNo(pr.id, Number(pm[2])); if (!i) throw new HttpError(404, "Vorgang nicht gefunden."); return { issue: i }; }
   if (p === "/api/state" && m === "GET") {
     const out = { rev: store.rev() };
     for (const t of COLLECTIONS) out[t] = store.all(t);
@@ -703,6 +756,9 @@ async function handleApi(req, res, url, session) {
   }
   if (p === "/api/changes" && m === "GET") {
     const since = Number(url.searchParams.get("since") || 0);
+    // Zu weit zurück (z. B. Gerät lange offline): lieber neu laden als Tausende Änderungen nachspielen
+    if (since === store.rev()) return { rev: since, changes: [] };
+    if (!(since > 0) || store.rev() - since > 5000) return { rev: store.rev(), reset: true, changes: [] };
     const changes = store.since(since).filter((c) => c.type !== "notifications" || c.data.userId === user.id)
       .map((c) => (c.deleted ? { type: c.type, id: c.id, deleted: true } : { type: c.type, id: c.id, data: c.type === "users" ? publicUser(c.data) : c.data }));
     return { rev: store.rev(), changes };
@@ -809,6 +865,7 @@ const server = http.createServer(async (req, res) => {
       }
       if (out && out.__status) return send(res, out.__status, out.body, extra);
       if (out && out.__file) return sendAttachment(req, res, out.__file, url);
+      if (out && out.__snapshot) return sendSnapshot(res);
       if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });
       if (out && out.__download) return send(res, 200, JSON.stringify(out.body, null, 2), { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${out.__download}"`, "Cache-Control": "no-store", ...extra });
       return send(res, 200, out, extra);

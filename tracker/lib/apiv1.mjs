@@ -71,9 +71,9 @@ export function createApiV1(ctx) {
   }
   function resolveIssue(ref) { const r = decodeURIComponent(String(ref)); const m = r.match(/^([A-Za-z][A-Za-z0-9]*)-(\d+)$/);
     const all = store.all("issues"); let i = null;
-    if (m) { const p = store.all("projects").find((x) => x.key === m[1].toUpperCase()); i = p && all.find((x) => x.projectId === p.id && x.no === Number(m[2])); }
+    if (m) { const p = store.all("projects").find((x) => x.key === m[1].toUpperCase()); i = p && store.issueByNo(p.id, Number(m[2])); }
     i = i || all.find((x) => x.id === r) || all.find((x) => x.externalId && x.externalId === r);
-    if (!i) throw new HttpError(404, `Vorgang ${r} nicht gefunden.`); return i; }
+    if (!i) throw new HttpError(404, `Vorgang ${r} nicht gefunden.`); return store.get("issues", i.id); }
   function statusFor(p, v) { if (v == null || v === "") return null; const wf = S.workflowFor(p); const s = String(v).trim().toLowerCase();
     const st = wf.find((x) => x.id.toLowerCase() === s || x.name.toLowerCase() === s); if (!st) throw new HttpError(400, `Unbekannter Status „${v}“. Erlaubt: ${wf.map((x) => `${x.id} (${x.name})`).join(", ")}`); return st; }
   function prioFor(v) { if (v == null || v === "") return null; const s = String(v).trim().toUpperCase(); if (S.PRIOS[s]) return s;

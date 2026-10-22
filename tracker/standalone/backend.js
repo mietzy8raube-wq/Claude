@@ -375,6 +375,8 @@ function handle(method, url, body) {
   if (p === "/api/admin/export") { needAdmin(); download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(exportAll(d0), null, 2)); return { ok: true }; }
   if (p === "/api/admin/import" && method === "POST") { needAdmin(); return importAll(body, user); }
   if (p === "/api/me/calendar") return { standalone: true };
+  if (p === "/api/archive") return { issues: [] };
+  { const bk = p.match(/^\/api\/issues\/by-key\/([A-Za-z][A-Za-z0-9]*)-(\d+)$/); if (bk) { const pr = all(d0, "projects").find((x) => x.key === bk[1].toUpperCase()); const i = pr && all(d0, "issues").find((x) => x.projectId === pr.id && x.no === Number(bk[2])); if (!i) throw new HttpError(404, "Vorgang nicht gefunden."); return { issue: i }; } }
   if (p === "/api/me/outlook") return { standalone: true };
   if (p === "/api/admin/integrations") { needAdmin(); return { standalone: true }; }
   if (p === "/api/admin/mail-test") throw new HttpError(409, "In der Einzeldatei-Version gibt es keinen E-Mail-Versand – dafür wird die Server-Version benötigt.");

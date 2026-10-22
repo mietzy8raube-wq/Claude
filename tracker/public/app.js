@@ -82,9 +82,35 @@ async function api(path, { method = "GET", body } = {}) {
 const setBase = (type, obj) => sync.base[type].set(obj.id, clone(obj));
 function loadState(st) {
   for (const t of COLLECTIONS) { db[t] = st[t] || []; sync.base[t] = new Map(); db[t].forEach((o) => setBase(t, o)); }
-  sync.rev = st.rev; sync.pending = [];
+  sync.rev = st.rev; sync.pending = []; db.archiveInfo = st.archive || { count: 0, days: 0 }; ui.archiveLoaded = !db.archiveInfo.count;
 }
-async function reloadState() { loadState(await api("/api/state")); render(); }
+/** Startdaten: gemeinsamer, komprimierter Datensatz plus die eigenen Benachrichtigungen. */
+async function fetchState() {
+  const [base, n] = await Promise.all([api("/api/state?part=base"), api("/api/state?part=notifications")]);
+  return { ...base, notifications: n.notifications };
+}
+/** Stand neu laden: erst eigene Änderungen absenden, dann Startdaten holen und sofort auf den neuesten Stand bringen
+    (der gemeinsame Startdatensatz kann bis zu 3 Sekunden alt sein). */
+async function reloadState({ flushFirst = true } = {}) {
+  if (flushFirst) { clearTimeout(sync.timer); if (!sync.inFlight) await flush(); for (let k = 0; k < 100 && sync.inFlight; k++) await new Promise((r) => setTimeout(r, 50)); }
+  loadState(await fetchState()); await pull(); render();
+}
+/** Archiv (lange erledigte Vorgänge) bei Bedarf nachladen – für Suche, Auswertungen, Kundenhistorie. */
+let archivePromise = null;
+function ensureArchive() {
+  if (ui.archiveLoaded) return Promise.resolve(false);
+  if (!archivePromise) {
+    toast(`Archiv wird geladen (${db.archiveInfo.count} ältere erledigte Vorgänge) …`);
+    archivePromise = api("/api/archive").then((r) => { const have = new Set(db.issues.map((i) => i.id)); for (const i of r.issues) if (!have.has(i.id) && !sync.base.issues.has(i.id)) { db.issues.push(i); sync.base.issues.set(i.id, clone(i)); } ui.archiveLoaded = true; renderSoft(); return true; })
+      .catch((e) => { toast(`Archiv konnte nicht geladen werden: ${e.message}`); return false; }).finally(() => { archivePromise = null; });
+  }
+  return archivePromise;
+}
+/** Vorgang per Schlüssel – auch wenn er im Archiv liegt. */
+async function findByKey(key) {
+  const i = byKey(key); if (i) return i;
+  try { const r = await api(`/api/issues/by-key/${encodeURIComponent(key.trim().toUpperCase())}`); applyServer({ type: "issues", id: r.issue.id, data: r.issue }); return issue(r.issue.id); } catch { return null; }
+}
 function save() { clearTimeout(sync.timer); sync.timer = setTimeout(flush, 120); updateSyncBadge(); }
 function collectOps() {
   const ops = [];
@@ -124,7 +150,7 @@ async function flush() {
     const err = r.results.find((x) => x.error); if (err) { toast(err.error); renderSoft(); }
   } catch (e) {
     if (e.offline || e.status >= 500 || e.status === 429) { sync.pending.unshift(...batch); setOnline(false); sync.retry = Math.min(sync.retry + 1, 6); setTimeout(flush, 1000 * 2 ** sync.retry); }
-    else { toast(e.message); await reloadState().catch(() => {}); }
+    else { toast(e.message); await reloadState({ flushFirst: false }).catch(() => {}); }
   } finally {
     sync.inFlight = false; updateSyncBadge();
     if (sync.again || (sync.pending.length && sync.online)) { sync.again = false; flush(); }
@@ -137,6 +163,7 @@ async function pull() {
   sync.pulling = true;
   try {
     const r = await api(`/api/changes?since=${sync.rev}`);
+    if (r.reset) { sync.pulling = false; await reloadState({ flushFirst: false }); return; } // zu lange offline: Stand komplett neu laden
     for (const c of r.changes) applyServer(c);
     sync.rev = r.rev; setOnline(true);
     if (r.changes.length) renderSoft();
@@ -169,7 +196,7 @@ window.addEventListener("pagehide", () => {
   if (ops.length) fetch("/api/sync", { method: "POST", keepalive: true, credentials: "same-origin", headers: { "Content-Type": "application/json", "X-GFT": "1" }, body: JSON.stringify({ ops }) });
 });
 
-const ui = { modal: null, openIssue: null, board: { q: "", mine: false, recent: false, users: [], lane: "none" }, queue: "open", yourWork: "assigned", editingDesc: false, dirty: false };
+const ui = { modal: null, openIssue: null, board: { q: "", mine: false, recent: false, users: [], lane: "none" }, queue: "open", yourWork: "assigned", editingDesc: false, dirty: false, rowLimit: 250 };
 
 /* ---------- Abfragen ---------- */
 const me = () => db.users.find((u) => u.id === db.currentUserId) || db.users[0];
@@ -599,7 +626,7 @@ function render() {
       case "dashboard": html = viewDashboard(); break;
       case "portal": html = `<div class="empty">Das Kundenportal ist öffentlich erreichbar unter <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – diesen Link können Sie an Kunden weitergeben.</div>`; break;
       case "settings": html = viewSettings(); break;
-      case "issue": { const i = byKey(parts[1]); html = viewYourWork(); if (i) setTimeout(() => openIssue(i.id), 0); break; }
+      case "issue": { html = viewYourWork(); findByKey(parts[1]).then((i) => (i ? openIssue(i.id) : toast(`Vorgang ${parts[1]} nicht gefunden.`))); break; }
       default: html = viewYourWork();
     }
   } catch (e) { console.error(e); html = `<div class="note err">Fehler beim Anzeigen: ${esc(e.message)}</div>`; }
@@ -1100,18 +1127,20 @@ function viewCustomers() {
   const q = (ui.custQ || "").toLowerCase().trim();
   const list = [...db.customers].filter((c) => !q || `${c.no} ${c.name} ${c.city} ${(c.contacts || []).map((k) => `${k.name} ${k.email}`).join(" ")} ${(c.assets || []).map((a) => `${a.name} ${a.serial} ${a.model}`).join(" ")}`.toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name, "de"));
+  const openBy = new Map(); for (const i of db.issues) if (i.customerId && !isDone(i)) openBy.set(i.customerId, (openBy.get(i.customerId) || 0) + 1);
   const dueSoon = db.customers.flatMap((c) => (c.assets || []).filter((a) => a.active !== false && nextMaintenance(a) && daysBetween(today(), nextMaintenance(a)) <= 30).map((a) => ({ c, a }))).sort((x, y) => nextMaintenance(x.a).localeCompare(nextMaintenance(y.a)));
   return `<div class="page-head"><div><h1>Kunden &amp; Anlagen</h1><p class="muted" style="margin:4px 0 0">${db.customers.length} Kunden · ${db.customers.reduce((s, c) => s + (c.assets || []).length, 0)} Anlagen · ${dueSoon.length} Wartungen in den nächsten 30 Tagen</p></div>
       <div class="row"><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Importieren</button><button class="btn" data-act="export-customers">${icon("download")} Excel</button><button class="btn primary" data-act="customer-new">${icon("plus")} Kunde anlegen</button></div></div>
     <div class="row" style="margin-bottom:12px"><div class="search" style="width:min(420px,100%)">${icon("search")}<input type="search" id="cust-q" value="${esc(ui.custQ || "")}" placeholder="Suchen: Name, Kundennr., Ort, Ansprechpartner, Seriennummer" aria-label="Kunden suchen"></div></div>
     ${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Nr.</th><th>Kunde</th><th class="hide-m">Ort</th><th class="hide-m">Ansprechpartner</th><th>Anlagen</th><th>Offen</th><th>Nächste Wartung</th></tr></thead><tbody>
-      ${list.map((c) => { const open = custIssues(c).filter((i) => !isDone(i)).length; const nm = nextCustMaint(c); const k = (c.contacts || [])[0];
+      ${list.slice(0, ui.rowLimit).map((c) => { const open = openBy.get(c.id) || 0; const nm = nextCustMaint(c); const k = (c.contacts || [])[0];
         return `<tr class="click" data-act="goto" data-href="#/customers/${c.id}"><td class="key">${esc(c.no || "–")}</td><td><div class="b">${esc(c.name)}</div>${c.externalId ? `<div class="small muted">ERP: ${esc(c.externalId)}</div>` : ""}</td><td class="hide-m">${esc([c.zip, c.city].filter(Boolean).join(" "))}</td>
           <td class="hide-m">${k ? `${esc(k.name)}<div class="small muted">${esc(k.email || k.phone || "")}</div>` : '<span class="muted">–</span>'}</td><td>${(c.assets || []).length}</td><td>${open ? `<span class="chip blue">${open}</span>` : '<span class="muted">0</span>'}</td>
-          <td>${nm ? maintChip({ nextMaintenance: nm }) : '<span class="muted small">–</span>'}</td></tr>`; }).join("")}</tbody></table></div>`
+          <td>${nm ? maintChip({ nextMaintenance: nm }) : '<span class="muted small">–</span>'}</td></tr>`; }).join("")}</tbody></table>${moreRows(list.length)}</div>`
       : `<div class="empty">${q ? "Keine Kunden gefunden." : 'Noch keine Kunden. Legen Sie Kunden an oder übernehmen Sie Ihren Kundenstamm per <a href="#/import">Import</a> (CSV oder Excel aus Ihrer Warenwirtschaft).'}</div>`}`;
 }
 function viewCustomer(c) {
+  if (c && !ui.archiveLoaded) ensureArchive(); // vollständige Servicehistorie
   if (!c) return `<div class="empty">Kunde nicht gefunden. <a href="#/customers">Zur Kundenliste</a></div>`;
   const iss = custIssues(c).sort((a, b) => b.createdAt.localeCompare(a.createdAt)); const open = iss.filter((i) => !isDone(i)); const done = iss.filter(isDone);
   const reports = iss.filter((i) => i.resolution).sort((a, b) => String(b.resolution.at).localeCompare(String(a.resolution.at)));
@@ -1308,6 +1337,7 @@ function viewBoard(p) {
       <div class="avatars-filter">${assignees.map((a) => `<button class="${b.users.includes(a) ? "on" : ""}" data-act="board-user" data-v="${a}" aria-label="${esc(a === "none" ? "Nicht zugewiesen" : uname(a))}">${avatar(a === "none" ? null : a)}</button>`).join("")}</div>
       <button class="toggle ${b.mine ? "on" : ""}" data-act="board-toggle" data-v="mine">Nur meine</button><button class="toggle ${b.recent ? "on" : ""}" data-act="board-toggle" data-v="recent">Kürzlich aktualisiert</button>
       <span class="sp"></span><label class="small muted row nowrap">Gruppieren nach <select id="board-lane" style="width:auto">${[["none", "Keine"], ["assignee", "Verantwortlich"], ["epic", "Epic"], ["priority", "Priorität"]].map(([v, l]) => `<option value="${v}" ${b.lane === v ? "selected" : ""}>${l}</option>`).join("")}</select></label></div>`;
+  const cap = Math.round(ui.rowLimit / 5); // Karten je Spalte, „weitere“ lädt nach
   if (p.type === "software" && !sp) return head + `<div class="empty">Kein aktiver Sprint. Im <a href="#/p/${p.key}/backlog">Backlog</a> einen Sprint planen und starten.</div>`;
   let lanes = [{ key: "all", title: null, items: list }];
   if (b.lane === "assignee") lanes = [...new Set(list.map((i) => i.assigneeId || ""))].map((a) => ({ key: a, title: `${avatar(a || null)} ${esc(a ? uname(a) : "Nicht zugewiesen")}`, items: list.filter((i) => (i.assigneeId || "") === a) }));
@@ -1315,7 +1345,7 @@ function viewBoard(p) {
   if (b.lane === "priority") lanes = Object.keys(PRIOS).filter((k) => list.some((i) => i.priority === k)).map((k) => ({ key: k, title: `${prioIcon(k)} ${PRIOS[k].label}`, items: list.filter((i) => i.priority === k) }));
   return head + lanes.map((ln) => `${ln.title ? `<div class="lane-h">${ln.title} <span class="muted small">${ln.items.length} Vorgänge</span></div>` : ""}
     <div class="board" style="grid-template-columns:repeat(${wf.length}, minmax(240px,1fr))">${wf.map((s) => { const col = ln.items.filter((i) => i.status === s.id);
-      return `<div class="col" data-drop-status="${s.id}"><div class="col-h">${esc(s.name)} <span>${col.length}</span>${s.cat === "done" ? " ✓" : ""}</div>${col.map(boardCard).join("")}</div>`; }).join("")}</div>`).join("");
+      return `<div class="col" data-drop-status="${s.id}"><div class="col-h">${esc(s.name)} <span>${col.length}</span>${s.cat === "done" ? " ✓" : ""}</div>${col.slice(0, cap).map(boardCard).join("")}${col.length > cap ? `<button class="btn subtle sm" style="width:100%" data-act="more-rows">+ ${col.length - cap} weitere</button>` : ""}</div>`; }).join("")}</div>`).join("");
 }
 
 /* ---------- Ansicht: Backlog ---------- */
@@ -1330,14 +1360,14 @@ function viewBacklog(p) {
   const box = (id, title, sub, list, actions) => { const pts = list.reduce((s, i) => s + (i.storyPoints || 0), 0); const done = list.filter(isDone).reduce((s, i) => s + (i.storyPoints || 0), 0);
     return `<div class="sprint-box" data-drop-sprint="${id}"><div class="sprint-h"><b>${title}</b><span class="small muted">${sub} · ${list.length} Vorgänge</span><span class="sp"></span>
       <span class="chip gray" title="Story Points gesamt">${pts} SP</span>${done ? `<span class="chip green" title="erledigt">${done} SP fertig</span>` : ""}${actions}</div>
-      <div class="brows">${list.map(backlogRow).join("") || `<div class="brow muted small" style="justify-content:center;cursor:default">Vorgänge hierher ziehen</div>`}</div>
-      <form class="quick-create" data-quick="${id}"><input type="text" placeholder="+ Vorgang erstellen – Zusammenfassung eingeben und Enter" aria-label="Schnell erstellen"></form></div>`; };
+      <div class="brows">${list.slice(0, ui.rowLimit).map(backlogRow).join("") || `<div class="brow muted small" style="justify-content:center;cursor:default">Vorgänge hierher ziehen</div>`}</div>
+      ${moreRows(list.length)}<form class="quick-create" data-quick="${id}"><input type="text" placeholder="+ Vorgang erstellen – Zusammenfassung eingeben und Enter" aria-label="Schnell erstellen"></form></div>`; };
   return `<div class="page-head"><div><div class="crumbs">Projekte / ${esc(p.name)}</div><h1>Backlog</h1></div><div class="row"><button class="btn" data-act="new-sprint" data-project="${p.id}">Sprint erstellen</button><button class="btn primary" data-act="create" data-project="${p.id}">${icon("plus")} Vorgang</button></div></div>
     <div class="row" style="margin-bottom:12px"><span class="small muted">Epic:</span><button class="toggle ${!epicFilter ? "on" : ""}" data-act="backlog-epic" data-v="">Alle</button>${epicsOf(p).map((e) => `<button class="toggle ${epicFilter === e.id ? "on" : ""}" data-act="backlog-epic" data-v="${e.id}"><span style="color:${e.color}">●</span> ${esc(e.summary)}</button>`).join("")}</div>
     ${sprints.map((s) => box(s.id, esc(s.name), s.state === "active" ? `<span class="lozenge cat-progress">aktiv</span> ${fmtDay(s.start)} – ${fmtDay(s.end)}` : "geplant",
       items.filter((i) => i.sprintId === s.id),
       s.state === "active" ? `<button class="btn sm" data-act="complete-sprint" data-id="${s.id}">Sprint abschließen</button>` : `<button class="btn sm primary" data-act="start-sprint" data-id="${s.id}" ${activeSprint(p) ? "disabled title='Es läuft bereits ein Sprint'" : ""}>${icon("play")} Sprint starten</button><button class="btn sm subtle" data-act="delete-sprint" data-id="${s.id}" aria-label="Sprint löschen">${icon("trash")}</button>`)).join("")}
-    ${box("backlog", "Backlog", "nicht eingeplant", items.filter((i) => !i.sprintId || sprint(i.sprintId)?.state === "closed"), "")}`;
+    ${box("backlog", "Backlog", "nicht eingeplant", items.filter((i) => !isDone(i) && (!i.sprintId || sprint(i.sprintId)?.state === "closed")), "")}`; // Erledigtes gehört nicht ins Backlog
 }
 
 /* ---------- Ansicht: Zeitleiste ---------- */
@@ -1366,13 +1396,15 @@ function viewTimeline(p) {
 }
 
 /* ---------- Ansicht: Liste & Filter ---------- */
+const ROW_PAGE = 250; // Tabellen rendern seitenweise – Tausende Zeilen auf einmal blockieren den Browser
+const moreRows = (n) => n > ui.rowLimit ? `<div class="row" style="justify-content:center;padding:12px"><span class="small muted">${ui.rowLimit} von ${n} angezeigt</span><button class="btn sm" data-act="more-rows">Weitere ${Math.min(ROW_PAGE, n - ui.rowLimit)} anzeigen</button><button class="btn subtle sm" data-act="all-rows" data-n="${n}">Alle anzeigen</button></div>` : "";
 function resultTable(list, { sortable = false, sortField = null, sortDir = "DESC" } = {}) {
   if (!list.length) return `<div class="empty">Keine Vorgänge gefunden.</div>`;
   const th = (f, l) => sortable ? `<th data-sort="${f}">${l}${sortField === f ? (sortDir === "ASC" ? " ↑" : " ↓") : ""}</th>` : `<th>${l}</th>`;
   return `<div class="card tbl-wrap"><table><thead><tr>${th("type", "Typ")}${th("key", "Schlüssel")}${th("summary", "Zusammenfassung")}${th("assignee", "Verantwortlich")}${th("status", "Status")}${th("priority", "Priorität")}${th("due", "Fällig")}${th("updated", "Aktualisiert")}</tr></thead><tbody>
-    ${list.map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:440px">${esc(i.summary)}</div>${i.customer ? `<div class="small muted">${esc(i.customer.company || i.customer.name)}</div>` : ""}</td>
+    ${list.slice(0, ui.rowLimit).map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:440px">${esc(i.summary)}</div>${i.customer ? `<div class="small muted">${esc(i.customer.company || i.customer.name)}</div>` : ""}</td>
       <td><span class="row nowrap">${avatar(i.assigneeId)}<span class="trunc small">${esc(uname(i.assigneeId))}</span></span></td><td>${lozenge(i)}</td><td>${prioIcon(i.priority)}</td><td>${dueChip(i) || (i.dueDate ? `<span class="small muted">${fmtDay(i.dueDate)}</span>` : '<span class="muted">–</span>')}</td><td class="small muted" style="white-space:nowrap">${ago(i.updatedAt)}</td></tr>`).join("")}
-    </tbody></table></div>`;
+    </tbody></table>${moreRows(list.length)}</div>`;
 }
 function viewList(p) {
   const jql = `project = ${p.key} ORDER BY created DESC`;
@@ -1386,7 +1418,8 @@ function viewFilters(params) {
   let list = [], err = null; try { list = runJql(jql); } catch (e) { err = e.message; }
   let sortField = null, sortDir = "DESC"; try { const o = parseJql(jql).order[0]; if (o) { sortField = o.f; sortDir = o.dir; } } catch {}
   ui.lastResults = list;
-  return `<div class="page-head"><h1>Vorgänge suchen</h1><div class="row"><button class="btn" data-act="save-filter">${icon("star")} Filter speichern</button><button class="btn" data-act="export-xlsx">${icon("download")} Excel-Auswertung</button><button class="btn subtle" data-act="export-csv">CSV</button></div></div>
+  const archiveBar = !ui.archiveLoaded ? `<div class="note info row" style="margin-bottom:10px"><span style="flex:1">${db.archiveInfo.count} Vorgänge, die länger als ${db.archiveInfo.days} Tage erledigt sind, liegen im Archiv und sind in dieser Suche noch nicht enthalten.</span><button class="btn sm" data-act="load-archive">Archiv einbeziehen</button></div>` : "";
+  return archiveBar + `<div class="page-head"><h1>Vorgänge suchen</h1><div class="row"><button class="btn" data-act="save-filter">${icon("star")} Filter speichern</button><button class="btn" data-act="export-xlsx">${icon("download")} Excel-Auswertung</button><button class="btn subtle" data-act="export-csv">CSV</button></div></div>
     <div class="side-layout" id="filter-layout">
       <div class="card pad queue-nav"><div class="small b muted" style="margin-bottom:6px">STANDARDFILTER</div>${DEFAULT_FILTERS.map((x) => `<button class="${fid === x.id || (!fid && !params.get("jql") && x.id === "f-mine") ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}">${esc(x.name)}</button>`).join("")}
         <div class="small b muted" style="margin:12px 0 6px">GESPEICHERT</div>${db.filters.length ? db.filters.map((x) => `<div class="row nowrap"><button class="${fid === x.id ? "on" : ""}" data-act="goto" data-href="#/filters?filter=${x.id}" style="flex:1">${esc(x.name)}</button><button class="btn subtle sm icon" data-act="delete-filter" data-id="${x.id}" aria-label="Filter löschen">${icon("x")}</button></div>`).join("") : '<p class="small muted" style="margin:0 10px">Noch keine.</p>'}</div>
@@ -1424,7 +1457,7 @@ function viewQueue(p) {
       <div class="card pad queue-nav">${QUEUES.map((x) => { const n = items.filter(x.fn).length; return `<button class="${x.id === q.id ? "on" : ""}" data-act="queue" data-v="${x.id}"><span>${esc(x.name)}</span><span class="${x.id === "risk" && n ? "chip red" : "muted"}">${n}</span></button>`; }).join("")}
         <p class="small muted" style="margin:12px 10px 0">SLA-Ziele (Kalenderzeit): ${Object.entries(SLA).map(([k, v]) => `${PRIOS[k].label} ${v[0]} h / ${v[1] >= 24 ? v[1] / 24 + " T" : v[1] + " h"}`).join(" · ")}. „Wartet auf Kunde“ pausiert die Lösungszeit.</p></div>
       <div>${list.length ? `<div class="card tbl-wrap"><table><thead><tr><th>Typ</th><th>Schlüssel</th><th>Anfrage / Kunde</th><th>Erste Antwort</th><th>Lösung</th><th>Status</th><th>Prio.</th><th></th><th>Nächster Schritt</th></tr></thead><tbody>
-        ${list.map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:280px">${esc(i.summary)}</div><div class="small muted trunc" style="max-width:280px">${esc(i.customer?.company || "")}${i.customer?.name ? " · " + esc(i.customer.name) : ""} · ${ago(i.createdAt)}</div></td>
+        ${list.slice(0, ui.rowLimit).map((i) => `<tr class="click" data-act="open" data-id="${i.id}"><td>${typeIcon(i.type)}</td><td class="key">${keyOf(i)}</td><td><div class="trunc" style="max-width:280px">${esc(i.summary)}</div><div class="small muted trunc" style="max-width:280px">${esc(i.customer?.company || "")}${i.customer?.name ? " · " + esc(i.customer.name) : ""} · ${ago(i.createdAt)}</div></td>
           <td>${slaChip(slaInfo(i, "first"))}</td><td>${slaChip(slaInfo(i, "resolve"))}</td><td>${lozenge(i)}${apptChip(i) ? `<div style="margin-top:3px">${apptChip(i)}</div>` : ""}</td><td>${prioIcon(i.priority)}</td><td>${avatar(i.assigneeId)}</td><td>${actionButton(i)}</td></tr>`).join("")}
         </tbody></table></div>` : `<div class="empty">Keine Anfragen in dieser Warteschlange. 🎉</div>`}</div></div>`;
 }
@@ -1552,6 +1585,7 @@ function viewDashboard() {
 
 /** Quartalsvergleich der letzten vier Quartale (Dashboard). */
 function quarterCard() {
+  if (!ui.archiveLoaded) return `<div class="card pad" style="grid-column:1/-1"><div class="row"><h3 style="font-size:15px;flex:1;margin:0">Quartalsvergleich</h3><button class="btn sm" data-act="load-archive">Archiv laden und vergleichen</button></div><p class="small muted" style="margin:6px 0 0">Für den Vergleich über vier Quartale werden auch ältere, archivierte Vorgänge gebraucht (${db.archiveInfo.count}).</p></div>`;
   const qs = lastQuarters(5).map((p) => periodStats(db.issues, p)); const show = qs.slice(1).reverse(); // aktuelles Quartal zuerst
   const pct = (x) => (x == null ? "–" : `${Math.round(x * 100)} %`); const num1 = (x) => (x == null ? "–" : x.toFixed(1).replace(".", ","));
   const cell = (cur, prev, f, better = "up") => { const d = cur == null || prev == null ? 0 : cur - prev; const tone = better === "none" ? "" : (better === "up" ? d > 0 : d < 0) ? "good" : "bad";
@@ -1902,8 +1936,8 @@ function quarterSeries(list, min = 4, max = 12) {
 const delta = (a, b, fmt = (x) => x) => (a == null || b == null ? "" : a > b ? `▲ ${fmt(a - b)}` : a < b ? `▼ ${fmt(b - a)}` : "± 0");
 
 /** Auswahl des Zeitraums vor dem Excel-Export. */
-function xlsxDialog(scope, base, title) {
-  ui.xlsx = { scope, base, title };
+function xlsxDialog(scopeFn, base, title) {
+  const scope = scopeFn(); ui.xlsx = { scopeFn, scope, base, title };
   const cur = currentQuarter(), prev = prevQuarter(cur); const older = lastQuarters(8).reverse().slice(2);
   const years = [...new Set(scope.map((i) => Number(i.createdAt.slice(0, 4))).concat(cur.y))].sort((a, b) => b - a);
   const opt = (v, l) => `<option value="${v}">${esc(l)}</option>`;
@@ -2153,6 +2187,9 @@ document.addEventListener("click", (e) => {
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
     case "integ-reload": ui.integ = null; render(); break;
+    case "load-archive": ensureArchive(); break;
+    case "more-rows": ui.rowLimit += ROW_PAGE; renderSoft(); break;
+    case "all-rows": ui.rowLimit = Number(el.dataset.n); renderSoft(); break;
     case "outlook-token": if (ui.outlook?.key && !confirm("Neuen Schlüssel erzeugen? Der bisherige funktioniert dann im Add-in nicht mehr.")) return;
       api("/api/me/outlook", { method: "POST" }).then((r) => { ui.outlook = { ...ui.outlook, key: r.key }; render();
         secretModal("Zugangsschlüssel für Outlook", "Diesen Schlüssel im Outlook-Add-in „GF Tracker“ einfügen (einmalig je Outlook-Konto). Das Add-in arbeitet dann in Ihrem Namen.", r.token); }).catch((err) => toast(err.message)); break;
@@ -2195,7 +2232,7 @@ document.addEventListener("click", (e) => {
     case "team-delete": { const t = team(id); if (!t || !confirm(`Team „${t.name}“ löschen? Die Vorgänge bleiben erhalten, verlieren aber die Teamzuordnung.`)) return;
       db.teams = db.teams.filter((x) => x.id !== t.id); db.issues.forEach((i) => { if (i.teamId === t.id) { i.teamId = null; touch(i); } }); db.projects.forEach((p) => { if (p.teamId === t.id) p.teamId = null; });
       save(); closeModal(); go("#/teams"); toast(`Team „${t.name}“ gelöscht`); break; }
-    case "export-team-xlsx": { const t = team(id); if (t) xlsxDialog(teamIssues(t), `auswertung-team-${t.name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-")}`, `Team ${t.name}`); break; }
+    case "export-team-xlsx": { const t = team(id); if (t) xlsxDialog(() => teamIssues(t), `auswertung-team-${t.name.toLowerCase().replace(/[^a-z0-9äöüß]+/g, "-")}`, `Team ${t.name}`); break; }
     case "yw-tab": ui.yourWork = el.dataset.v; render(); break;
     case "board-toggle": ui.board[el.dataset.v] = !ui.board[el.dataset.v]; render(); break;
     case "board-user": { const v = el.dataset.v; const a = ui.board.users; ui.board.users = a.includes(v) ? a.filter((x) => x !== v) : [...a, v]; render(); break; }
@@ -2211,10 +2248,11 @@ document.addEventListener("click", (e) => {
     case "save-filter": { const jql = $("#jql")?.value.trim(); if (!jql) return; try { parseJql(jql); } catch (err) { return toast("Abfrage fehlerhaft: " + err.message); } const name = prompt("Name des Filters:"); if (name?.trim()) { const f = { id: uid(), name: name.trim(), jql, ownerId: db.currentUserId }; db.filters.push(f); save(); go(`#/filters?filter=${f.id}`); toast("Filter gespeichert"); } break; }
     case "delete-filter": db.filters = db.filters.filter((f) => f.id !== id); save(); go("#/filters"); break;
     case "export-csv": exportCsv(ui.lastResults || [], `vorgaenge-${today()}.csv`); break;
-    case "export-xlsx": xlsxDialog(ui.lastResults || [], "auswertung-filter", "Suchergebnis / Filter"); break;
-    case "export-all-xlsx": xlsxDialog(db.issues, "auswertung-gesamt", "Alle Projekte"); break;
-    case "export-project-xlsx": { const pp = proj(el.dataset.project); if (pp) xlsxDialog(projIssues(pp), `auswertung-${pp.key}`, `Projekt ${pp.name}`); break; }
+    case "export-xlsx": { const res = ui.lastResults || []; xlsxDialog(() => res, "auswertung-filter", "Suchergebnis / Filter"); break; }
+    case "export-all-xlsx": xlsxDialog(() => db.issues, "auswertung-gesamt", "Alle Projekte"); break;
+    case "export-project-xlsx": { const pp = proj(el.dataset.project); if (pp) xlsxDialog(() => projIssues(pp), `auswertung-${pp.key}`, `Projekt ${pp.name}`); break; }
     case "export-quarter-xlsx": { const [y, q] = String(el.dataset.q).split(":").map(Number); const per = quarterRange(y, q);
+      if (!ui.archiveLoaded) { ensureArchive().then(() => el.click()); break; }
       exportXlsx(db.issues.filter((i) => activeIn(i, per)), `auswertung-gesamt-${per.label.toLowerCase().replace(/\s+/g, "-")}-${today()}.xlsx`, `Alle Projekte · ${per.label}`, { period: per, scope: db.issues }); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
     case "export-json": location.href = "/api/admin/export"; break;
@@ -2347,6 +2385,8 @@ async function handleSubmit(e, f) {
     case "project-form": { const p = proj(f.dataset.id); Object.assign(p, { name: fd.get("name"), desc: fd.get("desc"), leadId: fd.get("leadId") || p.leadId, color: fd.get("color"), teamId: fd.get("teamId") || null }); save(); render(); toast("Gespeichert"); break; }
     case "xlsx-form": {
       const x = ui.xlsx; if (!x) break; const v = String(fd.get("period")); let per = null;
+      if (!ui.archiveLoaded) await ensureArchive(); // ältere Quartale brauchen das Archiv
+      x.scope = x.scopeFn();
       if (v.startsWith("q:")) { const [, y, q] = v.split(":").map(Number); per = quarterRange(y, q); } else if (v.startsWith("y:")) per = yearRange(Number(v.slice(2)));
       const l = per ? x.scope.filter((i) => activeIn(i, per)) : x.scope;
       closeModal(); exportXlsx(l, `${x.base}${per ? "-" + per.label.toLowerCase().replace(/\s+/g, "-") : ""}-${today()}.xlsx`, per ? `${x.title} · ${per.label}` : x.title, { period: per, scope: x.scope }); break; }
@@ -2413,7 +2453,8 @@ document.addEventListener("keydown", (e) => {
     const f = [...$("#modal").querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((x) => x.offsetParent !== null);
     if (f.length && (e.shiftKey ? document.activeElement === f[0] || document.activeElement === $("#modal") : document.activeElement === f[f.length - 1])) { e.preventDefault(); (e.shiftKey ? f[f.length - 1] : f[0]).focus(); }
   }
-  if (e.key === "Enter" && e.target.id === "gsearch") { const q = e.target.value.trim(); if (!q) return; const i = byKey(q); if (i) { openIssue(i.id); e.target.value = ""; } else go(`#/filters?jql=${encodeURIComponent(`text ~ "${q.replace(/"/g, "")}" ORDER BY updated DESC`)}`); }
+  if (e.key === "Enter" && e.target.id === "gsearch") { const q = e.target.value.trim(); if (!q) return; const inp = e.target;
+    (/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(q) ? findByKey(q) : Promise.resolve(null)).then((i) => { if (i) { openIssue(i.id); inp.value = ""; } else go(`#/filters?jql=${encodeURIComponent(`text ~ "${q.replace(/"/g, "")}" ORDER BY updated DESC`)}`); }); }
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "comment-text") { e.preventDefault(); $("#comment-form").requestSubmit(); }
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && ui.modal === "form" && e.target.closest("#modal form")) { e.preventDefault(); e.target.closest("form").requestSubmit(); }
   if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && e.target.id === "jql") { e.preventDefault(); $("#jql-form").requestSubmit(); }
@@ -2440,7 +2481,7 @@ $("#modal").addEventListener("input", (e) => { if (ui.modal === "form" && e.targ
 document.addEventListener("mousemove", (e) => { const t = e.target.closest("[data-tip]"); const tip = $("#tip");
   if (!t) { tip.style.display = "none"; return; } tip.textContent = t.dataset.tip; tip.style.display = "block";
   const x = Math.min(window.innerWidth - tip.offsetWidth - 10, e.clientX + 14); tip.style.left = x + "px"; tip.style.top = (e.clientY + 14) + "px"; });
-window.addEventListener("hashchange", () => { $("#topnav").classList.remove("menu-open"); if (ui.modal) closeModal(); render(); window.scrollTo(0, 0); });
+window.addEventListener("hashchange", () => { $("#topnav").classList.remove("menu-open"); if (ui.modal) closeModal(); ui.rowLimit = ROW_PAGE; render(); window.scrollTo(0, 0); });
 
 /* ---------- Als App installieren (PWA) ---------- */
 let installPrompt = null;
@@ -2455,7 +2496,7 @@ try { const th = localStorage.getItem("gft-theme"); if (th) document.documentEle
   try {
     const meRes = await api("/api/me");
     db.currentUserId = meRes.user.id; sync.mail = meRes.mail; sync.company = meRes.company;
-    loadState(await api("/api/state"));
+    loadState(await fetchState());
     render(); connectEvents();
     setInterval(() => { renderTop(); updateSyncBadge(); }, 60000);
   } catch (e) {

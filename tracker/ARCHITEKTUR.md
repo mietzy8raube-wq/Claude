@@ -114,9 +114,41 @@ sitzt Caddy, der automatisch für ein gültiges HTTPS-Zertifikat sorgt.
 
 ### Laden
 
-Nach der Anmeldung lädt der Browser einmal den kompletten Datenstand
-(`GET /api/state`) und hält ihn im Arbeitsspeicher. Deshalb sind Board, Filter
-und Berichte sehr schnell – auch die Abfragesprache läuft direkt im Browser.
+Nach der Anmeldung lädt der Browser einmal den Arbeitsstand
+(`GET /api/state?part=base` und `?part=notifications`) und hält ihn im
+Arbeitsspeicher. Deshalb sind Board, Filter und Berichte sehr schnell – auch die
+Abfragesprache läuft direkt im Browser.
+
+**Archiv:** Vorgänge, die länger als `ARCHIVE_DAYS` Tage (Standard 180) erledigt
+sind, werden beim Start nicht mitgeladen. Sie bleiben vollständig erhalten und
+werden bei Bedarf nachgeladen (`GET /api/archive`): in der Suche per Knopf
+„Archiv einbeziehen“, automatisch in der Kundenakte, bei Excel-Auswertungen und
+im Quartalsvergleich. Ein Vorgang lässt sich jederzeit über seine Nummer öffnen
+(`GET /api/issues/by-key/SD-123`), auch wenn er im Archiv liegt.
+
+### Kapazität
+
+Gemessen mit `scripts/loadtest.mjs` (20.000 Vorgänge mit je 3 Kommentaren,
+50 gleichzeitig arbeitende Personen, 2.000 Kunden):
+
+| Messpunkt | Ergebnis |
+| --- | --- |
+| Serverstart | ca. 1 s, ca. 200 MB Arbeitsspeicher |
+| Startdaten | 7.700 aktive Vorgänge, 1,7 MB übertragen (gzip), 50 Personen gleichzeitig in 0,1 s |
+| Anmelden bis „Mein Tag“ im Browser | unter 1 s |
+| Änderungen speichern / abgleichen | p95 unter 10 ms |
+| Archiv (12.400 Vorgänge) nachladen | ca. 1,2 s |
+| Board, Backlog, Kunden, Suche | je unter 250 ms Aufbau; lange Listen werden seitenweise angezeigt („Weitere anzeigen“) |
+
+Der Server hält alle Datensätze zusätzlich im Speicher (Lesezugriffe ohne
+Datenbank), komprimiert Antworten und baut den Startstand höchstens alle
+3 Sekunden neu. Eigene Messung:
+
+```bash
+node scripts/loadtest.mjs generate ./data-load --issues 20000 --users 50 --customers 2000
+DATA_DIR=./data-load PORT=4500 node server.mjs
+node scripts/loadtest.mjs run http://localhost:4500 --users 50 --seconds 30
+```
 
 ### Ändern: nur Unterschiede werden gesendet
 
@@ -280,6 +312,7 @@ npm test         # automatische Tests
 | `ADMIN_EMAIL`, `ADMIN_NAME`, `ADMIN_PASSWORD` | Administrator; wird beim Start angelegt, falls diese E-Mail noch keinen Zugang hat |
 | `MS_TENANT_ID`, `MS_CLIENT_ID`, `MS_CLIENT_SECRET`, `MAIL_SENDER` | E-Mail über Microsoft 365 (optional) |
 | `BACKUP_KEEP` | Anzahl aufbewahrter Tagessicherungen (Standard 14) |
+| `ARCHIVE_DAYS` | Erledigte Vorgänge, die älter sind, werden erst bei Bedarf geladen (Standard 180; `0` = alles sofort laden) |
 | `PORTAL_FRAME_ANCESTORS` | Website(s), die das Kundenportal einbetten dürfen, z. B. `https://www.ihre-firma.de` |
 | `SEED_DEMO` | `1` = Beispieldaten beim ersten Start (nur zum Testen) |
 | `DATA_DIR`, `PORT`, `HOST`, `TRUST_PROXY`, `COOKIE_SECURE` | Technische Feineinstellungen; in Docker vorbelegt |
@@ -510,7 +543,7 @@ letzten vier Quartale mit Direkt-Export.
 | Anmeldung | E-Mail + Passwort | Single Sign-on mit Microsoft 365 (Entra ID) |
 | E-Mails *empfangen* | Kunden nutzen Portal oder antworten über den Link | E-Mail-Postfach automatisch in Vorgänge umwandeln |
 | SLA | Kalenderzeit | Geschäftszeiten und Feiertage berücksichtigen |
-| Größe | Alle Daten werden im Browser gehalten – gut bis ca. 50 Nutzer und einige zehntausend Vorgänge | Serverseitige Suche/Seitenweises Laden, PostgreSQL |
+| Größe | Aktive Vorgänge im Browser, Archiv auf Abruf – gemessen mit 50 Nutzern und 20.000 Vorgängen (siehe Kapazität) | Ab ca. 100.000 Vorgängen serverseitige Suche, PostgreSQL |
 | Rechte | Alle Mitglieder sehen alle Projekte | Projektbezogene Berechtigungen |
 | Löschfristen | Manuell | Automatische Löschung nach Aufbewahrungsfrist |
 
