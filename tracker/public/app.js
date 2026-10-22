@@ -627,6 +627,7 @@ function render() {
       case "portal": html = `<div class="empty">Das Kundenportal ist öffentlich erreichbar unter <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – diesen Link können Sie an Kunden weitergeben.</div>`; break;
       case "settings": html = viewSettings(); break;
       case "system": html = viewSystem(); break;
+      case "automation": html = viewAutomation(); break;
       case "issue": { html = viewYourWork(); findByKey(parts[1]).then((i) => (i ? openIssue(i.id) : toast(`Vorgang ${parts[1]} nicht gefunden.`))); break; }
       default: html = viewYourWork();
     }
@@ -1683,6 +1684,7 @@ function viewSettings() {
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Integrationen &amp; Schnittstellen</h3><p class="small muted" style="margin:0">Microsoft 365 (E-Mail, Postfach, Kalender, Anmeldung), Factorial, REST-API für Ihre Programme, Webhooks für Teams, Datenimport.</p></div><a class="btn primary" href="#/integrations">Integrationen öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">System &amp; Protokoll</h3><p class="small muted" style="margin:0">Sicherungen (Datenbank und Anhänge), Speicher, Auslastung, Fehler und das Audit-Protokoll: wer hat wann was geändert.</p></div><a class="btn" href="#/system">System öffnen</a></div>` : ""}
+    ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Automatik</h3><p class="small muted" style="margin:0">Regeln für den Arbeitsablauf: neue Vorgänge automatisch im Team verteilen, liegengebliebene eskalieren, Wiedervorlagen („Wartet auf Kunde“ nachfassen).</p></div><a class="btn" href="#/automation">Regeln öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
@@ -1691,6 +1693,60 @@ function viewSettings() {
       <textarea id="embed-code" class="jql" rows="3" readonly>&lt;iframe src="${esc(location.origin)}/portal?embed=1" title="Service-Portal" style="width:100%;min-height:900px;border:0" loading="lazy"&gt;&lt;/iframe&gt;</textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
     </div>`;
+}
+
+/* ---------- Ansicht: Automatik-Regeln (Administration) ---------- */
+function loadAutomation() {
+  ui.autoLoading = true;
+  api("/api/admin/automation").then((r) => { ui.auto = r; }).catch((e) => { ui.auto = { error: e.status === 404 ? "Die Automatik läuft auf dem Server und gibt es in der Server-Version." : e.message }; })
+    .finally(() => { ui.autoLoading = false; if (route().parts[0] === "automation") render(); });
+}
+const allStatuses = () => { const m = new Map(); for (const p of db.projects) for (const st of workflowOf(p)) if (!m.has(st.id) && st.cat !== "done") m.set(st.id, st.name); return [...m]; };
+function ruleText(r) {
+  const pk = r.projectId ? proj(r.projectId)?.key || "?" : "allen Projekten"; const A = ui.auto;
+  if (r.kind === "assign") return `Neue ${r.types?.length ? r.types.map((t) => TYPES[t]?.label || t).join(", ") : "Vorgänge"} in ${pk} ohne Verantwortliche gehen ${r.method === "load" ? "an die Person mit den wenigsten offenen Vorgängen" : "reihum"} im Team ${r.teamId ? `„${team(r.teamId)?.name || "?"}“` : "des Vorgangs"} – heute Abwesende werden übersprungen.`;
+  if (r.kind === "escalate") return `Wenn „${A.triggers[r.trigger]}“${r.trigger === "sla" ? "" : ` seit ${r.hours} Std.`}${r.minPriority ? ` (ab Priorität ${PRIOS[r.minPriority].label})` : ""} in ${pk}: ${[r.raise && "Priorität erhöhen", r.label && "Label „eskaliert“", r.notifyLead && "Projekt-/Teamleitung benachrichtigen", r.notifyUserId && `${uname(r.notifyUserId)} benachrichtigen`].filter(Boolean).join(", ") || "Verlauf vermerken"} – einmal je Vorgang.`;
+  return `Wenn ein Vorgang in ${pk} ${r.status ? `seit ${r.days} Tagen „${allStatuses().find(([k]) => k === r.status)?.[1] || r.status}“ ist` : `seit ${r.days} Tagen unverändert ist`}: Verantwortliche erinnern${r.comment ? " und interne Notiz schreiben" : ""}${r.repeat ? `, alle ${r.days} Tage wiederholen` : ""}.`;
+}
+function viewAutomation() {
+  if (me().role !== "ADMIN") return `<div class="empty">Nur für Administratoren.</div>`;
+  const A = ui.auto; const head = (extra = "") => `<div class="page-head"><div><div class="crumbs"><a href="#/settings">Einstellungen</a></div><h1>Automatik</h1></div>${extra}</div>`;
+  if (!A) { if (!ui.autoLoading) loadAutomation(); return head() + '<p class="muted">Lade …</p>'; }
+  if (A.error) return head() + `<div class="card pad">${esc(A.error)}</div>`;
+  const kindIcon = { assign: "👤", escalate: "⚠️", remind: "⏰" };
+  return head(`<div class="row"><button class="btn" data-act="rule-run">Jetzt prüfen</button><details class="menu-d"><summary class="btn primary">${icon("plus")} Neue Regel ▾</summary><div class="menu-pop">${Object.entries(A.kinds).map(([k, v]) => `<button data-act="rule-new" data-kind="${k}">${kindIcon[k]} ${esc(v)}</button>`).join("")}</div></details></div>`) + `
+    <p class="muted" style="margin:-6px 0 14px;max-width:820px">Regeln nehmen Routinearbeit ab: neue Vorgänge automatisch verteilen, liegengebliebene eskalieren und an Wiedervorlagen erinnern. Der Server prüft jede Minute; jede Regel greift je Vorgang nur einmal (Wiedervorlagen auf Wunsch wiederholt). Alles steht im Verlauf des Vorgangs.</p>
+    ${A.rules.length ? A.rules.map((r) => `<div class="card pad row nowrap" style="margin-bottom:10px;align-items:flex-start;${r.enabled ? "" : "opacity:.6"}"><span style="font-size:20px;line-height:1">${kindIcon[r.kind]}</span>
+      <div style="flex:1;min-width:0"><div class="row" style="gap:8px"><b>${esc(r.name)}</b><span class="chip gray">${esc(A.kinds[r.kind])}</span>${r.enabled ? "" : '<span class="chip">pausiert</span>'}</div><div class="small muted" style="margin-top:4px">${esc(ruleText(r))}</div></div>
+      <label class="small row nowrap"><input type="checkbox" data-act="rule-toggle" data-id="${r.id}" ${r.enabled ? "checked" : ""}> aktiv</label><button class="btn subtle sm" data-act="rule-edit" data-id="${r.id}">Bearbeiten</button><button class="btn subtle sm icon" data-act="rule-del" data-id="${r.id}" aria-label="Regel löschen">${icon("trash")}</button></div>`).join("")
+      : `<div class="empty">Noch keine Regeln. Beispiele: <b>Störungen reihum im Service-Team verteilen</b> · <b>Unzugewiesene Anfragen nach 2 Stunden eskalieren</b> · <b>„Wartet auf Kunde“ nach 3 Tagen nachfassen</b>.</div>`}
+    <div class="card pad" style="margin-top:14px"><h3 class="h3">Zuletzt ausgeführt</h3>
+      ${A.recent.length ? `<div class="tbl-wrap"><table><tbody>${A.recent.map((x) => `<tr${x.key ? ` class="click" data-act="open" data-id="${x.issue_id}"` : ""}><td class="small nowrap">${fmtTs(x.at)}</td><td class="small">${esc(x.rule)}</td><td class="key small">${esc(x.key || "–")}</td><td class="small trunc" style="max-width:340px">${esc(x.summary || "")}</td><td class="small muted">${esc(x.action || "")}</td></tr>`).join("")}</tbody></table></div>` : '<p class="small muted" style="margin:0">Noch nichts ausgeführt.</p>'}</div>`;
+}
+function ruleForm(r) {
+  const A = ui.auto; const isNew = !r.id; const pOpts = (all) => `${all ? '<option value="">Alle Projekte</option>' : ""}${db.projects.map((p) => `<option value="${p.id}" ${r.projectId === p.id ? "selected" : ""}>${esc(p.key)} – ${esc(p.name)}</option>`).join("")}`;
+  const k = r.kind; let body = "";
+  if (k === "assign") body = `<label class="f">Projekt<select name="projectId" required>${pOpts(false)}</select></label>
+    <div class="f"><span>Nur für Vorgangstypen <span class="muted small">(keine Auswahl = alle)</span></span><div class="row" style="gap:10px">${Object.entries(TYPES).filter(([t]) => t !== "EPIC" && t !== "SUBTASK").map(([t, v]) => `<label class="small row nowrap"><input type="checkbox" name="types" value="${t}" ${r.types?.includes(t) ? "checked" : ""}> ${esc(v.label)}</label>`).join("")}</div></div>
+    <label class="f">Verteilen im Team<select name="teamId"><option value="">Team des Vorgangs bzw. Projekts</option>${db.teams.map((t) => `<option value="${t.id}" ${r.teamId === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>
+    <div class="f"><span>Verfahren</span><label class="small row nowrap"><input type="radio" name="method" value="round" ${r.method !== "load" ? "checked" : ""}> Reihum (gleichmäßig nacheinander)</label><label class="small row nowrap"><input type="radio" name="method" value="load" ${r.method === "load" ? "checked" : ""}> Geringste Auslastung (wenigste offene Vorgänge)</label></div>`;
+  if (k === "escalate") body = `<label class="f">Projekt<select name="projectId">${pOpts(true)}</select></label>
+    <div class="grid g2" style="gap:10px"><label class="f">Auslöser<select name="trigger">${Object.entries(A.triggers).map(([t, v]) => `<option value="${t}" ${r.trigger === t ? "selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+      <label class="f">nach … Stunden <span class="muted small">(nicht bei SLA)</span><input type="number" name="hours" min="0" max="2160" value="${r.hours ?? 4}"></label></div>
+    <label class="f">Nur ab Priorität<select name="minPriority"><option value="">alle Prioritäten</option>${Object.entries(PRIOS).map(([p, v]) => `<option value="${p}" ${r.minPriority === p ? "selected" : ""}>${esc(v.label)}</option>`).join("")}</select></label>
+    <div class="f"><span>Dann</span><label class="small row nowrap"><input type="checkbox" name="raise" ${r.raise ? "checked" : ""}> Priorität um eine Stufe erhöhen</label><label class="small row nowrap"><input type="checkbox" name="label" ${r.label !== false ? "checked" : ""}> Label „eskaliert“ setzen</label><label class="small row nowrap"><input type="checkbox" name="notifyLead" ${r.notifyLead !== false ? "checked" : ""}> Projekt- und Teamleitung benachrichtigen (plus Verantwortliche)</label></div>
+    <label class="f">Zusätzlich benachrichtigen<select name="notifyUserId"><option value="">niemanden</option>${db.users.filter((u) => u.active).map((u) => `<option value="${u.id}" ${r.notifyUserId === u.id ? "selected" : ""}>${esc(u.name)}</option>`).join("")}</select></label>`;
+  if (k === "remind") body = `<label class="f">Projekt<select name="projectId">${pOpts(true)}</select></label>
+    <div class="grid g2" style="gap:10px"><label class="f">Status<select name="status"><option value="">beliebig – keine Änderung</option>${allStatuses().map(([id, n]) => `<option value="${id}" ${r.status === id ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label>
+      <label class="f">seit … Tagen<input type="number" name="days" min="1" max="365" value="${r.days ?? 3}" required></label></div>
+    <label class="small row nowrap"><input type="checkbox" name="repeat" ${r.repeat ? "checked" : ""}> alle … Tage wiederholen, solange sich nichts ändert</label>
+    <label class="f">Interne Notiz im Vorgang <span class="muted small">(optional)</span><textarea name="comment" rows="2" placeholder="z. B. Bitte beim Kunden nachfragen, ob das Problem behoben ist.">${esc(r.comment || "")}</textarea></label>`;
+  openModal(`<div class="modal-h"><h2>${isNew ? "Neue Regel" : "Regel bearbeiten"}: ${esc(A.kinds[k])}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="rule-form" data-id="${r.id || ""}" data-kind="${k}"><div class="modal-b grid" style="gap:12px"><label class="f">Name<input type="text" name="name" value="${esc(r.name || "")}" maxlength="120" placeholder="${esc(A.kinds[k])}" required></label>${body}</div>
+    <div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></div></form>`);
+}
+function saveRules(rules, runNow = false) {
+  return api("/api/admin/automation", { method: "PUT", body: { rules, runNow } }).then((r) => { ui.auto = { ...ui.auto, rules: r.rules, recent: r.recent }; render(); return r; });
 }
 
 /* ---------- Ansicht: System & Protokoll (Administration) ---------- */
@@ -2264,6 +2320,11 @@ document.addEventListener("click", (e) => {
     case "integ-reload": ui.integ = null; render(); break;
     case "load-archive": ensureArchive(); break;
     case "sys-reload": ui.sys = null; render(); break;
+    case "rule-new": el.closest("details")?.removeAttribute("open"); ruleForm({ kind: el.dataset.kind, enabled: true }); break;
+    case "rule-edit": ruleForm(ui.auto.rules.find((r) => r.id === id)); break;
+    case "rule-del": { const r = ui.auto.rules.find((x) => x.id === id); if (!confirm(`Regel „${r.name}“ löschen?`)) break; saveRules(ui.auto.rules.filter((x) => x.id !== id)).then(() => toast("Regel gelöscht")).catch((err) => toast(err.message)); break; }
+    case "rule-toggle": saveRules(ui.auto.rules.map((x) => (x.id === id ? { ...x, enabled: el.checked } : x))).then(() => toast(el.checked ? "Regel aktiv" : "Regel pausiert")).catch((err) => toast(err.message)); break;
+    case "rule-run": { const n = ui.auto.recent.length; el.disabled = true; saveRules(ui.auto.rules, true).then((r) => toast(r.recent.length > n || (r.recent[0] && r.recent[0].at !== ui.auto.recent[0]?.at) ? "Regeln geprüft – neue Aktionen siehe „Zuletzt ausgeführt“." : "Regeln geprüft – nichts zu tun.")).catch((err) => toast(err.message)).finally(() => { el.disabled = false; }); break; }
     case "sys-backup": el.disabled = true; api("/api/admin/backup", { method: "POST" }).then((r) => { toast(`Sicherung erstellt: ${r.file}${r.copied ? ` · ${r.copied} Anhänge neu gesichert` : ""}`); ui.sys = null; render(); }).catch((err) => { el.disabled = false; toast(err.message); }); break;
     case "audit-more": { const last = ui.audit.entries.at(-1); api(`/api/admin/audit?${new URLSearchParams({ ...(ui.auditQ || {}), before: last.id })}`).then((r) => { ui.audit.entries.push(...r.entries); render(); }).catch((err) => toast(err.message)); break; }
     case "more-rows": ui.rowLimit += ROW_PAGE; renderSoft(); break;
@@ -2515,6 +2576,13 @@ async function handleSubmit(e, f) {
       if (t) { if (me().role === "ADMIN") Object.assign(t, { name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null }); t.memberIds = members; t.desc = String(fd.get("desc") || ""); fix(t); }
       else db.teams.push(fix({ id: uid(), name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null, memberIds: members, desc: String(fd.get("desc") || "") }));
       save(); closeModal(); render(); toast(t ? `Team „${t.name}“ gespeichert` : "Team angelegt"); break; }
+    case "rule-form": {
+      const k = f.dataset.kind; const r = { id: f.dataset.id || uid(), kind: k, name: String(fd.get("name") || "").trim(), projectId: fd.get("projectId") || null, enabled: ui.auto.rules.find((x) => x.id === f.dataset.id)?.enabled ?? true };
+      if (k === "assign") Object.assign(r, { types: fd.getAll("types"), teamId: fd.get("teamId") || null, method: fd.get("method") });
+      if (k === "escalate") Object.assign(r, { trigger: fd.get("trigger"), hours: Number(fd.get("hours")), minPriority: fd.get("minPriority") || null, raise: !!fd.get("raise"), label: !!fd.get("label"), notifyLead: !!fd.get("notifyLead"), notifyUserId: fd.get("notifyUserId") || null });
+      if (k === "remind") Object.assign(r, { status: fd.get("status") || null, days: Number(fd.get("days")), repeat: !!fd.get("repeat"), comment: String(fd.get("comment") || "") });
+      const list = f.dataset.id ? ui.auto.rules.map((x) => (x.id === r.id ? r : x)) : [...ui.auto.rules, r];
+      await saveRules(list); closeModal(); render(); toast(`Regel „${r.name}“ gespeichert`); break; }
     case "audit-form": ui.auditQ = Object.fromEntries([...fd].filter(([, v]) => v)); ui.sys = null; render(); break;
     case "user-form": {
       const pw = String(fd.get("password") || "");

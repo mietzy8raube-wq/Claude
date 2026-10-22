@@ -16,6 +16,7 @@ import { createM365 } from "./lib/m365.mjs";
 import { createFactorial } from "./lib/factorial.mjs";
 import { Accounts } from "./lib/accounts.mjs";
 import { createOps, AUDIT_ACTIONS } from "./lib/ops.mjs";
+import { createAutomation, RULE_KINDS, TRIGGERS } from "./lib/automation.mjs";
 import * as ICS from "./lib/ics.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -297,7 +298,7 @@ function sanitize(type, obj, cur) {
   return obj;
 }
 const AUDITED_DELETES = { issues: "Vorgang", projects: "Projekt", customers: "Kunde", teams: "Team", sprints: "Sprint", users: "Person", absences: "Abwesenheit" };
-const auditLabel = (type, o) => type === "issues" ? `${issueKey(o)} ${o.summary}` : type === "projects" ? `${o.key} – ${o.name}` : type === "absences" ? `${userById(o.userId)?.name || "?"} ${o.from}–${o.to}` : o.name || o.email || o.id;
+const auditLabel = (type, o) => type === "issues" ? `${issueKey(o)} ${o.summary}` : type === "projects" ? `${o.key} – ${o.name}` : type === "absences" ? `${userById(o.userId)?.name || "?"} ${o.start}–${o.end}` : o.name || o.email || o.id;
 function applyOp(user, op, effects) {
   const { type, id } = op;
   if (!COLLECTIONS.includes(type) || !ID_RE.test(String(id))) throw new HttpError(400, "Ungültiges Objekt.");
@@ -419,7 +420,7 @@ function maintenanceJob(t) {
   let n = 0;
   for (const { customer, asset, due } of S.maintenanceDue({ customers: store.all("customers"), issues: store.all("issues"), projects: store.all("projects"), today: t, leadDays: mp.maintLeadDays ?? 21 })) {
     const i = S.newIssue({ project: mp, no: store.reserveNumber(mp.id), reporterId: null, ...S.maintenanceIssueData(customer, asset, due) });
-    store.put("issues", i);
+    automation.onCreate(i); store.put("issues", i);
     const c2 = JSON.parse(JSON.stringify(customer)); c2.assets.find((a) => a.id === asset.id).autoCreatedFor = due; store.put("customers", c2);
     const team = i.teamId ? store.get("teams", i.teamId) : null;
     for (const u of new Set([...(team?.memberIds || []), mp.leadId].filter(Boolean))) createNotification(u, "new", `Wartung fällig: ${issueKey(i)}`, `${customer.name} – ${asset.name} bis ${due.split("-").reverse().join(".")}`, i.id);
@@ -431,6 +432,7 @@ function maintenanceJob(t) {
 /** Folgen einer Vorgangsänderung: Wartungsplan fortschreiben, Ereignisse für Webhooks/Kalender. */
 function issueEffects({ before, after }) {
   const p = projectById(after.projectId); if (!p) return;
+  if (!before && automation.onCreate(after)) store.put("issues", after); // Zuweisungsregeln
   const cat = (i) => (i ? S.statusInfo(p, i.status).cat : null);
   if (after.assetId && after.customerId && after.type === "MAINT" && before && cat(before) !== "done" && cat(after) === "done") {
     const c = store.get("customers", after.customerId); const next = c && S.completeMaintenance(c, after.assetId, S.dayKey(after.resolvedAt || new Date()));
@@ -451,6 +453,10 @@ const onEvent = (fn) => eventHandlers.push(fn);
 function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try { fn(type, issue, extra); } catch (e) { log("Ereignis-Fehler:", e.message); } } }
 /* ---------- Schnittstellen: REST-API und Webhooks ---------- */
 const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification, findCustomerByEmail, addAttachment });
+const automation = createAutomation({ store, S, projectById, userById, issueKey, createNotification, log });
+function automationJob() {
+  if (automation.job().length) broadcast();
+}
 const webhooks = createWebhooks({ store, cfg: CFG, issueDto: apiV1.issueDto, customerDto: apiV1.customerDto, ilog, log });
 onEvent((type, obj, extra) => webhooks.enqueue(type, obj, extra));
 const m365 = createM365({ store, S, mailer, cfg: CFG, env, ilog, issueKey, projectById, userById, createNotification, findCustomerByEmail, broadcast, issueEffects, confirmReceipt, sessions, customerMails, flushMailQueue, addAttachment, maxFile: MAX_FILE });
@@ -520,7 +526,7 @@ async function portalCreate(req) {
     const i = S.newIssue({ project: p, no: store.reserveNumber(p.id), type, summary, priority, reporterId: null, labels: ["portal"],
       description: [str(b.asset, 200) ? `Anlage/Standort: ${str(b.asset, 200)}` : "", description].filter(Boolean).join("\n\n"),
       customer: { name, company, email, phone: str(b.phone, 60) }, customerId: known?.id || null });
-    store.put("issues", i); emit("issue.created", i);
+    store.put("issues", i); issueEffects({ before: null, after: i });
     const agents = store.all("users").filter((u) => u.active && (u.role === "AGENT" || u.id === p.leadId));
     for (const u of agents) createNotification(u.id, "new", `Neue Anfrage: ${p.key}-${i.no}`, `${company} · ${name}: ${summary}`, i.id);
     return i;
@@ -880,6 +886,14 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/admin/export" && m === "GET") { needAdmin(); audit(user, "backup.download", "JSON-Export", clientIp(req)); return { __download: `gf-tracker-sicherung-${S.today()}.json`, body: exportAll() }; }
   if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 50e6); try { ops.backup({ force: true }); } catch (e) { log("Sicherung vor Import:", e.message); } const r = importAll(b, user); audit(user, "backup.restore", `${r.imported} Vorgänge eingespielt (vorher automatisch gesichert)`, clientIp(req)); return r; }
   if (p === "/api/admin/system" && m === "GET") { needAdmin(); return ops.status(); }
+  if (p === "/api/admin/automation" && m === "GET") { needAdmin(); return { rules: automation.rules(), kinds: RULE_KINDS, triggers: TRIGGERS, recent: automation.recent(60) }; }
+  if (p === "/api/admin/automation" && m === "PUT") {
+    needAdmin(); const b = await readJson(req, 64e3); let rules;
+    try { rules = automation.save(b.rules); } catch (e) { throw new HttpError(400, e.message); }
+    audit(user, "rules", `${rules.length} Regeln (${rules.filter((r) => r.enabled).length} aktiv)`, clientIp(req));
+    if (b.runNow) automationJob();
+    return { rules, recent: automation.recent(60) };
+  }
   if (p === "/api/admin/backup" && m === "POST") { needAdmin(); const r = ops.backup({ force: true }); audit(user, "backup.created", r.file, clientIp(req)); return r; }
   pm = p.match(/^\/api\/admin\/backups\/([A-Za-z0-9T._-]+)$/);
   if (pm && m === "GET") { needAdmin(); const f = ops.backupPath(pm[1]); if (!f) throw new HttpError(404, "Sicherung nicht gefunden."); audit(user, "backup.download", pm[1], clientIp(req)); return { __dbfile: f, name: pm[1] }; }
@@ -956,8 +970,8 @@ const server = http.createServer(async (req, res) => {
 
 setupInitialData();
 deadlineJob(); backupJob();
-setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); }, 60e3).unref();
-setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); ops.cleanup(); }, 60 * 60e3).unref();
+setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } try { automationJob(); } catch (e) { log("Automatik:", e.message); ilog("automation", "error", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); }, 60e3).unref();
+setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); ops.cleanup(); automation.cleanup(); }, 60 * 60e3).unref();
 server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
 const shutdown = () => { log("Beende…"); for (const c of clients) c.res.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);

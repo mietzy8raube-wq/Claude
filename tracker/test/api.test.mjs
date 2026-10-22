@@ -144,7 +144,7 @@ test("Betrieb: Audit-Protokoll, Sicherung mit Anhängen, Systemstatus – nur Ad
   assert.equal((await lisa.req("/api/admin/audit")).status, 403); assert.equal((await lisa.req("/api/admin/system")).status, 403);
   const b = await anna.req("/api/admin/backup", { method: "POST" }); assert.equal(b.status, 200); assert.ok(b.data.copied >= 1, "Anhang gespiegelt");
   assert.ok(fs.readdirSync(path.join(dataDir, "backups", "files")).length >= 1);
-  const sys = (await anna.req("/api/admin/system")).data; assert.ok(sys.backups.list.some((x) => x.name === b.data.file)); assert.equal(sys.schema, 3); assert.ok(sys.counts.issues > 0);
+  const sys = (await anna.req("/api/admin/system")).data; assert.ok(sys.backups.list.some((x) => x.name === b.data.file)); assert.equal(sys.schema, 4); assert.ok(sys.counts.issues > 0);
   const dl = await fetch(`${BASE}/api/admin/backups/${b.data.file}`, { headers: { cookie: anna.cookie } }); assert.equal(dl.status, 200);
   assert.equal(Buffer.from(await dl.arrayBuffer()).subarray(0, 15).toString(), "SQLite format 3");
   assert.equal((await fetch(`${BASE}/api/admin/backups/..%2Ftracker.db`, { headers: { cookie: anna.cookie } })).status, 404);
@@ -302,6 +302,46 @@ test("Outlook-Add-in: persönlicher Schlüssel handelt im Namen der Person, Abse
   assert.equal((await anna.req("/api/admin/integrations")).data.apiKeys.filter((k) => k.name === "Outlook-Add-in").length, 0, "persönliche Schlüssel nicht in der Admin-Liste");
   const man = await fetch(`${BASE}/outlook/manifest.xml`).then((x) => x.text()); assert.match(man, /<OfficeApp/); assert.match(man, new RegExp(`${BASE}/outlook/taskpane.html`));
   const tp = await fetch(`${BASE}/outlook/taskpane.html`); assert.equal(tp.headers.get("x-frame-options"), null); assert.match(tp.headers.get("content-security-policy"), /frame-ancestors[^;]*outlook\.office\.com/);
+});
+
+test("Workflow-Automatik: Zuweisung reihum (Abwesende übersprungen), Eskalation und Wiedervorlage greifen je einmal", async () => {
+  const ago = (d) => new Date(Date.now() - d * 864e5).toISOString();
+  const mk = (id, extra = {}) => ({ id, projectId: "pSD", no: 0, type: "INCIDENT", summary: `Auto ${id}`, status: "OPEN", priority: "MEDIUM", teamId: "tSVC", labels: [], links: [], watchers: [], comments: [], history: [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), ...extra });
+  const put = (o) => anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: o.id, op: "put", data: o }] } });
+  const get = async (id) => (await anna.req("/api/state")).data.issues.find((i) => i.id === id);
+  assert.equal((await lisa.req("/api/admin/automation")).status, 403);
+  const rules = [
+    { id: "rA", kind: "assign", name: "Service reihum", projectId: "pSD", method: "round", types: ["INCIDENT"] },
+    { id: "rE", kind: "escalate", name: "Unzugewiesen eskalieren", projectId: "pSD", trigger: "unassigned", hours: 1, raise: true, label: true, notifyLead: true },
+    { id: "rW", kind: "remind", name: "Kunde nachfassen", projectId: "pSD", status: "WAITING", days: 3, comment: "Bitte beim Kunden nachfragen." },
+  ];
+  const saved = await anna.req("/api/admin/automation", { method: "PUT", body: { rules } }); assert.equal(saved.status, 200); assert.equal(saved.data.rules.length, 3);
+  assert.equal((await anna.req("/api/admin/automation", { method: "PUT", body: { rules: [{ id: "x", kind: "assign", name: "ohne Projekt" }] } })).status, 400);
+  // Reihum: zwei neue Störungen gehen an verschiedene Mitglieder von Service & Technik
+  await put(mk("auto1")); await put(mk("auto2"));
+  const a1 = await get("auto1"), a2 = await get("auto2");
+  assert.ok(["u5", "u6"].includes(a1.assigneeId) && ["u5", "u6"].includes(a2.assigneeId)); assert.notEqual(a1.assigneeId, a2.assigneeId);
+  assert.match(a1.history[0].by, /Automatik: Service reihum/);
+  assert.equal((await put(mk("auto3", { type: "SERVICE" }))).status, 200); assert.equal((await get("auto3")).assigneeId ?? null, null, "anderer Typ: keine Regel");
+  // Abwesend heute → wird übersprungen
+  const today = new Date().toISOString().slice(0, 10);
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: "abAuto", op: "put", data: { id: "abAuto", userId: "u6", start: today, end: today, type: "Krankheit", source: "manual", note: "" } }] } });
+  await put(mk("auto4")); await put(mk("auto5"));
+  assert.equal((await get("auto4")).assigneeId, "u5"); assert.equal((await get("auto5")).assigneeId, "u5");
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "absences", id: "abAuto", op: "delete" }] } });
+  // Eskalation: seit 2 Stunden niemand zugewiesen (Typ ohne Zuweisungsregel)
+  await put(mk("auto6", { type: "SERVICE", createdAt: new Date(Date.now() - 2 * 36e5).toISOString() }));
+  // Wiedervorlage: seit 5 Tagen „Wartet auf Kunde“
+  await put(mk("auto7", { type: "SERVICE", assigneeId: "u6", status: "WAITING", createdAt: ago(10), history: [{ id: "h1", at: ago(5), userId: "u6", field: "Status", from: "In Arbeit", to: "Wartet auf Kunde" }] }));
+  const run = await anna.req("/api/admin/automation", { method: "PUT", body: { rules, runNow: true } }); assert.equal(run.status, 200);
+  const e = await get("auto6"); assert.equal(e.priority, "HIGH"); assert.ok(e.labels.includes("eskaliert"));
+  const w = await get("auto7"); assert.ok(w.comments.some((c) => c.author === "Automatik" && c.internal)); assert.equal(w.history[0].field, "Erinnerung");
+  assert.ok(run.data.recent.some((x) => x.issue_id === "auto6" && /eskaliert/.test(x.action)));
+  await anna.req("/api/admin/automation", { method: "PUT", body: { rules, runNow: true } });
+  assert.equal((await get("auto6")).priority, "HIGH", "nur einmal eskaliert"); assert.equal((await get("auto7")).comments.filter((c) => c.author === "Automatik").length, 1);
+  const mehmet2 = new Client(); await mehmet2.login("mehmet.yilmaz@druckluft-chemnitz.de"); // Projektleitung Service
+  assert.ok((await mehmet2.req("/api/state")).data.notifications.some((n) => n.title.startsWith("Eskaliert:") && n.issueId === "auto6"));
+  await anna.req("/api/admin/automation", { method: "PUT", body: { rules: [] } });
 });
 
 test("Live-Aktualisierung: Änderungen lösen ein Event aus und sind über /api/changes abrufbar", async () => {

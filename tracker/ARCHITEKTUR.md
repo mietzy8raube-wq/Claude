@@ -338,6 +338,21 @@ Unter *Einstellungen → Personen* (nur Administration):
 Links und Sitzungen werden nur als SHA-256-Hash gespeichert. Nach dem Setzen
 eines Passworts über einen Link werden alle bisherigen Sitzungen beendet.
 
+### Automatik-Regeln für den Arbeitsablauf
+
+*Einstellungen → Automatik* (nur Administration). Der Server prüft jede Minute;
+jede Regel greift je Vorgang genau einmal und vermerkt das im Verlauf
+(„Automatik: …“). Unter „Zuletzt ausgeführt“ steht, was passiert ist.
+
+| Regel | Beispiel |
+| --- | --- |
+| **Automatisch zuweisen** | Neue Störungen im Service-Desk ohne Verantwortliche gehen *reihum* (oder an die Person mit den *wenigsten offenen Vorgängen*) im Team. Heute Abwesende (Urlaub/Krankheit, auch aus Factorial) werden übersprungen. Gilt für Formular, Kundenportal, E-Mail-Postfach, API und automatische Wartungen. |
+| **Eskalieren** | Auslöser *SLA verletzt*, *Fälligkeit überschritten seit X Std.*, *keine Reaktion seit X Std.* oder *niemand zugewiesen seit X Std.* (optional erst ab einer Priorität) → Priorität erhöhen, Label „eskaliert“, Projekt- und Teamleitung bzw. eine bestimmte Person benachrichtigen. |
+| **Erinnern / Wiedervorlage** | Vorgang seit X Tagen in einem Status (z. B. „Wartet auf Kunde“) oder seit X Tagen unverändert → Verantwortliche erinnern, optional interne Notiz, optional alle X Tage wiederholen. |
+
+Benachrichtigungen erscheinen in der App und – wenn eingerichtet – per E-Mail.
+Regeländerungen stehen im Audit-Protokoll.
+
 ### Daten aus der Einzel-HTML-Version übernehmen
 
 In der Einzel-HTML-Datei unter *Einstellungen → Sicherung speichern* eine
