@@ -62,9 +62,12 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
  * Outlook im Web und mobil (inkl. Dunkelmodus) sowie andere Mailprogramme.
  * preheader: Vorschautext in der Nachrichtenliste.
  */
+/** Firmenfarbe und Logo für alle E-Mails (aus den Einstellungen „Erscheinungsbild“). */
+const brand = { color: "#0c66e4", logoUrl: null };
+export function setMailBrand({ color, logoUrl } = {}) { brand.color = /^#[0-9a-f]{6}$/i.test(color || "") ? color : "#0c66e4"; brand.logoUrl = logoUrl || null; }
 export function mailTemplate({ company, greeting, title, lines = [], items = [], button, footer, preheader, replyHint }) {
   const font = "font-family:'Segoe UI',Calibri,Arial,sans-serif";
-  const btn = button ? `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${esc(button.url)}" style="height:40px;v-text-anchor:middle;width:${Math.max(180, button.label.length * 9 + 40)}px;" arcsize="15%" stroke="f" fillcolor="#0c66e4"><w:anchorlock/><center style="color:#ffffff;${font};font-size:14px;font-weight:bold;">${esc(button.label)}</center></v:roundrect><![endif]--><!--[if !mso]><!-- --><a href="${esc(button.url)}" style="display:inline-block;background:#0c66e4;color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:6px;${font};font-size:14px;font-weight:600;mso-hide:all">${esc(button.label)}</a><!--<![endif]-->` : "";
+  const btn = button ? `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${esc(button.url)}" style="height:40px;v-text-anchor:middle;width:${Math.max(180, button.label.length * 9 + 40)}px;" arcsize="15%" stroke="f" fillcolor="${brand.color}"><w:anchorlock/><center style="color:#ffffff;${font};font-size:14px;font-weight:bold;">${esc(button.label)}</center></v:roundrect><![endif]--><!--[if !mso]><!-- --><a href="${esc(button.url)}" style="display:inline-block;background:${brand.color};color:#ffffff;text-decoration:none;padding:11px 20px;border-radius:6px;${font};font-size:14px;font-weight:600;mso-hide:all">${esc(button.label)}</a><!--<![endif]-->` : "";
   const pre = preheader || lines[0] || title;
   return `<!doctype html><html lang="de" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting">
 <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark"><title>${esc(title)}</title>
@@ -76,11 +79,11 @@ export function mailTemplate({ company, greeting, title, lines = [], items = [],
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="bg" style="background:#f4f5f7"><tr><td align="center" style="padding:24px 12px">
 <!--[if mso]><table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" class="card" style="max-width:600px;background:#ffffff;border:1px solid #dcdfe4;border-radius:8px">
-<tr><td class="mu" style="padding:22px 28px 6px;${font};font-size:13px;color:#626f86">${esc(company)}</td></tr>
+<tr><td class="mu" style="padding:22px 28px 6px;${font};font-size:13px;color:#626f86">${brand.logoUrl ? `<img src="${esc(brand.logoUrl)}" alt="${esc(company)}" height="32" style="display:block;height:32px;width:auto;max-width:200px;border:0;margin-bottom:6px">` : esc(company)}</td></tr>
 ${greeting ? `<tr><td class="tx" style="padding:0 28px 6px;${font};font-size:15px;color:#172b4d">${esc(greeting)}</td></tr>` : ""}
 <tr><td class="tx" style="padding:2px 28px 8px;${font};font-size:18px;font-weight:600;line-height:1.4;color:#172b4d">${esc(title)}</td></tr>
 ${lines.filter(Boolean).map((l) => `<tr><td class="mu" style="padding:4px 28px;${font};font-size:14px;line-height:1.55;color:#44546f;white-space:pre-wrap">${esc(l)}</td></tr>`).join("")}
-${items.length ? `<tr><td style="padding:6px 28px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${items.map((it) => `<tr><td style="padding:10px 0;border-bottom:1px solid #eef0f3;${font}"><a class="ln" href="${esc(it.url)}" style="color:#0c66e4;font-weight:600;text-decoration:none;font-size:14px">${esc(it.title)}</a>${it.text ? `<div class="mu" style="font-size:13px;color:#626f86;margin-top:2px">${esc(it.text)}</div>` : ""}</td></tr>`).join("")}</table></td></tr>` : ""}
+${items.length ? `<tr><td style="padding:6px 28px"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${items.map((it) => `<tr><td style="padding:10px 0;border-bottom:1px solid #eef0f3;${font}"><a class="ln" href="${esc(it.url)}" style="color:${brand.color};font-weight:600;text-decoration:none;font-size:14px">${esc(it.title)}</a>${it.text ? `<div class="mu" style="font-size:13px;color:#626f86;margin-top:2px">${esc(it.text)}</div>` : ""}</td></tr>`).join("")}</table></td></tr>` : ""}
 ${btn ? `<tr><td style="padding:18px 28px 6px">${btn}</td></tr>` : ""}
 ${replyHint ? `<tr><td class="mu" style="padding:14px 28px 4px;${font};font-size:13px;color:#626f86">↩ ${esc(replyHint)}</td></tr>` : ""}
 <tr><td style="padding:12px 0 0"></td></tr>

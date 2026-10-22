@@ -23,7 +23,7 @@ const tokenFromPath = () => (location.pathname.match(/^\/portal\/r\/([A-Za-z0-9_
 
 function hero() {
   if (EMBED) return "";
-  return `<div class="portal-hero"><h1>${esc(state.cfg.company)} – Service-Portal</h1><p style="margin:6px 0 0;opacity:.9">Störung melden, Wartung anfragen oder den Stand Ihrer Anfrage verfolgen – rund um die Uhr.</p></div>`;
+  return `<div class="portal-hero">${state.cfg.logo ? `<img src="${esc(state.cfg.logo)}" alt="${esc(state.cfg.company)}" style="height:40px;width:auto;max-width:220px;object-fit:contain;background:#fff;border-radius:6px;padding:4px 8px;margin-bottom:10px">` : ""}<h1>${esc(state.cfg.company)} – Service-Portal</h1><p style="margin:6px 0 0;opacity:.9">Störung melden, Wartung anfragen oder den Stand Ihrer Anfrage verfolgen – rund um die Uhr.</p></div>`;
 }
 function renderHome() {
   const c = state.cfg; const projects = c.projects;

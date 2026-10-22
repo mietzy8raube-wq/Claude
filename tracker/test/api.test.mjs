@@ -152,6 +152,22 @@ test("Betrieb: Audit-Protokoll, Sicherung mit Anhängen, Systemstatus – nur Ad
   await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: lisaId, op: "patch", patch: { set: { role: "MEMBER" } } }] } });
 });
 
+test("Erscheinungsbild: Name, Farbe, Logo – nur Administration; SVG mit Skript abgelehnt; wirkt auf Portal und App-Manifest", async () => {
+  assert.equal((await lisa.req("/api/admin/brand", { method: "POST", body: { color: "#112233" } })).status, 403);
+  assert.equal((await anna.req("/api/admin/brand", { method: "POST", body: { color: "rot" } })).status, 400);
+  const b = (await anna.req("/api/admin/brand", { method: "POST", body: { appName: "DLC Service", company: "Druckluft Chemnitz GmbH", color: "#1F4E8C" } })).data;
+  assert.deepEqual([b.appName, b.company, b.color], ["DLC Service", "Druckluft Chemnitz GmbH", "#1f4e8c"]);
+  const png = Buffer.from("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a3e1a2a20000000049454e44ae426082", "hex");
+  const up = await fetch(`${BASE}/api/admin/brand/logo`, { method: "PUT", headers: { cookie: anna.cookie, "X-GFT": "1", "Content-Type": "image/png" }, body: png }); assert.equal(up.status, 200);
+  const evil = await fetch(`${BASE}/api/admin/brand/logo`, { method: "PUT", headers: { cookie: anna.cookie, "X-GFT": "1", "Content-Type": "image/svg+xml" }, body: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' }); assert.equal(evil.status, 415);
+  const pub = await (await fetch(`${BASE}/api/brand`)).json(); assert.equal(pub.appName, "DLC Service"); assert.match(String(pub.logo), /^\/brand\/logo\?v=/, "Logo bleibt nach abgelehntem Upload erhalten");
+  const logo = await fetch(BASE + pub.logo); assert.equal(logo.status, 200); assert.equal(logo.headers.get("content-type"), "image/png");
+  assert.equal((await (await fetch(`${BASE}/api/portal/config`)).json()).company, "Druckluft Chemnitz GmbH");
+  const mf = await (await fetch(`${BASE}/manifest.webmanifest`)).json(); assert.equal(mf.short_name, "DLC Service"); assert.equal(mf.theme_color, "#1f4e8c");
+  assert.equal((await anna.req("/api/admin/brand/logo", { method: "DELETE" })).data.logo, null);
+  await anna.req("/api/admin/brand", { method: "POST", body: { appName: "", company: "", color: "#0c66e4" } });
+});
+
 test("Kundenportal: Anfrage stellen, verfolgen, antworten – interne Notizen bleiben verborgen", async () => {
   const pub = new Client();
   const bad = await pub.req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "A", company: "B", email: "kein-mail", summary: "x", description: "y" } });

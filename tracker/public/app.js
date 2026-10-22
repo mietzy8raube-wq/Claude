@@ -653,9 +653,9 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <span class="navbtns"><button class="btn subtle icon" id="nav-back" data-act="nav-back" title="Zurück (Alt+←)" aria-label="Zurück">‹</button><button class="btn subtle icon" id="nav-fwd" data-act="nav-fwd" title="Vor (Alt+→)" aria-label="Vor">›</button></span>
-    <a class="logo" href="#/your-work"><span class="mark">${icon("bolt")}</span>GF Tracker</a>
-    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
-    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Erstellen</span></button>
+    <a class="logo" href="#/your-work">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<span class="mark">${icon("bolt")}</span>`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
+    ${link("your-work", "Mein Tag", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink nav-portal" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
+    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Neuer Vorgang</span></button>
     <a class="btn subtle icon show-m" href="#/filters?state=open" data-act="m-search" aria-label="Suchen">${icon("search")}</a><div class="search gs-wrap">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen: Text, Nummer, Kunde …" aria-label="Suchen" autocomplete="off"><div id="gsugg" class="gsugg" hidden></div></div>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
     <button class="btn subtle icon hide-m" data-act="theme" aria-label="Hell/Dunkel">${icon("sun")}</button>
@@ -703,6 +703,7 @@ function render() {
     }
   } catch (e) { console.error(e); html = `<div class="note err">Fehler beim Anzeigen: ${esc(e.message)}</div>`; }
   $("#view").innerHTML = html;
+  setTitle();
   bindDnD();
   if (ui.openIssue && $("#modal").classList.contains("open") && ui.modal === "issue") renderIssue();
 }
@@ -1734,6 +1735,17 @@ function accountMenu(x) {
     <button data-act="set-password" data-id="${x.id}">Passwort direkt setzen</button>
     ${!st && a?.sessions && x.id !== db.currentUserId ? `<button data-act="user-logout" data-id="${x.id}">Auf allen Geräten abmelden</button>` : ""}</div></details>`;
 }
+const BRAND_COLORS = ["#0c66e4", "#1f4e8c", "#0b7a75", "#1a7f37", "#c9372c", "#d35400", "#6e3fbf", "#2b2f36"];
+function brandCard() {
+  const b = ui.brand || {}; const server = location.protocol.startsWith("http") && !window.GFT_STANDALONE;
+  return `<div class="card pad" style="grid-column:1/-1"><h3 style="font-size:15px;margin:0 0 4px">Erscheinungsbild</h3><p class="small muted" style="margin:0 0 12px">Name, Firmenfarbe und Logo erscheinen in der App, auf der Anmeldeseite, im Kundenportal, in E-Mails und in der installierten App.</p>
+    <form id="brand-form" class="brand-grid"><label class="f">Name der App<input type="text" name="appName" value="${esc(b.appName || "GF Tracker")}" maxlength="40" placeholder="z. B. DLC Service"></label>
+      <label class="f">Firmenname (Portal, E-Mails)<input type="text" name="company" value="${esc(b.company || sync.company || "")}" maxlength="120"></label>
+      <div class="f"><span>Firmenfarbe</span><div class="row nowrap" style="gap:6px">${BRAND_COLORS.map((c) => `<button type="button" class="swatch ${c === (b.color || "#0c66e4") ? "on" : ""}" style="--c:${c}" data-act="brand-swatch" data-v="${c}" aria-label="Farbe ${c}"></button>`).join("")}<input type="color" name="color" value="${esc(b.color || "#0c66e4")}" aria-label="Eigene Farbe" style="width:40px;height:30px;padding:0"></div></div>
+      <div class="f"><span>Logo <span class="muted small">(PNG, JPG, SVG; quer, mind. 64 px hoch)</span></span><div class="row nowrap">${b.logo ? `<img src="${esc(b.logo)}" alt="Logo" style="height:32px;max-width:160px;object-fit:contain;background:var(--surface-2);border-radius:4px;padding:2px">` : '<span class="small muted">kein Logo</span>'}
+        <label class="btn sm" style="cursor:pointer">${icon("upload")} ${b.logo ? "Ersetzen" : "Hochladen"}<input type="file" id="brand-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden></label>${b.logo ? `<button type="button" class="btn subtle sm" data-act="brand-logo-del">Entfernen</button>` : ""}</div></div>
+      <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit" ${server ? "" : "disabled"}>Speichern</button>${server ? `<span class="small muted">Vorschau: Farbe wird sofort angezeigt, gilt für alle nach dem Speichern.</span>` : '<span class="small muted">Das Erscheinungsbild wird in der Server-Version eingestellt.</span>'}</div></form></div>`;
+}
 function viewSettings() {
   const u = me(); const isAdmin = u.role === "ADMIN";
   return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
@@ -1774,6 +1786,7 @@ function viewSettings() {
           <li>Eine E-Mail öffnen → in der Menüleiste <b>GF Tracker</b> (ggf. unter „Apps“ / „…“) → Zugangsschlüssel einfügen. Die Anmeldung gilt danach auf allen Geräten mit diesem Outlook-Konto.</li>
           ${o.https ? "" : "<li><b>Hinweis:</b> Outlook verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details>`; })()}
       <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
+      ${location.protocol.startsWith("http") ? `<div class="row nowrap" style="align-items:flex-start;gap:14px;margin-bottom:8px"><div class="qr-box">${(() => { try { return QR.svg(location.origin + "/", { size: 132 }); } catch { return ""; } })()}</div><p class="small muted" style="margin:0;line-height:1.6"><b>Aufs Handy holen:</b> QR-Code mit der Kamera scannen, anmelden und dann „Zum Home-Bildschirm“ (iPhone) bzw. „App installieren“ (Android) wählen.<br><span class="small">${esc(location.origin)}</span></p></div>` : ""}
       ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
         : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
         <p class="small muted" style="margin:6px 0 0;line-height:1.6"><b>PC (Edge/Chrome):</b> in der Adresszeile auf das Symbol „App installieren“ klicken bzw. Menü ⋯ → Apps → „Diese Website als App installieren“. Danach eigenes Fenster, Startmenü- und Taskleisten-Eintrag.<br>
@@ -1793,6 +1806,7 @@ function viewSettings() {
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Integrationen &amp; Schnittstellen</h3><p class="small muted" style="margin:0">Microsoft 365 (E-Mail, Postfach, Kalender, Anmeldung), Factorial, REST-API für Ihre Programme, Webhooks für Teams, Datenimport.</p></div><a class="btn primary" href="#/integrations">Integrationen öffnen</a></div>` : ""}
+    ${isAdmin ? brandCard() : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">System &amp; Protokoll</h3><p class="small muted" style="margin:0">Sicherungen (Datenbank und Anhänge), Speicher, Auslastung, Fehler und das Audit-Protokoll: wer hat wann was geändert.</p></div><a class="btn" href="#/system">System öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Automatik</h3><p class="small muted" style="margin:0">Regeln für den Arbeitsablauf: neue Vorgänge automatisch im Team verteilen, liegengebliebene eskalieren, Wiedervorlagen („Wartet auf Kunde“ nachfassen).</p></div><a class="btn" href="#/automation">Regeln öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
@@ -1911,6 +1925,24 @@ function openModal(html, wide = false, kind = "form") {
   $("#overlay").classList.add("open"); document.body.classList.add("modal-open");
   setTimeout(() => { if (!m.contains(document.activeElement)) m.focus({ preventScroll: true }); }, 40);
 }
+/* ---------- Erscheinungsbild (Firmenfarbe, Logo, Name) ---------- */
+const hexRgb = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+const rgbHex = (a) => `#${a.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("")}`;
+const mixHex = (h, w, t) => rgbHex(hexRgb(h).map((v, k) => v + (hexRgb(w)[k] - v) * t));
+const lum = (h) => { const [r, g, b] = hexRgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+function applyBrand(b = ui.brand) {
+  ui.brand = b || ui.brand || { appName: "GF Tracker", color: "#0c66e4", logo: null }; const c = ui.brand.color; const st = document.documentElement.style;
+  const dark = (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+  if (!c || c === "#0c66e4") { for (const k of ["--primary", "--primary-hover", "--primary-soft", "--sel", "--primary-fg"]) st.removeProperty(k); }
+  else if (dark) { let x = c; for (let k = 0; k < 10 && lum(x) < 0.3; k++) x = mixHex(x, "#ffffff", 0.2); st.setProperty("--primary", x); st.setProperty("--primary-hover", mixHex(x, "#ffffff", 0.2)); st.setProperty("--primary-soft", mixHex(x, "#1d2125", 0.8)); st.setProperty("--sel", mixHex(x, "#1d2125", 0.8)); st.setProperty("--primary-fg", "#1d2125"); }
+  else { st.setProperty("--primary", c); st.setProperty("--primary-hover", mixHex(c, "#000000", 0.15)); st.setProperty("--primary-soft", mixHex(c, "#ffffff", 0.9)); st.setProperty("--sel", mixHex(c, "#ffffff", 0.9)); st.setProperty("--primary-fg", lum(c) > 0.5 ? "#172b4d" : "#ffffff"); }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", c);
+}
+/** Fenstertitel = aktuelle Ansicht bzw. Vorgang – erscheint im Verlauf, in Lesezeichen, in der Taskleiste und in Teams. */
+function setTitle() {
+  const i = ui.modal === "issue" && ui.openIssue && issue(ui.openIssue); const h = $("#view h1")?.textContent.trim();
+  document.title = `${i ? `${keyOf(i)} ${i.summary}` : h || "Mein Tag"} · ${ui.brand?.appName || "GF Tracker"}`;
+}
 function closeModal({ fromNav = false } = {}) {
   if (ui.modal === "issue" && !fromNav && route().params.get("issue")) { // Vorgang geschlossen: Verlaufsschritt zurücknehmen
     if (history.state?.gftIssue) { ui.modal = null; history.go(-history.state.gftIssue); } else // ganz zurück zur Ansicht, auch nach Sprüngen zwischen Vorgängen
@@ -1919,6 +1951,7 @@ function closeModal({ fromNav = false } = {}) {
   const m = $("#modal"); m.className = "modal"; m.innerHTML = ""; ui.modal = null; ui.openIssue = null; ui.editingDesc = false; ui.modalDirty = false; ui.stepReturn = null;
   $("#overlay").classList.remove("open"); document.body.classList.remove("modal-open");
   const f = ui.modalReturnFocus; ui.modalReturnFocus = null; if (f && document.contains(f)) f.focus({ preventScroll: true });
+  setTitle();
 }
 /** Schließen durch Nutzer (Esc, Klick daneben, ×): fragt bei ungespeicherten Eingaben nach; Arbeitsschritte kehren zum Vorgang zurück. */
 function dismissModal() {
@@ -1929,7 +1962,7 @@ function dismissModal() {
   closeModal(); if (back && issue(back)) openIssue(back);
 }
 function openIssue(id, { push = true } = {}) { const i = issue(id); if (!i) return toast("Vorgang nicht gefunden.");
-  if (push && route().params.get("issue") !== keyOf(i)) { const b = baseHash(); history.pushState({ gftIssue: (history.state?.gftIssue || 0) + 1 }, "", `${b}${b.includes("?") ? "&" : "?"}issue=${encodeURIComponent(keyOf(i))}`); updateNavButtons(); } ui.openIssue = id; ui.editingDesc = false; ui.addingSub = false; ui.addingLink = false; ui.issueTab = ui.issueTab || "comments"; pushRecent(id); openModal("", true, "issue"); renderIssue(); }
+  if (push && route().params.get("issue") !== keyOf(i)) { const b = baseHash(); history.pushState({ gftIssue: (history.state?.gftIssue || 0) + 1 }, "", `${b}${b.includes("?") ? "&" : "?"}issue=${encodeURIComponent(keyOf(i))}`); updateNavButtons(); } ui.openIssue = id; ui.editingDesc = false; ui.addingSub = false; ui.addingLink = false; ui.issueTab = ui.issueTab || "comments"; pushRecent(id); openModal("", true, "issue"); renderIssue(); setTitle(); }
 function renderIssue() {
   const i = issue(ui.openIssue); if (!i) { closeModal(); return; }
   const p = proj(i.projectId); const s = statusOf(i); const ch = children(i); const isSvc = p.type === "service";
@@ -2427,7 +2460,7 @@ document.addEventListener("click", (e) => {
     case "reload": location.reload(); break;
     case "goto": e.preventDefault(); go(el.dataset.href); break;
     case "menu": $("#topnav").classList.toggle("menu-open"); break;
-    case "theme": { const c = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = c === "dark" ? "light" : "dark"; try { localStorage.setItem("gft-theme", document.documentElement.dataset.theme); } catch {} break; }
+    case "theme": { const c = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = c === "dark" ? "light" : "dark"; try { localStorage.setItem("gft-theme", document.documentElement.dataset.theme); } catch {} applyBrand(); break; }
     case "notifs": { const p = $("#notifs"); p.classList.toggle("open"); if (p.classList.contains("open")) renderNotifs(); break; }
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
@@ -2435,6 +2468,8 @@ document.addEventListener("click", (e) => {
     case "integ-reload": ui.integ = null; render(); break;
     case "load-archive": ensureArchive(); break;
     case "sys-reload": ui.sys = null; render(); break;
+    case "brand-swatch": { const f = $("#brand-form"); f.color.value = el.dataset.v; f.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x === el)); applyBrand({ ...ui.brand, color: el.dataset.v }); break; }
+    case "brand-logo-del": api("/api/admin/brand/logo", { method: "DELETE" }).then((b) => { applyBrand(b); render(); toast("Logo entfernt"); }).catch((err) => toast(err.message)); break;
     case "nav-back": history.back(); break;
     case "m-search": e.preventDefault(); go("#/filters?state=open"); setTimeout(() => $("#ss-text")?.focus(), 80); break;
     case "sugg-issue": hideSuggestions(); $("#gsearch").value = ""; $("#gsearch").blur(); openIssue(id); break;
@@ -2557,6 +2592,9 @@ document.addEventListener("change", (e) => {
   if (el.hasAttribute("data-autosubmit")) { el.form.requestSubmit(); return; }
   if (el.dataset.act === "hook-active") { api(`/api/admin/webhooks/${el.dataset.id}`, { method: "PATCH", body: { active: el.checked } }).then(loadIntegrations).catch((err) => toast(err.message)); return; }
   if (el.dataset.act === "factorial-create") { api("/api/admin/integrations/settings", { method: "POST", body: { factorialCreateUsers: el.checked } }).then((r) => { ui.integ = r; render(); }).catch((err) => toast(err.message)); return; }
+  if (el.id === "brand-logo" && el.files.length) { const file = el.files[0]; el.value = "";
+    fetch("/api/admin/brand/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-GFT": "1" }, body: file }).then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); applyBrand(b); render(); toast("Logo gespeichert"); }).catch((err) => toast(err.message)); return; }
+  if (el.form?.id === "brand-form" && el.name === "color") { el.form.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x.dataset.v === el.value)); applyBrand({ ...ui.brand, color: el.value }); return; }
   if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
@@ -2711,6 +2749,7 @@ async function handleSubmit(e, f) {
       if (k === "remind") Object.assign(r, { status: fd.get("status") || null, days: Number(fd.get("days")), repeat: !!fd.get("repeat"), comment: String(fd.get("comment") || "") });
       const list = f.dataset.id ? ui.auto.rules.map((x) => (x.id === r.id ? r : x)) : [...ui.auto.rules, r];
       await saveRules(list); closeModal(); render(); toast(`Regel „${r.name}“ gespeichert`); break; }
+    case "brand-form": { const b = await api("/api/admin/brand", { method: "POST", body: { appName: fd.get("appName"), company: fd.get("company"), color: fd.get("color") } }); sync.company = b.company; applyBrand(b); render(); toast("Erscheinungsbild gespeichert"); break; }
     case "simple-search": { const ps = new URLSearchParams(); for (const [k, v] of fd) if (String(v).trim()) ps.set(k, String(v).trim()); const { params } = route(); for (const k of ["sort", "dir"]) if (params.get(k)) ps.set(k, params.get(k)); go(`#/filters?${ps}`); break; }
     case "audit-form": ui.auditQ = Object.fromEntries([...fd].filter(([, v]) => v)); ui.sys = null; render(); break;
     case "user-form": {
@@ -2787,7 +2826,7 @@ try { const th = localStorage.getItem("gft-theme"); if (th) document.documentEle
 (async function boot() {
   try {
     const meRes = await api("/api/me");
-    db.currentUserId = meRes.user.id; sync.mail = meRes.mail; sync.company = meRes.company;
+    db.currentUserId = meRes.user.id; sync.mail = meRes.mail; sync.company = meRes.company; applyBrand(meRes.brand);
     loadState(await fetchState());
     onNavigate(); connectEvents();
     setInterval(() => { renderTop(); updateSyncBadge(); }, 60000);

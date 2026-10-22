@@ -14,8 +14,8 @@
     { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
-    { "name": "Ihre Arbeit", "url": "/#/your-work" },
+    { "name": "Mein Tag", "url": "/#/your-work" },
     { "name": "Dashboard", "url": "/#/dashboard" },
-    { "name": "Vorgänge suchen", "url": "/#/filters" }
+    { "name": "Vorgänge suchen", "url": "/#/filters?state=open" }
   ]
 }

@@ -9,7 +9,7 @@ import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import { Store, COLLECTIONS } from "./lib/store.mjs";
 import { Sessions, RateLimiter, hashPassword, verifyPassword, validatePassword, randomToken, sha256 } from "./lib/auth.mjs";
-import { Mailer, mailTemplate } from "./lib/mailer.mjs";
+import { Mailer, mailTemplate, setMailBrand } from "./lib/mailer.mjs";
 import { createApiV1 } from "./lib/apiv1.mjs";
 import { createWebhooks, WEBHOOK_EVENTS } from "./lib/webhooks.mjs";
 import { createM365 } from "./lib/m365.mjs";
@@ -142,6 +142,18 @@ const ops = createOps({ store, cfg: CFG, log, filesDir: FILES, version: VERSION,
   snapshot: snapshot ? { ms: snapshot.ms, issues: snapshot.issues, archived: snapshot.archived, bytes: snapshot.json.length, gz: snapshot.gz.length } : null,
   archiveDays: ARCHIVE_DAYS, online: new Set([...clients].map((c) => c.userId)).size, mail: mailer.configured }) });
 const audit = ops.audit;
+
+/* ---------- Erscheinungsbild: App-Name, Firmenname, Farbe, Logo ---------- */
+const ENV_COMPANY = CFG.company; const LOGO_TYPES = { "image/png": "png", "image/jpeg": "jpg", "image/svg+xml": "svg", "image/webp": "webp" };
+function brand() {
+  const logo = store.meta("brandLogo"); const f = logo && path.join(CFG.dataDir, logo); const ok = f && fs.existsSync(f);
+  return { appName: store.meta("brandAppName") || "GF Tracker", company: CFG.company, color: store.meta("brandColor") || "#0c66e4", logo: ok ? `/brand/logo?v=${Math.round(fs.statSync(f).mtimeMs)}` : null };
+}
+function applyBrand() {
+  CFG.company = store.meta("brandCompany") || ENV_COMPANY; const b = brand();
+  setMailBrand({ color: b.color, logoUrl: b.logo && /\.svg$/.test(store.meta("brandLogo") || "") ? null : b.logo ? CFG.appUrl + b.logo : null }); // SVG zeigt Outlook nicht an
+}
+applyBrand();
 const MAX_FILE = Number(env.MAX_UPLOAD_MB || 15) * 1024 * 1024;
 const BLOCKED = /\.(exe|bat|cmd|com|scr|js|jse|vbs|vbe|ps1|msi|msp|dll|jar|hta|cpl|lnk|reg)$/i;
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]);
@@ -709,9 +721,10 @@ async function handleApi(req, res, url, session) {
   }
   if (p === "/api/logout" && m === "POST") { if (user) audit(user, "logout", "", clientIp(req)); return { __cookie: sessions.destroy(req), body: { ok: true } }; }
 
+  if (p === "/api/brand" && m === "GET") return brand();
   if (p === "/api/auth/config") return { microsoft: m365.settings().sso };
   // Kundenportal (öffentlich)
-  if (p === "/api/portal/config") return { company: CFG.company, projects: store.all("projects").filter((x) => x.type === "service").map((x) => ({ key: x.key, name: x.name })), requestTypes: S.REQUEST_TYPES, urgency: S.URGENCY };
+  if (p === "/api/portal/config") return { company: CFG.company, logo: brand().logo, projects: store.all("projects").filter((x) => x.type === "service").map((x) => ({ key: x.key, name: x.name })), requestTypes: S.REQUEST_TYPES, urgency: S.URGENCY };
   if (p === "/api/portal/requests" && m === "POST") return await portalCreate(req);
   let pm = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})$/);
   if (pm && m === "GET") return portalView(portalIssue(pm[1]));
@@ -734,7 +747,7 @@ async function handleApi(req, res, url, session) {
 
   // Ab hier nur angemeldet
   needUser();
-  if (p === "/api/me" && m === "GET") return { user: publicUser(user), mail: mailer.configured, company: CFG.company, appUrl: CFG.appUrl };
+  if (p === "/api/me" && m === "GET") return { user: publicUser(user), mail: mailer.configured, company: CFG.company, appUrl: CFG.appUrl, brand: brand() };
   pm = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments$/);
   if (pm && m === "POST") {
     if (!store.get("issues", pm[1])) throw new HttpError(404, "Vorgang nicht gefunden.");
@@ -886,6 +899,22 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/admin/export" && m === "GET") { needAdmin(); audit(user, "backup.download", "JSON-Export", clientIp(req)); return { __download: `gf-tracker-sicherung-${S.today()}.json`, body: exportAll() }; }
   if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 50e6); try { ops.backup({ force: true }); } catch (e) { log("Sicherung vor Import:", e.message); } const r = importAll(b, user); audit(user, "backup.restore", `${r.imported} Vorgänge eingespielt (vorher automatisch gesichert)`, clientIp(req)); return r; }
   if (p === "/api/admin/system" && m === "GET") { needAdmin(); return ops.status(); }
+  if (p === "/api/admin/brand" && m === "POST") {
+    needAdmin(); const b = await readJson(req, 8e3);
+    if ("color" in b) { if (!/^#[0-9a-f]{6}$/i.test(String(b.color))) throw new HttpError(400, "Farbe bitte als #RRGGBB angeben."); store.meta("brandColor", b.color.toLowerCase()); }
+    if ("appName" in b) store.meta("brandAppName", str(b.appName, 40));
+    if ("company" in b) store.meta("brandCompany", str(b.company, 120));
+    applyBrand(); audit(user, "settings", `Erscheinungsbild: ${Object.keys(b).join(", ")}`, clientIp(req)); broadcast(); return brand();
+  }
+  if (p === "/api/admin/brand/logo" && (m === "PUT" || m === "DELETE")) {
+    needAdmin(); const old = store.meta("brandLogo"); const dropOld = () => { if (old) fs.rmSync(path.join(CFG.dataDir, old), { force: true }); };
+    if (m === "DELETE") { dropOld(); store.meta("brandLogo", ""); applyBrand(); audit(user, "settings", "Logo entfernt", clientIp(req)); return brand(); }
+    const type = String(req.headers["content-type"] || "").split(";")[0].trim(); const ext = LOGO_TYPES[type]; if (!ext) throw new HttpError(415, "Bitte PNG, JPG, WebP oder SVG hochladen.");
+    const data = await readRaw(req, 1048576); if (!data.length) throw new HttpError(400, "Leere Datei.");
+    if (ext === "svg" && /<script|on\w+\s*=|javascript:/i.test(data.toString("utf8"))) throw new HttpError(415, "Das SVG enthält Skripte und wird aus Sicherheitsgründen abgelehnt.");
+    dropOld(); const name = `brand-logo.${ext}`; fs.writeFileSync(path.join(CFG.dataDir, name), data); store.meta("brandLogo", name);
+    applyBrand(); audit(user, "settings", "Logo hochgeladen", clientIp(req)); broadcast(); return brand();
+  }
   if (p === "/api/admin/automation" && m === "GET") { needAdmin(); return { rules: automation.rules(), kinds: RULE_KINDS, triggers: TRIGGERS, recent: automation.recent(60) }; }
   if (p === "/api/admin/automation" && m === "PUT") {
     needAdmin(); const b = await readJson(req, 64e3); let rules;
@@ -953,6 +982,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/auth/microsoft/callback") {
       try { const cookie = await m365.ssoCallback(url); return send(res, 302, "", { Location: "/", "Set-Cookie": cookie }); }
       catch (e) { return send(res, 302, "", { Location: `/login?sso=${encodeURIComponent(e.code === "unknown" ? `Für ${e.email || "dieses Konto"} gibt es noch keinen Zugang im GF Tracker. Bitte an die Administration wenden.` : e.message)}` }); }
+    }
+    if (url.pathname === "/brand/logo") {
+      const n = store.meta("brandLogo"); const f = n && path.join(CFG.dataDir, n); if (!f || !fs.existsSync(f)) return send(res, 404, "Kein Logo", { "Content-Type": "text/plain; charset=utf-8" });
+      res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": Object.entries(LOGO_TYPES).find(([, e]) => n.endsWith(`.${e}`))[0], "Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" });
+      return fs.createReadStream(f).pipe(res);
+    }
+    if (url.pathname === "/manifest.webmanifest") { // App-Name und Farbe aus dem Erscheinungsbild
+      const mf = JSON.parse(fs.readFileSync(path.join(PUBLIC, "manifest.webmanifest"), "utf8")); const b = brand();
+      Object.assign(mf, { name: b.appName === "GF Tracker" ? `GF Tracker${CFG.company !== "GF Tracker" ? ` – ${CFG.company}` : ""}` : b.appName, short_name: b.appName, theme_color: b.color });
+      return send(res, 200, JSON.stringify(mf), { "Content-Type": "application/manifest+json", "Cache-Control": "no-cache" });
     }
     if (url.pathname === "/login") return serveFile(req, res, "login.html");
     if (url.pathname === "/password") return serveFile(req, res, "password.html", { "Referrer-Policy": "no-referrer" });

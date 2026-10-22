@@ -249,7 +249,7 @@ body.modal-open { overflow: hidden; }
 .toasts { position: fixed; left: 20px; bottom: 20px; z-index: 95; display: grid; gap: 8px; }
 .toast { background: var(--fg); color: var(--bg); padding: 10px 14px; border-radius: 6px; box-shadow: var(--shadow-lg); font-size: 13px; max-width: 380px; }
 /* Portal */
-.portal-hero { background: linear-gradient(135deg, #0c66e4, #6250d6); color: #fff; border-radius: 10px; padding: 28px; margin-bottom: 18px; }
+.portal-hero { background: linear-gradient(135deg, var(--primary, #0c66e4), var(--brand-2, #6250d6)); color: #fff; border-radius: 10px; padding: 28px; margin-bottom: 18px; }
 .portal-hero h1 { font-size: 24px; }
 .rtype { padding: 16px; cursor: pointer; display: flex; gap: 12px; align-items: flex-start; border: 2px solid transparent; }
 .rtype:hover, .rtype.on { border-color: var(--primary); }
@@ -435,6 +435,19 @@ th.sortable { cursor: pointer; user-select: none; } th.sortable:hover { color: v
 .tbl-tools { padding: 0 0 6px; } .tbl-tools .menu-d { z-index: 25; }
 .show-m { display: none !important; }
 @media (max-width: 860px) { .show-m { display: inline-flex !important; } #filter-layout > .queue-nav { order: 2; } }
+/* Erscheinungsbild, QR-Code */
+.brand-logo { height: 26px; width: auto; max-width: 140px; object-fit: contain; }
+.topnav .logo { flex-shrink: 0; } .topnav .logo .trunc { max-width: 180px; }
+@media (max-width: 1280px) { .topnav .brand-logo + .trunc { display: none; } }
+.brand-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; } @media (max-width: 860px) { .brand-grid { grid-template-columns: minmax(0, 1fr); } }
+.swatch { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--surface); background: var(--c); box-shadow: 0 0 0 1px var(--border); cursor: pointer; padding: 0; } .swatch.on { box-shadow: 0 0 0 2px var(--fg); }
+.qr-box { background: #fff; padding: 6px; border-radius: 8px; border: 1px solid var(--border); line-height: 0; flex-shrink: 0; }
+@media (max-width: 1180px) { .topnav .nav-portal { display: none; } .topnav .btn.primary .hide-m { display: none; } }
+@media (max-width: 1000px) { .topnav .navlink { padding-left: 7px; padding-right: 7px; } .topnav .logo .trunc { display: none; } .topnav .search { width: 120px; } }
+@media (max-width: 920px) { /* Kopfzeile: Menü schon etwas früher einklappen, damit nichts abgeschnitten wird */
+  .hamb { display: inline-flex; } .topnav .navlink, .topnav .search { display: none; }
+  .topnav.menu-open { height: auto; flex-wrap: wrap; padding-bottom: 8px; } .topnav.menu-open .navlink { display: block; width: 100%; } .topnav.menu-open .search { display: block; width: 100%; order: 10; }
+  .topnav .show-m { display: inline-flex !important; } }
 
 .sa-login { max-width: 520px; margin: 8vh auto; padding: 0 16px; }
 .sa-logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: #fff; }
@@ -1114,9 +1127,9 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <span class="navbtns"><button class="btn subtle icon" id="nav-back" data-act="nav-back" title="Zurück (Alt+←)" aria-label="Zurück">‹</button><button class="btn subtle icon" id="nav-fwd" data-act="nav-fwd" title="Vor (Alt+→)" aria-label="Vor">›</button></span>
-    <a class="logo" href="#/your-work"><span class="mark">${icon("bolt")}</span>GF Tracker</a>
-    ${link("your-work", "Ihre Arbeit", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink" href="?portal" target="_blank" rel="noopener">Service-Portal ↗</a>
-    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Erstellen</span></button>
+    <a class="logo" href="#/your-work">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<span class="mark">${icon("bolt")}</span>`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
+    ${link("your-work", "Mein Tag", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink nav-portal" href="?portal" target="_blank" rel="noopener">Service-Portal ↗</a>
+    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Neuer Vorgang</span></button>
     <a class="btn subtle icon show-m" href="#/filters?state=open" data-act="m-search" aria-label="Suchen">${icon("search")}</a><div class="search gs-wrap">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen: Text, Nummer, Kunde …" aria-label="Suchen" autocomplete="off"><div id="gsugg" class="gsugg" hidden></div></div>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
     <button class="btn subtle icon hide-m" data-act="theme" aria-label="Hell/Dunkel">${icon("sun")}</button>
@@ -1164,6 +1177,7 @@ function render() {
     }
   } catch (e) { console.error(e); html = `<div class="note err">Fehler beim Anzeigen: ${esc(e.message)}</div>`; }
   $("#view").innerHTML = html;
+  setTitle();
   bindDnD();
   if (ui.openIssue && $("#modal").classList.contains("open") && ui.modal === "issue") renderIssue();
 }
@@ -2195,6 +2209,17 @@ function accountMenu(x) {
     <button data-act="set-password" data-id="${x.id}">Passwort direkt setzen</button>
     ${!st && a?.sessions && x.id !== db.currentUserId ? `<button data-act="user-logout" data-id="${x.id}">Auf allen Geräten abmelden</button>` : ""}</div></details>`;
 }
+const BRAND_COLORS = ["#0c66e4", "#1f4e8c", "#0b7a75", "#1a7f37", "#c9372c", "#d35400", "#6e3fbf", "#2b2f36"];
+function brandCard() {
+  const b = ui.brand || {}; const server = location.protocol.startsWith("http") && !window.GFT_STANDALONE;
+  return `<div class="card pad" style="grid-column:1/-1"><h3 style="font-size:15px;margin:0 0 4px">Erscheinungsbild</h3><p class="small muted" style="margin:0 0 12px">Name, Firmenfarbe und Logo erscheinen in der App, auf der Anmeldeseite, im Kundenportal, in E-Mails und in der installierten App.</p>
+    <form id="brand-form" class="brand-grid"><label class="f">Name der App<input type="text" name="appName" value="${esc(b.appName || "GF Tracker")}" maxlength="40" placeholder="z. B. DLC Service"></label>
+      <label class="f">Firmenname (Portal, E-Mails)<input type="text" name="company" value="${esc(b.company || sync.company || "")}" maxlength="120"></label>
+      <div class="f"><span>Firmenfarbe</span><div class="row nowrap" style="gap:6px">${BRAND_COLORS.map((c) => `<button type="button" class="swatch ${c === (b.color || "#0c66e4") ? "on" : ""}" style="--c:${c}" data-act="brand-swatch" data-v="${c}" aria-label="Farbe ${c}"></button>`).join("")}<input type="color" name="color" value="${esc(b.color || "#0c66e4")}" aria-label="Eigene Farbe" style="width:40px;height:30px;padding:0"></div></div>
+      <div class="f"><span>Logo <span class="muted small">(PNG, JPG, SVG; quer, mind. 64 px hoch)</span></span><div class="row nowrap">${b.logo ? `<img src="${esc(b.logo)}" alt="Logo" style="height:32px;max-width:160px;object-fit:contain;background:var(--surface-2);border-radius:4px;padding:2px">` : '<span class="small muted">kein Logo</span>'}
+        <label class="btn sm" style="cursor:pointer">${icon("upload")} ${b.logo ? "Ersetzen" : "Hochladen"}<input type="file" id="brand-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden></label>${b.logo ? `<button type="button" class="btn subtle sm" data-act="brand-logo-del">Entfernen</button>` : ""}</div></div>
+      <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit" ${server ? "" : "disabled"}>Speichern</button>${server ? `<span class="small muted">Vorschau: Farbe wird sofort angezeigt, gilt für alle nach dem Speichern.</span>` : '<span class="small muted">Das Erscheinungsbild wird in der Server-Version eingestellt.</span>'}</div></form></div>`;
+}
 function viewSettings() {
   const u = me(); const isAdmin = u.role === "ADMIN";
   return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
@@ -2235,6 +2260,7 @@ function viewSettings() {
           <li>Eine E-Mail öffnen → in der Menüleiste <b>GF Tracker</b> (ggf. unter „Apps“ / „…“) → Zugangsschlüssel einfügen. Die Anmeldung gilt danach auf allen Geräten mit diesem Outlook-Konto.</li>
           ${o.https ? "" : "<li><b>Hinweis:</b> Outlook verlangt eine HTTPS-Adresse (APP_URL mit https://).</li>"}</ol></details>`; })()}
       <h3 style="font-size:15px;margin:20px 0 6px">Als App nutzen</h3>
+      ${location.protocol.startsWith("http") ? `<div class="row nowrap" style="align-items:flex-start;gap:14px;margin-bottom:8px"><div class="qr-box">${(() => { try { return QR.svg(location.origin + "/", { size: 132 }); } catch { return ""; } })()}</div><p class="small muted" style="margin:0;line-height:1.6"><b>Aufs Handy holen:</b> QR-Code mit der Kamera scannen, anmelden und dann „Zum Home-Bildschirm“ (iPhone) bzw. „App installieren“ (Android) wählen.<br><span class="small">${esc(location.origin)}</span></p></div>` : ""}
       ${isStandalone() ? '<p class="small muted" style="margin:0">Sie nutzen den GF Tracker bereits als installierte App. ✓</p>'
         : `${installPrompt ? `<button class="btn primary" data-act="install-app">${icon("download")} GF Tracker als App installieren</button>` : ""}
         <p class="small muted" style="margin:6px 0 0;line-height:1.6"><b>PC (Edge/Chrome):</b> in der Adresszeile auf das Symbol „App installieren“ klicken bzw. Menü ⋯ → Apps → „Diese Website als App installieren“. Danach eigenes Fenster, Startmenü- und Taskleisten-Eintrag.<br>
@@ -2254,6 +2280,7 @@ function viewSettings() {
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Integrationen &amp; Schnittstellen</h3><p class="small muted" style="margin:0">Microsoft 365 (E-Mail, Postfach, Kalender, Anmeldung), Factorial, REST-API für Ihre Programme, Webhooks für Teams, Datenimport.</p></div><a class="btn primary" href="#/integrations">Integrationen öffnen</a></div>` : ""}
+    ${isAdmin ? brandCard() : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">System &amp; Protokoll</h3><p class="small muted" style="margin:0">Sicherungen (Datenbank und Anhänge), Speicher, Auslastung, Fehler und das Audit-Protokoll: wer hat wann was geändert.</p></div><a class="btn" href="#/system">System öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Automatik</h3><p class="small muted" style="margin:0">Regeln für den Arbeitsablauf: neue Vorgänge automatisch im Team verteilen, liegengebliebene eskalieren, Wiedervorlagen („Wartet auf Kunde“ nachfassen).</p></div><a class="btn" href="#/automation">Regeln öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
@@ -2372,6 +2399,24 @@ function openModal(html, wide = false, kind = "form") {
   $("#overlay").classList.add("open"); document.body.classList.add("modal-open");
   setTimeout(() => { if (!m.contains(document.activeElement)) m.focus({ preventScroll: true }); }, 40);
 }
+/* ---------- Erscheinungsbild (Firmenfarbe, Logo, Name) ---------- */
+const hexRgb = (h) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
+const rgbHex = (a) => `#${a.map((v) => Math.round(Math.max(0, Math.min(255, v))).toString(16).padStart(2, "0")).join("")}`;
+const mixHex = (h, w, t) => rgbHex(hexRgb(h).map((v, k) => v + (hexRgb(w)[k] - v) * t));
+const lum = (h) => { const [r, g, b] = hexRgb(h).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+function applyBrand(b = ui.brand) {
+  ui.brand = b || ui.brand || { appName: "GF Tracker", color: "#0c66e4", logo: null }; const c = ui.brand.color; const st = document.documentElement.style;
+  const dark = (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+  if (!c || c === "#0c66e4") { for (const k of ["--primary", "--primary-hover", "--primary-soft", "--sel", "--primary-fg"]) st.removeProperty(k); }
+  else if (dark) { let x = c; for (let k = 0; k < 10 && lum(x) < 0.3; k++) x = mixHex(x, "#ffffff", 0.2); st.setProperty("--primary", x); st.setProperty("--primary-hover", mixHex(x, "#ffffff", 0.2)); st.setProperty("--primary-soft", mixHex(x, "#1d2125", 0.8)); st.setProperty("--sel", mixHex(x, "#1d2125", 0.8)); st.setProperty("--primary-fg", "#1d2125"); }
+  else { st.setProperty("--primary", c); st.setProperty("--primary-hover", mixHex(c, "#000000", 0.15)); st.setProperty("--primary-soft", mixHex(c, "#ffffff", 0.9)); st.setProperty("--sel", mixHex(c, "#ffffff", 0.9)); st.setProperty("--primary-fg", lum(c) > 0.5 ? "#172b4d" : "#ffffff"); }
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", c);
+}
+/** Fenstertitel = aktuelle Ansicht bzw. Vorgang – erscheint im Verlauf, in Lesezeichen, in der Taskleiste und in Teams. */
+function setTitle() {
+  const i = ui.modal === "issue" && ui.openIssue && issue(ui.openIssue); const h = $("#view h1")?.textContent.trim();
+  document.title = `${i ? `${keyOf(i)} ${i.summary}` : h || "Mein Tag"} · ${ui.brand?.appName || "GF Tracker"}`;
+}
 function closeModal({ fromNav = false } = {}) {
   if (ui.modal === "issue" && !fromNav && route().params.get("issue")) { // Vorgang geschlossen: Verlaufsschritt zurücknehmen
     if (history.state?.gftIssue) { ui.modal = null; history.go(-history.state.gftIssue); } else // ganz zurück zur Ansicht, auch nach Sprüngen zwischen Vorgängen
@@ -2380,6 +2425,7 @@ function closeModal({ fromNav = false } = {}) {
   const m = $("#modal"); m.className = "modal"; m.innerHTML = ""; ui.modal = null; ui.openIssue = null; ui.editingDesc = false; ui.modalDirty = false; ui.stepReturn = null;
   $("#overlay").classList.remove("open"); document.body.classList.remove("modal-open");
   const f = ui.modalReturnFocus; ui.modalReturnFocus = null; if (f && document.contains(f)) f.focus({ preventScroll: true });
+  setTitle();
 }
 /** Schließen durch Nutzer (Esc, Klick daneben, ×): fragt bei ungespeicherten Eingaben nach; Arbeitsschritte kehren zum Vorgang zurück. */
 function dismissModal() {
@@ -2390,7 +2436,7 @@ function dismissModal() {
   closeModal(); if (back && issue(back)) openIssue(back);
 }
 function openIssue(id, { push = true } = {}) { const i = issue(id); if (!i) return toast("Vorgang nicht gefunden.");
-  if (push && route().params.get("issue") !== keyOf(i)) { const b = baseHash(); history.pushState({ gftIssue: (history.state?.gftIssue || 0) + 1 }, "", `${b}${b.includes("?") ? "&" : "?"}issue=${encodeURIComponent(keyOf(i))}`); updateNavButtons(); } ui.openIssue = id; ui.editingDesc = false; ui.addingSub = false; ui.addingLink = false; ui.issueTab = ui.issueTab || "comments"; pushRecent(id); openModal("", true, "issue"); renderIssue(); }
+  if (push && route().params.get("issue") !== keyOf(i)) { const b = baseHash(); history.pushState({ gftIssue: (history.state?.gftIssue || 0) + 1 }, "", `${b}${b.includes("?") ? "&" : "?"}issue=${encodeURIComponent(keyOf(i))}`); updateNavButtons(); } ui.openIssue = id; ui.editingDesc = false; ui.addingSub = false; ui.addingLink = false; ui.issueTab = ui.issueTab || "comments"; pushRecent(id); openModal("", true, "issue"); renderIssue(); setTitle(); }
 function renderIssue() {
   const i = issue(ui.openIssue); if (!i) { closeModal(); return; }
   const p = proj(i.projectId); const s = statusOf(i); const ch = children(i); const isSvc = p.type === "service";
@@ -2888,7 +2934,7 @@ document.addEventListener("click", (e) => {
     case "reload": location.reload(); break;
     case "goto": e.preventDefault(); go(el.dataset.href); break;
     case "menu": $("#topnav").classList.toggle("menu-open"); break;
-    case "theme": { const c = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = c === "dark" ? "light" : "dark"; try { localStorage.setItem("gft-theme", document.documentElement.dataset.theme); } catch {} break; }
+    case "theme": { const c = document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"); document.documentElement.dataset.theme = c === "dark" ? "light" : "dark"; try { localStorage.setItem("gft-theme", document.documentElement.dataset.theme); } catch {} applyBrand(); break; }
     case "notifs": { const p = $("#notifs"); p.classList.toggle("open"); if (p.classList.contains("open")) renderNotifs(); break; }
     case "read-all": db.notifications.forEach((n) => { if (n.userId === db.currentUserId) n.read = true; }); save(); renderNotifs(); renderTop(); break;
     case "open-notif": { const n = db.notifications.find((x) => x.id === id); if (n) { n.read = true; save(); $("#notifs").classList.remove("open"); renderTop(); if (n.issueId) openIssue(n.issueId); } break; }
@@ -2896,6 +2942,8 @@ document.addEventListener("click", (e) => {
     case "integ-reload": ui.integ = null; render(); break;
     case "load-archive": ensureArchive(); break;
     case "sys-reload": ui.sys = null; render(); break;
+    case "brand-swatch": { const f = $("#brand-form"); f.color.value = el.dataset.v; f.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x === el)); applyBrand({ ...ui.brand, color: el.dataset.v }); break; }
+    case "brand-logo-del": api("/api/admin/brand/logo", { method: "DELETE" }).then((b) => { applyBrand(b); render(); toast("Logo entfernt"); }).catch((err) => toast(err.message)); break;
     case "nav-back": history.back(); break;
     case "m-search": e.preventDefault(); go("#/filters?state=open"); setTimeout(() => $("#ss-text")?.focus(), 80); break;
     case "sugg-issue": hideSuggestions(); $("#gsearch").value = ""; $("#gsearch").blur(); openIssue(id); break;
@@ -3018,6 +3066,9 @@ document.addEventListener("change", (e) => {
   if (el.hasAttribute("data-autosubmit")) { el.form.requestSubmit(); return; }
   if (el.dataset.act === "hook-active") { api(`/api/admin/webhooks/${el.dataset.id}`, { method: "PATCH", body: { active: el.checked } }).then(loadIntegrations).catch((err) => toast(err.message)); return; }
   if (el.dataset.act === "factorial-create") { api("/api/admin/integrations/settings", { method: "POST", body: { factorialCreateUsers: el.checked } }).then((r) => { ui.integ = r; render(); }).catch((err) => toast(err.message)); return; }
+  if (el.id === "brand-logo" && el.files.length) { const file = el.files[0]; el.value = "";
+    fetch("/api/admin/brand/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-GFT": "1" }, body: file }).then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); applyBrand(b); render(); toast("Logo gespeichert"); }).catch((err) => toast(err.message)); return; }
+  if (el.form?.id === "brand-form" && el.name === "color") { el.form.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x.dataset.v === el.value)); applyBrand({ ...ui.brand, color: el.value }); return; }
   if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
@@ -3172,6 +3223,7 @@ async function handleSubmit(e, f) {
       if (k === "remind") Object.assign(r, { status: fd.get("status") || null, days: Number(fd.get("days")), repeat: !!fd.get("repeat"), comment: String(fd.get("comment") || "") });
       const list = f.dataset.id ? ui.auto.rules.map((x) => (x.id === r.id ? r : x)) : [...ui.auto.rules, r];
       await saveRules(list); closeModal(); render(); toast(`Regel „${r.name}“ gespeichert`); break; }
+    case "brand-form": { const b = await api("/api/admin/brand", { method: "POST", body: { appName: fd.get("appName"), company: fd.get("company"), color: fd.get("color") } }); sync.company = b.company; applyBrand(b); render(); toast("Erscheinungsbild gespeichert"); break; }
     case "simple-search": { const ps = new URLSearchParams(); for (const [k, v] of fd) if (String(v).trim()) ps.set(k, String(v).trim()); const { params } = route(); for (const k of ["sort", "dir"]) if (params.get(k)) ps.set(k, params.get(k)); go(`#/filters?${ps}`); break; }
     case "audit-form": ui.auditQ = Object.fromEntries([...fd].filter(([, v]) => v)); ui.sys = null; render(); break;
     case "user-form": {
@@ -3248,7 +3300,7 @@ try { const th = localStorage.getItem("gft-theme"); if (th) document.documentEle
 (async function boot() {
   try {
     const meRes = await api("/api/me");
-    db.currentUserId = meRes.user.id; sync.mail = meRes.mail; sync.company = meRes.company;
+    db.currentUserId = meRes.user.id; sync.mail = meRes.mail; sync.company = meRes.company; applyBrand(meRes.brand);
     loadState(await fetchState());
     onNavigate(); connectEvents();
     setInterval(() => { renderTop(); updateSyncBadge(); }, 60000);
@@ -3282,7 +3334,7 @@ const tokenFromPath = () => (/^[A-Za-z0-9_-]{20,64}$/.test(params.get("r") || ""
 
 function hero() {
   if (EMBED) return "";
-  return `<div class="portal-hero"><h1>${esc(state.cfg.company)} – Service-Portal</h1><p style="margin:6px 0 0;opacity:.9">Störung melden, Wartung anfragen oder den Stand Ihrer Anfrage verfolgen – rund um die Uhr.</p></div>`;
+  return `<div class="portal-hero">${state.cfg.logo ? `<img src="${esc(state.cfg.logo)}" alt="${esc(state.cfg.company)}" style="height:40px;width:auto;max-width:220px;object-fit:contain;background:#fff;border-radius:6px;padding:4px 8px;margin-bottom:10px">` : ""}<h1>${esc(state.cfg.company)} – Service-Portal</h1><p style="margin:6px 0 0;opacity:.9">Störung melden, Wartung anfragen oder den Stand Ihrer Anfrage verfolgen – rund um die Uhr.</p></div>`;
 }
 function renderHome() {
   const c = state.cfg; const projects = c.projects;
@@ -4102,6 +4154,72 @@ const norm = (s) => String(s ?? "").toLowerCase().replace(/ä/g, "ae").replace(/
 
 return { readTable, parseCsv, toDate, toNumber, toBool, norm };
 })();
+
+</script>
+<script>
+"use strict";
+// Kleiner QR-Code-Erzeuger ohne Zusatzpakete (Byte-Modus, Fehlerkorrektur M, Versionen 1–20).
+// Nach dem Verfahren der Norm ISO/IEC 18004; Ausgabe als SVG. Verwendung: QR.svg("https://…", { size: 180 })
+const QR = (() => {
+  const ECC_PER_BLOCK = [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26];
+  const BLOCKS = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16];
+  const rawModules = (v) => { let r = (16 * v + 128) * v + 64; if (v >= 2) { const n = Math.floor(v / 7) + 2; r -= (25 * n - 10) * n - 55; if (v >= 7) r -= 36; } return r; };
+  const dataCodewords = (v) => Math.floor(rawModules(v) / 8) - ECC_PER_BLOCK[v] * BLOCKS[v];
+  const gfMul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; } return z & 0xff; };
+  function rsDivisor(deg) { const r = new Array(deg).fill(0); r[deg - 1] = 1; let root = 1; for (let i = 0; i < deg; i++) { for (let j = 0; j < deg; j++) { r[j] = gfMul(r[j], root); if (j + 1 < deg) r[j] ^= r[j + 1]; } root = gfMul(root, 2); } return r; }
+  function rsRemainder(data, div) { const r = div.map(() => 0); for (const b of data) { const f = b ^ r.shift(); r.push(0); div.forEach((c, i) => { r[i] ^= gfMul(c, f); }); } return r; }
+  const alignPos = (v) => { if (v === 1) return []; const n = Math.floor(v / 7) + 2; const step = Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2; const r = [6]; for (let p = v * 4 + 10; r.length < n; p -= step) r.splice(1, 0, p); return r; };
+  const MASKS = [(x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x) => x % 3 === 0, (x, y) => (x + y) % 3 === 0, (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0,
+    (x, y) => ((x * y) % 2) + ((x * y) % 3) === 0, (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 === 0, (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 === 0];
+
+  function encode(text) {
+    const bytes = [...new TextEncoder().encode(text)];
+    let v = 1; for (; v <= 20; v++) { const cc = v < 10 ? 8 : 16; if (4 + cc + bytes.length * 8 <= dataCodewords(v) * 8) break; }
+    if (v > 20) throw new Error("Text zu lang für den QR-Code.");
+    // Datenbits
+    const bits = []; const put = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >>> i) & 1); };
+    put(4, 4); put(bytes.length, v < 10 ? 8 : 16); bytes.forEach((b) => put(b, 8));
+    const cap = dataCodewords(v) * 8; put(0, Math.min(4, cap - bits.length)); put(0, (8 - (bits.length % 8)) % 8);
+    for (let pad = 0xec; bits.length < cap; pad ^= 0xec ^ 0x11) put(pad, 8);
+    const data = []; for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+    // Fehlerkorrektur und Verschränkung
+    const nb = BLOCKS[v], ecl = ECC_PER_BLOCK[v], raw = Math.floor(rawModules(v) / 8), nShort = nb - (raw % nb), shortLen = Math.floor(raw / nb), div = rsDivisor(ecl);
+    const blocks = []; for (let i = 0, k = 0; i < nb; i++) { const d = data.slice(k, k + shortLen - ecl + (i < nShort ? 0 : 1)); k += d.length; const e = rsRemainder(d, div); if (i < nShort) d.push(0); blocks.push(d.concat(e)); }
+    const all = []; for (let i = 0; i < blocks[0].length; i++) blocks.forEach((b, j) => { if (i !== shortLen - ecl || j >= nShort) all.push(b[i]); });
+    // Raster mit Funktionsmustern
+    const size = v * 4 + 17; const M = Array.from({ length: size }, () => new Array(size).fill(false)); const F = Array.from({ length: size }, () => new Array(size).fill(false));
+    const set = (x, y, d) => { M[y][x] = d; F[y][x] = true; };
+    for (let i = 0; i < size; i++) { set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    for (const [cx, cy] of [[3, 3], [size - 4, 3], [3, size - 4]]) for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) { const x = cx + dx, y = cy + dy; if (x >= 0 && x < size && y >= 0 && y < size) { const d = Math.max(Math.abs(dx), Math.abs(dy)); set(x, y, d !== 2 && d !== 4); } }
+    const ap = alignPos(v); ap.forEach((ax, i) => ap.forEach((ay, j) => { if ((i === 0 && j === 0) || (i === 0 && j === ap.length - 1) || (i === ap.length - 1 && j === 0)) return; for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) set(ax + dx, ay + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1); }));
+    const drawFormat = (mask) => {
+      const d = (0 << 3) | mask; let r = d; for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537); const b = ((d << 10) | r) ^ 0x5412; const g = (i) => ((b >>> i) & 1) === 1;
+      for (let i = 0; i <= 5; i++) set(8, i, g(i)); set(8, 7, g(6)); set(8, 8, g(7)); set(7, 8, g(8)); for (let i = 9; i < 15; i++) set(14 - i, 8, g(i));
+      for (let i = 0; i < 8; i++) set(size - 1 - i, 8, g(i)); for (let i = 8; i < 15; i++) set(8, size - 15 + i, g(i)); set(8, size - 8, true);
+    };
+    drawFormat(0);
+    if (v >= 7) { let r = v; for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25); const b = (v << 12) | r; for (let i = 0; i < 18; i++) { const bit = ((b >>> i) & 1) === 1, a = size - 11 + (i % 3), c = Math.floor(i / 3); set(a, c, bit); set(c, a, bit); } }
+    // Daten im Zickzack eintragen
+    let i = 0; for (let right = size - 1; right >= 1; right -= 2) { if (right === 6) right = 5; for (let vert = 0; vert < size; vert++) for (let j = 0; j < 2; j++) { const x = right - j, up = ((right + 1) & 2) === 0, y = up ? size - 1 - vert : vert; if (!F[y][x] && i < all.length * 8) { M[y][x] = ((all[i >>> 3] >>> (7 - (i & 7))) & 1) === 1; i++; } } }
+    // Maske mit der geringsten Strafpunktzahl wählen
+    const apply = (m) => { for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) if (!F[y][x] && MASKS[m](x, y)) M[y][x] = !M[y][x]; };
+    const penalty = () => { let p = 0, dark = 0;
+      for (let k = 0; k < 2; k++) for (let a = 0; a < size; a++) { let run = 1; for (let b = 1; b < size; b++) { const c = k ? M[b][a] : M[a][b], pr = k ? M[b - 1][a] : M[a][b - 1]; if (c === pr) { run++; if (run === 5) p += 3; else if (run > 5) p++; } else run = 1; } }
+      for (let y = 0; y < size - 1; y++) for (let x = 0; x < size - 1; x++) { const c = M[y][x]; if (c === M[y][x + 1] && c === M[y + 1][x] && c === M[y + 1][x + 1]) p += 3; }
+      M.forEach((row) => row.forEach((c) => { if (c) dark++; })); return p + Math.floor(Math.abs(dark * 20 - size * size * 10) / (size * size)) * 10; };
+    let best = 0, bestP = Infinity; for (let m = 0; m < 8; m++) { apply(m); drawFormat(m); const p = penalty(); if (p < bestP) { bestP = p; best = m; } apply(m); }
+    apply(best); drawFormat(best);
+    return M;
+  }
+
+  function svg(text, { size = 180, fg = "#000", bg = "#fff" } = {}) {
+    const M = encode(text); const n = M.length + 8; let d = "";
+    M.forEach((row, y) => row.forEach((c, x) => { if (c) d += `M${x + 4} ${y + 4}h1v1h-1z`; }));
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}" width="${size}" height="${size}" shape-rendering="crispEdges" role="img" aria-label="QR-Code"><rect width="${n}" height="${n}" fill="${bg}"/><path d="${d}" fill="${fg}"/></svg>`;
+  }
+  return { encode, svg };
+})();
+if (typeof module !== "undefined") module.exports = QR;
 
 </script>
 <script>
