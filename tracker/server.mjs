@@ -742,9 +742,11 @@ function importAll(data, admin) {
     for (const t of ["teams", "customers", "absences", "projects", "sprints", "issues", "filters"]) for (const o of data[t] || []) if (o && ID_RE.test(String(o.id))) store.put(t, o);
     store.db.exec("DELETE FROM counters");
   });
+  // Anhänge aus einer Sicherung der Einzel-HTML-Version (Base64) übernehmen
+  let files = 0; for (const f of Array.isArray(data.files) ? data.files : []) { if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(f.id)) || typeof f.data !== "string") continue; const target = path.join(FILES, f.id); if (!fs.existsSync(target)) { fs.writeFileSync(target, Buffer.from(f.data, "base64")); files++; } }
   broadcast();
   const missing = store.all("users").filter((u) => !store.db.prepare("SELECT 1 FROM accounts WHERE user_id = ?").get(u.id));
-  return { imported: data.issues.length, usersWithoutPassword: missing.map((u) => u.email) };
+  return { imported: data.issues.length, files, usersWithoutPassword: missing.map((u) => u.email) };
 }
 
 /* ---------- Routen ---------- */
@@ -966,7 +968,7 @@ async function handleApi(req, res, url, session) {
     return { ok: true };
   }
   if (p === "/api/admin/export" && m === "GET") { needAdmin(); audit(user, "backup.download", "JSON-Export", clientIp(req)); return { __download: `gf-tracker-sicherung-${S.today()}.json`, body: exportAll() }; }
-  if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 50e6); try { ops.backup({ force: true }); } catch (e) { log("Sicherung vor Import:", e.message); } const r = importAll(b, user); audit(user, "backup.restore", `${r.imported} Vorgänge eingespielt (vorher automatisch gesichert)`, clientIp(req)); return r; }
+  if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 400e6); try { ops.backup({ force: true }); } catch (e) { log("Sicherung vor Import:", e.message); } const r = importAll(b, user); audit(user, "backup.restore", `${r.imported} Vorgänge eingespielt (vorher automatisch gesichert)`, clientIp(req)); return r; }
   if (p === "/api/admin/system" && m === "GET") { needAdmin(); return ops.status(); }
   if (p === "/api/admin/brand" && m === "POST") {
     needAdmin(); const b = await readJson(req, 8e3);

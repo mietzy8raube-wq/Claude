@@ -67,9 +67,13 @@ npm start     # Server mit Konfiguration aus Umgebungsvariablen
 `npm run build:standalone` erzeugt aus denselben Quelldateien
 `../standalone/gf-suite-tracker.html`: eine HTML-Datei, die per Doppelklick im
 Browser läuft – mit Arbeitsablauf, Mein Tag, Einsatzplanung, Servicebericht und
-Kundenportal (`?portal`). Daten liegen im localStorage dieses Browsers; jeder Tab
-kann als andere Person angemeldet sein. Kein Passwortschutz, kein E-Mail-Versand,
-kein gemeinsames Arbeiten über mehrere Geräte – dafür die Server-Version nutzen.
+Kundenportal (`?portal`). Daten und **Dateianhänge** liegen in der IndexedDB dieses
+Browsers (kein 5-MB-Limit; ältere Stände aus dem localStorage werden beim ersten Start
+automatisch übernommen); jeder Tab kann als andere Person angemeldet sein.
+Anhänge vom PC: „Datei hinzufügen“, Ziehen & Ablegen, **Strg+V** (z. B. Bildschirmfoto)
+oder direkt beim Erstellen eines Vorgangs. Die Sicherung (Einstellungen) enthält alle
+Anhänge und lässt sich auch in die Server-Version einspielen. Kein Passwortschutz, kein
+E-Mail-Versand, kein gemeinsames Arbeiten über mehrere Geräte – dafür die Server-Version.
 
 
 ## Integrationen

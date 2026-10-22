@@ -164,6 +164,8 @@ function applyServer(r) {
   else list.push(clone(data));
   base.set(r.id, clone(data));
 }
+/** Alle offenen Änderungen jetzt senden und warten, bis der Server sie hat (z. B. vor dem Hochladen zu einem neuen Vorgang). */
+async function syncNow() { clearTimeout(sync.timer); if (!sync.inFlight) await flush(); for (let k = 0; k < 200 && (sync.inFlight || sync.pending.length); k++) await new Promise((r) => setTimeout(r, 50)); }
 async function flush() {
   if (sync.inFlight) { sync.again = true; return; }
   const ops = collectOps(); if (ops.length) sync.pending.push(...ops);
@@ -1205,20 +1207,27 @@ function importSheet(n) {
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const isImg = (a) => /^image\/(png|jpeg|gif|webp)$/.test(a.type);
 function attTile(i, a) {
-  const src = `/api/files/${a.id}`; const u = (q = "") => authUrl(src + q); const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
-  return `<div class="att">${isImg(a) ? `<a href="${u("?inline=1")}" target="_blank" rel="noopener" class="att-thumb"><img src="${u("?inline=1")}" alt="${esc(a.name)}" loading="lazy"></a>` : `<a href="${u(a.type === "application/pdf" ? "?inline=1" : "")}" target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
-    <div class="att-meta"><a href="${u()}" class="trunc b" title="${esc(a.name)}" download>${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
+  const src = `/api/files/${a.id}`; const u = (q = "") => authUrl(src + q);
+  const L = !!window.GFTLocal; const href = (q = "") => (L ? `href="#" data-gft-href="${src}"` : `href="${u(q)}"`); const img = L ? `data-gft-src="${src}"` : `src="${u("?inline=1")}"`; // Einzeldatei: Dateien liegen im Browser
+  const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
+  return `<div class="att">${isImg(a) ? `<a ${href("?inline=1")} target="_blank" rel="noopener" class="att-thumb"><img ${img} alt="${esc(a.name)}" loading="lazy"></a>` : `<a ${href(a.type === "application/pdf" ? "?inline=1" : "")} target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
+    <div class="att-meta"><a ${href()} class="trunc b" title="${esc(a.name)}" download="${esc(a.name)}">${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
     ${canDel && a.source === "upload" ? `<button class="btn subtle sm icon" data-act="att-delete" data-id="${i.id}" data-k="${a.id}" title="Entfernen" aria-label="Entfernen">${icon("trash")}</button>` : ""}</div>`;
 }
+/** Eingefügte Bilder (Strg+V) haben keinen sinnvollen Namen – „Bildschirmfoto 2026-10-22 14-05.png“. */
+const namePasted = (f, k = 0) => (/^image\.(png|jpe?g|gif|webp)$/i.test(f.name) || !f.name ? new File([f], `Bildschirmfoto ${new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-")}${k ? ` (${k + 1})` : ""}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: f.type }) : f);
 async function uploadFiles(issueId, files) {
-  let ok = 0;
+  const ids = [];
   for (const f of files) {
     try {
       const res = await fetch(`/api/issues/${issueId}/attachments`, { method: "POST", credentials: "same-origin", headers: { ...authHeaders(), "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
-      const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ok++;
+      const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ids.push(data.id);
     } catch (e) { toast(`${f.name}: ${e.message}`); }
   }
-  if (ok) { toast(`${ok} Datei${ok > 1 ? "en" : ""} hochgeladen`); await pull(); if (ui.openIssue === issueId) renderIssue(); }
+  if (!ids.length) return;
+  // Warten, bis die neuen Anhänge im lokalen Stand angekommen sind (ein gleichzeitiger Abgleich kann den eigenen kurz überholen)
+  for (let k = 0; k < 40; k++) { await pull(); const i = issue(issueId); if (i && ids.every((id) => (i.attachments || []).some((a) => a.id === id))) break; await new Promise((r) => setTimeout(r, 75)); }
+  toast(`${ids.length} Datei${ids.length > 1 ? "en" : ""} hinzugefügt`); if (ui.openIssue === issueId && ui.modal === "issue") renderIssue();
 }
 
 /* ---------- Ansicht: Kunden & Anlagen ---------- */
@@ -1774,6 +1783,13 @@ function brandCard() {
         <label class="btn sm" style="cursor:pointer">${icon("upload")} ${b.logo ? "Ersetzen" : "Hochladen"}<input type="file" id="brand-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden></label>${b.logo ? `<button type="button" class="btn subtle sm" data-act="brand-logo-del">Entfernen</button>` : ""}</div></div>
       <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit" ${server ? "" : "disabled"}>Speichern</button>${server ? `<span class="small muted">Vorschau: Farbe wird sofort angezeigt, gilt für alle nach dem Speichern.</span>` : '<span class="small muted">Das Erscheinungsbild wird in der Server-Version eingestellt.</span>'}</div></form></div>`;
 }
+/** Einzeldatei-Version: wo die Daten liegen, wie viel Platz belegt ist, Hinweis auf Sicherung. */
+function localStorageInfo() {
+  const st = ui.saStorage; if (!st) { GFTLocal.storage().then((r) => { ui.saStorage = r; if (route().parts[0] === "settings") render(); }); }
+  const files = db.issues.reduce((n, i) => n + (i.attachments || []).length, 0); const mb = (b) => `${(b / 1048576).toFixed(1).replace(".", ",")} MB`;
+  return `<div class="note ${st && !st.idb ? "err" : "info"}" style="margin:0 0 12px"><b>Alle Daten und ${files} Anhänge liegen nur in diesem Browser auf diesem PC.</b>${st?.used != null ? ` Belegt: ${mb(st.used)}${st.quota ? ` von ${st.quota > 10737418240 ? "über 10 GB" : mb(st.quota)} verfügbar` : ""}.` : ""}${st && !st.idb ? " Achtung: Der Browser erlaubt keine dauerhafte Ablage (privater Modus?) – Anhänge sind nicht möglich, Daten gehen beim Schließen verloren." : ""}
+    <br>Bitte regelmäßig <b>„Sicherung herunterladen“</b> – die Datei enthält auch alle Anhänge und lässt sich jederzeit wieder einspielen oder in die Server-Version übernehmen.</div>`;
+}
 function viewSettings() {
   const u = me(); const isAdmin = u.role === "ADMIN";
   return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
@@ -1838,7 +1854,7 @@ function viewSettings() {
     ${isAdmin ? brandCard() : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">System &amp; Protokoll</h3><p class="small muted" style="margin:0">Sicherungen (Datenbank und Anhänge), Speicher, Auslastung, Fehler und das Audit-Protokoll: wer hat wann was geändert.</p></div><a class="btn" href="#/system">System öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Automatik</h3><p class="small muted" style="margin:0">Regeln für den Arbeitsablauf: neue Vorgänge automatisch im Team verteilen, liegengebliebene eskalieren, Wiedervorlagen („Wartet auf Kunde“ nachfassen).</p></div><a class="btn" href="#/automation">Regeln öffnen</a></div>` : ""}
-    ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
+    ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3>${window.GFTLocal ? localStorageInfo() : `<p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version (inkl. Anhänge) einspielen.</p>`}
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
       ${sync.mail ? `<button class="btn" data-act="mail-test">Test-E-Mail an mich senden</button>` : ""}
@@ -2075,7 +2091,7 @@ function renderIssue() {
           <div>${i.links.map((l, k) => { const o = issue(l.issueId); return o ? `<div class="linkrow" data-act="open" data-id="${o.id}"><span class="small muted" style="width:150px">${LINK_LABEL[l.type]}</span>${typeIcon(o.type)}<span class="key">${keyOf(o)}</span><span class="trunc" style="flex:1">${esc(o.summary)}</span>${lozenge(o)}<button class="btn subtle sm icon" data-act="unlink" data-v="${k}" aria-label="Verknüpfung entfernen">${icon("x")}</button></div>` : ""; }).join("")}</div>
           ${ui.addingLink ? `<form id="link-form" class="row nowrap" style="margin-top:6px"><select name="type" style="width:190px">${Object.entries(LINK_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input type="text" name="key" list="issue-keys" placeholder="Schlüssel, z. B. DIG-3" required><datalist id="issue-keys">${db.issues.filter((x) => x.id !== i.id).map((x) => `<option value="${keyOf(x)}">${esc(x.summary)}</option>`).join("")}</datalist><button class="btn primary" type="submit">Verknüpfen</button></form>` : ""}` : ""}
         <div class="sec-title row" style="margin-top:20px">Anhänge${(i.attachments || []).length ? ` <span class="badge-count">${i.attachments.length}</span>` : ""}<span class="sp"></span><label class="btn subtle sm" style="cursor:pointer">${icon("upload")} Datei hinzufügen<input type="file" id="att-input" data-id="${i.id}" multiple hidden></label></div>
-        <div class="att-drop" data-att-drop="${i.id}">${(i.attachments || []).length ? `<div class="att-grid">${i.attachments.map((a) => attTile(i, a)).join("")}</div>` : '<p class="small muted" style="margin:0">Keine Anhänge – Dateien hierher ziehen. Anhänge aus E-Mails an das Service-Postfach werden automatisch übernommen.</p>'}</div>
+        <div class="att-drop" data-att-drop="${i.id}">${(i.attachments || []).length ? `<div class="att-grid">${i.attachments.map((a) => attTile(i, a)).join("")}</div>` : `<p class="small muted" style="margin:0">Keine Anhänge – Dateien hierher ziehen, „Datei hinzufügen“ wählen oder ein Bildschirmfoto mit <span class="kbd">Strg</span>+<span class="kbd">V</span> einfügen.${window.GFTLocal ? "" : " Anhänge aus E-Mails an das Service-Postfach werden automatisch übernommen."}</p>`}</div>
         <div class="sec-title" style="margin-top:22px">Aktivität</div>
         <div class="tabs"><button class="${tab === "comments" ? "on" : ""}" data-act="issue-tab" data-v="comments">Kommentare (${i.comments.length})</button><button class="${tab === "history" ? "on" : ""}" data-act="issue-tab" data-v="history">Verlauf</button></div>
         ${tab === "comments" ? `<form id="comment-form" class="grid" style="gap:6px;margin-bottom:10px"><textarea name="text" id="comment-text" rows="2" placeholder="Kommentar hinzufügen … (@Name erwähnt Personen)"></textarea>
@@ -2120,7 +2136,11 @@ function highlightMentions(text) {
 }
 
 /* ---------- Formulare ---------- */
+let createFiles = [];
+function addCreateFiles(files) { createFiles.push(...files); ui.modalDirty = true; renderCreateFiles(); }
+function renderCreateFiles() { const l = $("#cf-list"); if (l) l.innerHTML = createFiles.map((f, k) => `<span class="chip gray">📎 ${esc(f.name)} <span class="muted">${fmtSize(f.size)}</span> <button type="button" class="btn subtle sm icon" data-act="cf-file-del" data-v="${k}" aria-label="Entfernen" style="height:18px;width:18px">${icon("x")}</button></span>`).join(""); }
 function createForm(prefill = {}) {
+  createFiles = [];
   const pid = prefill.projectId || (route().parts[0] === "p" && projByKey(route().parts[1])?.id) || ui.lastProject || db.projects[0]?.id;
   if (!pid) return toast("Bitte zuerst ein Projekt anlegen.");
   const p = proj(pid); const types = PROJECT_TYPES[p.type].types.filter((t) => t !== "SUBTASK");
@@ -2146,6 +2166,8 @@ function createForm(prefill = {}) {
             <label class="f">Anlage<select name="assetId"><option value="">– keine bestimmte Anlage –</option>${(cu.assets || []).filter((a) => a.active !== false).map((a) => `<option value="${a.id}" ${a.id === prefill.assetId ? "selected" : ""}>${esc(a.name)}${a.serial ? ` (SN ${esc(a.serial)})` : ""}</option>`).join("")}</select></label>`
           : `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>`}`; })() : ""}
       </div></div>
+      <div class="f" style="margin-top:12px"><span>Anhänge</span><div class="att-drop cf-drop" id="cf-drop"><label class="btn subtle sm" style="cursor:pointer">${icon("upload")} Dateien wählen<input type="file" id="cf-files" multiple hidden></label>
+        <span class="small muted">oder hierher ziehen · Bildschirmfoto mit <span class="kbd">Strg</span>+<span class="kbd">V</span> einfügen</span><div id="cf-list" class="cf-list"></div></div></div></div>
       <div class="modal-f"><label class="small row nowrap" style="margin-right:auto"><input type="checkbox" name="another"> Weiteren Vorgang erstellen</label><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Erstellen</button></div></form>`);
 }
 function sprintForm(s) {
@@ -2535,6 +2557,7 @@ document.addEventListener("click", (e) => {
     case "goto": e.preventDefault(); go(el.dataset.href); break;
     case "menu": openDrawer(); break;
     case "drawer-close": closeDrawer(); break;
+    case "cf-file-del": createFiles.splice(Number(el.dataset.v), 1); renderCreateFiles(); break;
     case "shortcuts": openModal(`<div class="modal-h"><h2>Tastenkürzel</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
       <div class="modal-b"><div class="kv" style="grid-template-columns:max-content 1fr">${[["c", "Neuen Vorgang erstellen"], ["/", "Suchen (Suchfeld oben)"], ["Esc", "Fenster bzw. Menü schließen"], ["Alt + ← / →", "Zurück / Vor"], ["↑ ↓ Enter", "In den Suchvorschlägen wählen"], ["Strg + Enter", "Kommentar bzw. Formular absenden"]].map(([k, v]) => `<span><span class="kbd">${k}</span></span><span>${v}</span>`).join("")}</div></div>
       <div class="modal-f"><button class="btn primary" data-act="close">OK</button></div>`); break;
@@ -2673,6 +2696,7 @@ document.addEventListener("change", (e) => {
   if (el.id === "brand-logo" && el.files.length) { const file = el.files[0]; el.value = "";
     fetch("/api/admin/brand/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-GFT": "1", ...authHeaders() }, body: file }).then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); applyBrand(b); render(); toast("Logo gespeichert"); }).catch((err) => toast(err.message)); return; }
   if (el.form?.id === "brand-form" && el.name === "color") { el.form.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x.dataset.v === el.value)); applyBrand({ ...ui.brand, color: el.value }); return; }
+  if (el.id === "cf-files" && el.files.length) { addCreateFiles([...el.files]); el.value = ""; return; }
   if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
@@ -2689,7 +2713,7 @@ document.addEventListener("change", (e) => {
     const r = new FileReader(); r.onload = async () => {
       let d; try { d = JSON.parse(r.result); } catch { return toast("Die Datei ist keine gültige Sicherung."); }
       if (!confirm("ACHTUNG: Alle Projekte und Vorgänge werden durch den Inhalt der Sicherung ersetzt. Fortfahren?")) return;
-      try { const res = await api("/api/admin/import", { method: "POST", body: d }); await reloadState(); toast(`${res.imported} Vorgänge importiert.${res.usersWithoutPassword.length ? ` Ohne Passwort: ${res.usersWithoutPassword.length} Personen – bitte unter Einstellungen Passwort setzen.` : ""}`); }
+      try { const res = await api("/api/admin/import", { method: "POST", body: d }); await reloadState(); toast(`${res.imported} Vorgänge${res.files ? ` und ${res.files} Anhänge` : ""} importiert.${res.usersWithoutPassword.length ? ` Ohne Passwort: ${res.usersWithoutPassword.length} Personen – bitte unter Einstellungen Passwort setzen.` : ""}`); }
       catch (err) { toast(err.message); }
     }; r.readAsText(el.files[0]); el.value = ""; return;
   }
@@ -2738,6 +2762,7 @@ async function handleSubmit(e, f) {
         customerId: customer(fd.get("customerId"))?.id || null, assetId: fd.get("assetId") || null,
         customer: customer(fd.get("customerId")) ? customerSnapshot(customer(fd.get("customerId")), fd.get("contactId")) : cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
       ui.lastProject = i.projectId;
+      if (createFiles.length) { const files = createFiles; createFiles = []; await syncNow(); await uploadFiles(i.id, files); }
       if (fd.get("another")) { const pid = i.projectId; createForm({ projectId: pid }); $("#create-form").another.checked = true; render(); toast(`${keyOf(i)} erstellt`); }
       else { closeModal(); render(); toast(`${keyOf(i)} erstellt`); openIssue(i.id); }
       break; }
@@ -2880,10 +2905,19 @@ document.addEventListener("click", (e) => { const th = e.target.closest("th[data
   const cur = $("#jql")?.value || ""; const base = cur.replace(/\s*ORDER\s+BY[\s\S]*$/i, "").trim(); let dir = "ASC";
   try { const o = parseJql(cur).order[0]; if (o && o.f === th.dataset.sort && o.dir === "ASC") dir = "DESC"; } catch {}
   go(`#/filters?jql=${encodeURIComponent(`${base}${base ? " " : ""}ORDER BY ${th.dataset.sort} ${dir}`)}`); });
+// Dateien aus der Zwischenablage (Strg+V, z. B. Bildschirmfoto oder im Explorer kopierte Dateien) = hochladen
+document.addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.files || [])]; if (!files.length) return;
+  if ([...e.clipboardData.types].includes("text/plain") && ["INPUT", "TEXTAREA"].includes(e.target.tagName)) return; // Text (z. B. aus Word) normal einfügen
+  if (ui.modal === "issue" && ui.openIssue) { e.preventDefault(); uploadFiles(ui.openIssue, files.map(namePasted)); }
+  else if ($("#create-form")) { e.preventDefault(); addCreateFiles(files.map(namePasted)); }
+});
 // Dateien auf den geöffneten Vorgang ziehen = hochladen
-$("#modal").addEventListener("dragover", (e) => { if (ui.modal === "issue" && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#modal .att-drop")?.classList.add("drop-on"); } });
+$("#modal").addEventListener("dragover", (e) => { if ($("#create-form") && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#cf-drop")?.classList.add("drop-on"); return; }
+  if (ui.modal === "issue" && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#modal .att-drop")?.classList.add("drop-on"); } });
 $("#modal").addEventListener("dragleave", (e) => { if (!$("#modal").contains(e.relatedTarget)) $("#modal .att-drop")?.classList.remove("drop-on"); });
-$("#modal").addEventListener("drop", (e) => { if (ui.modal !== "issue" || !e.dataTransfer?.files?.length) return; e.preventDefault(); $("#modal .att-drop")?.classList.remove("drop-on"); uploadFiles(ui.openIssue, [...e.dataTransfer.files]); });
+$("#modal").addEventListener("drop", (e) => { if ($("#create-form") && e.dataTransfer?.files?.length) { e.preventDefault(); $("#cf-drop")?.classList.remove("drop-on"); addCreateFiles([...e.dataTransfer.files]); return; }
+  if (ui.modal !== "issue" || !e.dataTransfer?.files?.length) return; e.preventDefault(); $("#modal .att-drop")?.classList.remove("drop-on"); uploadFiles(ui.openIssue, [...e.dataTransfer.files]); });
 // Nur schließen, wenn der Klick auch auf dem Hintergrund begonnen hat (nicht beim Markieren von Text im Fenster)
 let overlayDown = false;
 $("#overlay").addEventListener("mousedown", (e) => (overlayDown = e.target === e.currentTarget));

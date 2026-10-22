@@ -413,4 +413,9 @@ test("Sicherung: Export und Import", async () => {
   assert.ok(!JSON.stringify(ex.data).includes("scrypt$"), "keine Passwort-Hashes im Export");
   const im = await anna.req("/api/admin/import", { method: "POST", body: ex.data }); assert.equal(im.status, 200);
   assert.equal((await anna.req("/api/state")).data.issues.length, ex.data.issues.length);
+  // Sicherung aus der Einzel-HTML-Version mit Anhängen (Base64) → Dateien landen auf dem Server
+  const withFiles = { ...ex.data, files: [{ id: "safile1", name: "notiz.txt", type: "text/plain", data: Buffer.from("aus der HTML-Datei").toString("base64") }, { id: "../böse", name: "x", data: "AA==" }] };
+  withFiles.issues = withFiles.issues.map((i, k) => (k === 0 ? { ...i, attachments: [{ id: "safile1", name: "notiz.txt", size: 18, type: "text/plain", at: new Date().toISOString(), userId: "u1", source: "upload" }] } : i));
+  const im2 = await anna.req("/api/admin/import", { method: "POST", body: withFiles }); assert.equal(im2.data.files, 1, "nur gültige Datei-IDs");
+  const f = await fetch(`${BASE}/api/files/safile1`, { headers: { cookie: anna.cookie } }); assert.equal(f.status, 200); assert.equal(await f.text(), "aus der HTML-Datei");
 });

@@ -470,6 +470,11 @@ th.sortable { cursor: pointer; user-select: none; } th.sortable:hover { color: v
 .dr-foot { border-top: 1px solid var(--border); padding: 6px 8px; display: grid; }
 body.drawer-open { overflow: hidden; }
 [id^="sec-"] { scroll-margin-top: 72px; } .flash { animation: flash 1.6s ease; } @keyframes flash { 0%, 40% { background: var(--sel); box-shadow: 0 0 0 6px var(--sel); border-radius: 4px; } 100% { background: transparent; box-shadow: none; } }
+/* Anhänge beim Erstellen */
+.cf-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border: 1px dashed var(--border); border-radius: 8px; }
+.cf-drop.drop-on { border-color: var(--primary); background: var(--primary-soft); }
+.cf-list { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; } .cf-list:empty { display: none; } .cf-list .chip { display: inline-flex; align-items: center; gap: 4px; }
+.att-missing { opacity: .5; }
 
 .sa-login { max-width: 520px; margin: 8vh auto; padding: 0 16px; }
 .sa-logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: #fff; }
@@ -660,6 +665,8 @@ function applyServer(r) {
   else list.push(clone(data));
   base.set(r.id, clone(data));
 }
+/** Alle offenen Änderungen jetzt senden und warten, bis der Server sie hat (z. B. vor dem Hochladen zu einem neuen Vorgang). */
+async function syncNow() { clearTimeout(sync.timer); if (!sync.inFlight) await flush(); for (let k = 0; k < 200 && (sync.inFlight || sync.pending.length); k++) await new Promise((r) => setTimeout(r, 50)); }
 async function flush() {
   if (sync.inFlight) { sync.again = true; return; }
   const ops = collectOps(); if (ops.length) sync.pending.push(...ops);
@@ -1701,20 +1708,27 @@ function importSheet(n) {
 const fmtSize = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1).replace(".", ",")} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 const isImg = (a) => /^image\/(png|jpeg|gif|webp)$/.test(a.type);
 function attTile(i, a) {
-  const src = `/api/files/${a.id}`; const u = (q = "") => authUrl(src + q); const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
-  return `<div class="att">${isImg(a) ? `<a href="${u("?inline=1")}" target="_blank" rel="noopener" class="att-thumb"><img src="${u("?inline=1")}" alt="${esc(a.name)}" loading="lazy"></a>` : `<a href="${u(a.type === "application/pdf" ? "?inline=1" : "")}" target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
-    <div class="att-meta"><a href="${u()}" class="trunc b" title="${esc(a.name)}" download>${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
+  const src = `/api/files/${a.id}`; const u = (q = "") => authUrl(src + q);
+  const L = !!window.GFTLocal; const href = (q = "") => (L ? `href="#" data-gft-href="${src}"` : `href="${u(q)}"`); const img = L ? `data-gft-src="${src}"` : `src="${u("?inline=1")}"`; // Einzeldatei: Dateien liegen im Browser
+  const canDel = a.userId === db.currentUserId || me().role === "ADMIN";
+  return `<div class="att">${isImg(a) ? `<a ${href("?inline=1")} target="_blank" rel="noopener" class="att-thumb"><img ${img} alt="${esc(a.name)}" loading="lazy"></a>` : `<a ${href(a.type === "application/pdf" ? "?inline=1" : "")} target="_blank" rel="noopener" class="att-thumb att-ic">${esc((a.name.split(".").pop() || "DATEI").slice(0, 4).toUpperCase())}</a>`}
+    <div class="att-meta"><a ${href()} class="trunc b" title="${esc(a.name)}" download="${esc(a.name)}">${esc(a.name)}</a><div class="small muted trunc">${fmtSize(a.size)} · ${a.source === "email" ? "aus E-Mail" : a.source === "portal" ? "vom Kunden" : esc(uname(a.userId))} · ${fmtDT(a.at)}</div></div>
     ${canDel && a.source === "upload" ? `<button class="btn subtle sm icon" data-act="att-delete" data-id="${i.id}" data-k="${a.id}" title="Entfernen" aria-label="Entfernen">${icon("trash")}</button>` : ""}</div>`;
 }
+/** Eingefügte Bilder (Strg+V) haben keinen sinnvollen Namen – „Bildschirmfoto 2026-10-22 14-05.png“. */
+const namePasted = (f, k = 0) => (/^image\.(png|jpe?g|gif|webp)$/i.test(f.name) || !f.name ? new File([f], `Bildschirmfoto ${new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-")}${k ? ` (${k + 1})` : ""}.${(f.type.split("/")[1] || "png").replace("jpeg", "jpg")}`, { type: f.type }) : f);
 async function uploadFiles(issueId, files) {
-  let ok = 0;
+  const ids = [];
   for (const f of files) {
     try {
       const res = await fetch(`/api/issues/${issueId}/attachments`, { method: "POST", credentials: "same-origin", headers: { ...authHeaders(), "Content-Type": f.type || "application/octet-stream", "X-Filename": encodeURIComponent(f.name), "X-GFT": "1" }, body: f });
-      const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ok++;
+      const data = await res.json().catch(() => ({})); if (!res.ok) throw new Error(data.error || `Fehler ${res.status}`); ids.push(data.id);
     } catch (e) { toast(`${f.name}: ${e.message}`); }
   }
-  if (ok) { toast(`${ok} Datei${ok > 1 ? "en" : ""} hochgeladen`); await pull(); if (ui.openIssue === issueId) renderIssue(); }
+  if (!ids.length) return;
+  // Warten, bis die neuen Anhänge im lokalen Stand angekommen sind (ein gleichzeitiger Abgleich kann den eigenen kurz überholen)
+  for (let k = 0; k < 40; k++) { await pull(); const i = issue(issueId); if (i && ids.every((id) => (i.attachments || []).some((a) => a.id === id))) break; await new Promise((r) => setTimeout(r, 75)); }
+  toast(`${ids.length} Datei${ids.length > 1 ? "en" : ""} hinzugefügt`); if (ui.openIssue === issueId && ui.modal === "issue") renderIssue();
 }
 
 /* ---------- Ansicht: Kunden & Anlagen ---------- */
@@ -2270,6 +2284,13 @@ function brandCard() {
         <label class="btn sm" style="cursor:pointer">${icon("upload")} ${b.logo ? "Ersetzen" : "Hochladen"}<input type="file" id="brand-logo" accept="image/png,image/jpeg,image/svg+xml,image/webp" hidden></label>${b.logo ? `<button type="button" class="btn subtle sm" data-act="brand-logo-del">Entfernen</button>` : ""}</div></div>
       <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit" ${server ? "" : "disabled"}>Speichern</button>${server ? `<span class="small muted">Vorschau: Farbe wird sofort angezeigt, gilt für alle nach dem Speichern.</span>` : '<span class="small muted">Das Erscheinungsbild wird in der Server-Version eingestellt.</span>'}</div></form></div>`;
 }
+/** Einzeldatei-Version: wo die Daten liegen, wie viel Platz belegt ist, Hinweis auf Sicherung. */
+function localStorageInfo() {
+  const st = ui.saStorage; if (!st) { GFTLocal.storage().then((r) => { ui.saStorage = r; if (route().parts[0] === "settings") render(); }); }
+  const files = db.issues.reduce((n, i) => n + (i.attachments || []).length, 0); const mb = (b) => `${(b / 1048576).toFixed(1).replace(".", ",")} MB`;
+  return `<div class="note ${st && !st.idb ? "err" : "info"}" style="margin:0 0 12px"><b>Alle Daten und ${files} Anhänge liegen nur in diesem Browser auf diesem PC.</b>${st?.used != null ? ` Belegt: ${mb(st.used)}${st.quota ? ` von ${st.quota > 10737418240 ? "über 10 GB" : mb(st.quota)} verfügbar` : ""}.` : ""}${st && !st.idb ? " Achtung: Der Browser erlaubt keine dauerhafte Ablage (privater Modus?) – Anhänge sind nicht möglich, Daten gehen beim Schließen verloren." : ""}
+    <br>Bitte regelmäßig <b>„Sicherung herunterladen“</b> – die Datei enthält auch alle Anhänge und lässt sich jederzeit wieder einspielen oder in die Server-Version übernehmen.</div>`;
+}
 function viewSettings() {
   const u = me(); const isAdmin = u.role === "ADMIN";
   return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
@@ -2334,7 +2355,7 @@ function viewSettings() {
     ${isAdmin ? brandCard() : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">System &amp; Protokoll</h3><p class="small muted" style="margin:0">Sicherungen (Datenbank und Anhänge), Speicher, Auslastung, Fehler und das Audit-Protokoll: wer hat wann was geändert.</p></div><a class="btn" href="#/system">System öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Automatik</h3><p class="small muted" style="margin:0">Regeln für den Arbeitsablauf: neue Vorgänge automatisch im Team verteilen, liegengebliebene eskalieren, Wiedervorlagen („Wartet auf Kunde“ nachfassen).</p></div><a class="btn" href="#/automation">Regeln öffnen</a></div>` : ""}
-    ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
+    ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3>${window.GFTLocal ? localStorageInfo() : `<p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version (inkl. Anhänge) einspielen.</p>`}
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
       ${sync.mail ? `<button class="btn" data-act="mail-test">Test-E-Mail an mich senden</button>` : ""}
@@ -2571,7 +2592,7 @@ function renderIssue() {
           <div>${i.links.map((l, k) => { const o = issue(l.issueId); return o ? `<div class="linkrow" data-act="open" data-id="${o.id}"><span class="small muted" style="width:150px">${LINK_LABEL[l.type]}</span>${typeIcon(o.type)}<span class="key">${keyOf(o)}</span><span class="trunc" style="flex:1">${esc(o.summary)}</span>${lozenge(o)}<button class="btn subtle sm icon" data-act="unlink" data-v="${k}" aria-label="Verknüpfung entfernen">${icon("x")}</button></div>` : ""; }).join("")}</div>
           ${ui.addingLink ? `<form id="link-form" class="row nowrap" style="margin-top:6px"><select name="type" style="width:190px">${Object.entries(LINK_LABEL).map(([k, v]) => `<option value="${k}">${v}</option>`).join("")}</select><input type="text" name="key" list="issue-keys" placeholder="Schlüssel, z. B. DIG-3" required><datalist id="issue-keys">${db.issues.filter((x) => x.id !== i.id).map((x) => `<option value="${keyOf(x)}">${esc(x.summary)}</option>`).join("")}</datalist><button class="btn primary" type="submit">Verknüpfen</button></form>` : ""}` : ""}
         <div class="sec-title row" style="margin-top:20px">Anhänge${(i.attachments || []).length ? ` <span class="badge-count">${i.attachments.length}</span>` : ""}<span class="sp"></span><label class="btn subtle sm" style="cursor:pointer">${icon("upload")} Datei hinzufügen<input type="file" id="att-input" data-id="${i.id}" multiple hidden></label></div>
-        <div class="att-drop" data-att-drop="${i.id}">${(i.attachments || []).length ? `<div class="att-grid">${i.attachments.map((a) => attTile(i, a)).join("")}</div>` : '<p class="small muted" style="margin:0">Keine Anhänge – Dateien hierher ziehen. Anhänge aus E-Mails an das Service-Postfach werden automatisch übernommen.</p>'}</div>
+        <div class="att-drop" data-att-drop="${i.id}">${(i.attachments || []).length ? `<div class="att-grid">${i.attachments.map((a) => attTile(i, a)).join("")}</div>` : `<p class="small muted" style="margin:0">Keine Anhänge – Dateien hierher ziehen, „Datei hinzufügen“ wählen oder ein Bildschirmfoto mit <span class="kbd">Strg</span>+<span class="kbd">V</span> einfügen.${window.GFTLocal ? "" : " Anhänge aus E-Mails an das Service-Postfach werden automatisch übernommen."}</p>`}</div>
         <div class="sec-title" style="margin-top:22px">Aktivität</div>
         <div class="tabs"><button class="${tab === "comments" ? "on" : ""}" data-act="issue-tab" data-v="comments">Kommentare (${i.comments.length})</button><button class="${tab === "history" ? "on" : ""}" data-act="issue-tab" data-v="history">Verlauf</button></div>
         ${tab === "comments" ? `<form id="comment-form" class="grid" style="gap:6px;margin-bottom:10px"><textarea name="text" id="comment-text" rows="2" placeholder="Kommentar hinzufügen … (@Name erwähnt Personen)"></textarea>
@@ -2616,7 +2637,11 @@ function highlightMentions(text) {
 }
 
 /* ---------- Formulare ---------- */
+let createFiles = [];
+function addCreateFiles(files) { createFiles.push(...files); ui.modalDirty = true; renderCreateFiles(); }
+function renderCreateFiles() { const l = $("#cf-list"); if (l) l.innerHTML = createFiles.map((f, k) => `<span class="chip gray">📎 ${esc(f.name)} <span class="muted">${fmtSize(f.size)}</span> <button type="button" class="btn subtle sm icon" data-act="cf-file-del" data-v="${k}" aria-label="Entfernen" style="height:18px;width:18px">${icon("x")}</button></span>`).join(""); }
 function createForm(prefill = {}) {
+  createFiles = [];
   const pid = prefill.projectId || (route().parts[0] === "p" && projByKey(route().parts[1])?.id) || ui.lastProject || db.projects[0]?.id;
   if (!pid) return toast("Bitte zuerst ein Projekt anlegen.");
   const p = proj(pid); const types = PROJECT_TYPES[p.type].types.filter((t) => t !== "SUBTASK");
@@ -2642,6 +2667,8 @@ function createForm(prefill = {}) {
             <label class="f">Anlage<select name="assetId"><option value="">– keine bestimmte Anlage –</option>${(cu.assets || []).filter((a) => a.active !== false).map((a) => `<option value="${a.id}" ${a.id === prefill.assetId ? "selected" : ""}>${esc(a.name)}${a.serial ? ` (SN ${esc(a.serial)})` : ""}</option>`).join("")}</select></label>`
           : `<label class="f">Kunde (Name)<input type="text" name="cname"></label><label class="f">Firma<input type="text" name="ccompany"></label><label class="f">Kunden-E-Mail<input type="email" name="cemail"></label>`}`; })() : ""}
       </div></div>
+      <div class="f" style="margin-top:12px"><span>Anhänge</span><div class="att-drop cf-drop" id="cf-drop"><label class="btn subtle sm" style="cursor:pointer">${icon("upload")} Dateien wählen<input type="file" id="cf-files" multiple hidden></label>
+        <span class="small muted">oder hierher ziehen · Bildschirmfoto mit <span class="kbd">Strg</span>+<span class="kbd">V</span> einfügen</span><div id="cf-list" class="cf-list"></div></div></div></div>
       <div class="modal-f"><label class="small row nowrap" style="margin-right:auto"><input type="checkbox" name="another"> Weiteren Vorgang erstellen</label><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Erstellen</button></div></form>`);
 }
 function sprintForm(s) {
@@ -3031,6 +3058,7 @@ document.addEventListener("click", (e) => {
     case "goto": e.preventDefault(); go(el.dataset.href); break;
     case "menu": openDrawer(); break;
     case "drawer-close": closeDrawer(); break;
+    case "cf-file-del": createFiles.splice(Number(el.dataset.v), 1); renderCreateFiles(); break;
     case "shortcuts": openModal(`<div class="modal-h"><h2>Tastenkürzel</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
       <div class="modal-b"><div class="kv" style="grid-template-columns:max-content 1fr">${[["c", "Neuen Vorgang erstellen"], ["/", "Suchen (Suchfeld oben)"], ["Esc", "Fenster bzw. Menü schließen"], ["Alt + ← / →", "Zurück / Vor"], ["↑ ↓ Enter", "In den Suchvorschlägen wählen"], ["Strg + Enter", "Kommentar bzw. Formular absenden"]].map(([k, v]) => `<span><span class="kbd">${k}</span></span><span>${v}</span>`).join("")}</div></div>
       <div class="modal-f"><button class="btn primary" data-act="close">OK</button></div>`); break;
@@ -3125,7 +3153,7 @@ document.addEventListener("click", (e) => {
       if (!ui.archiveLoaded) { ensureArchive().then(() => el.click()); break; }
       exportXlsx(db.issues.filter((i) => activeIn(i, per)), `auswertung-gesamt-${per.label.toLowerCase().replace(/\s+/g, "-")}-${today()}.xlsx`, `Alle Projekte · ${per.label}`, { period: per, scope: db.issues }); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
-    case "export-json": api("/api/admin/export"); break;
+    case "export-json": api("/api/admin/export").then((r) => toast(`Sicherung heruntergeladen${r.files ? ` (inkl. ${r.files} Anhänge)` : ""}.`)).catch((err) => toast(err.message)); break;
     case "import-json": $("#json-file").click(); break;
     case "logout": api("/api/logout", { method: "POST" }).finally(() => { if (TEAMS) { try { localStorage.removeItem("gft-teams-token"); } catch {} } location.href = LOGIN_URL; }); break;
     case "user-invite": { const u = user(id); el.closest("details")?.removeAttribute("open");
@@ -3169,6 +3197,7 @@ document.addEventListener("change", (e) => {
   if (el.id === "brand-logo" && el.files.length) { const file = el.files[0]; el.value = "";
     fetch("/api/admin/brand/logo", { method: "PUT", headers: { "Content-Type": file.type, "X-GFT": "1", ...authHeaders() }, body: file }).then(async (r) => { const b = await r.json(); if (!r.ok) throw new Error(b.error); applyBrand(b); render(); toast("Logo gespeichert"); }).catch((err) => toast(err.message)); return; }
   if (el.form?.id === "brand-form" && el.name === "color") { el.form.querySelectorAll(".swatch").forEach((x) => x.classList.toggle("on", x.dataset.v === el.value)); applyBrand({ ...ui.brand, color: el.value }); return; }
+  if (el.id === "cf-files" && el.files.length) { addCreateFiles([...el.files]); el.value = ""; return; }
   if (el.id === "att-input" && el.files.length) { uploadFiles(el.dataset.id, [...el.files]); el.value = ""; return; }
   if (el.id === "imp-file" && el.files[0]) { importFile(el.files[0]); el.value = ""; return; }
   if (el.id === "imp-sheet") { importSheet(Number(el.value)); return; }
@@ -3185,7 +3214,7 @@ document.addEventListener("change", (e) => {
     const r = new FileReader(); r.onload = async () => {
       let d; try { d = JSON.parse(r.result); } catch { return toast("Die Datei ist keine gültige Sicherung."); }
       if (!confirm("ACHTUNG: Alle Projekte und Vorgänge werden durch den Inhalt der Sicherung ersetzt. Fortfahren?")) return;
-      try { const res = await api("/api/admin/import", { method: "POST", body: d }); await reloadState(); toast(`${res.imported} Vorgänge importiert.${res.usersWithoutPassword.length ? ` Ohne Passwort: ${res.usersWithoutPassword.length} Personen – bitte unter Einstellungen Passwort setzen.` : ""}`); }
+      try { const res = await api("/api/admin/import", { method: "POST", body: d }); await reloadState(); toast(`${res.imported} Vorgänge${res.files ? ` und ${res.files} Anhänge` : ""} importiert.${res.usersWithoutPassword.length ? ` Ohne Passwort: ${res.usersWithoutPassword.length} Personen – bitte unter Einstellungen Passwort setzen.` : ""}`); }
       catch (err) { toast(err.message); }
     }; r.readAsText(el.files[0]); el.value = ""; return;
   }
@@ -3234,6 +3263,7 @@ async function handleSubmit(e, f) {
         customerId: customer(fd.get("customerId"))?.id || null, assetId: fd.get("assetId") || null,
         customer: customer(fd.get("customerId")) ? customerSnapshot(customer(fd.get("customerId")), fd.get("contactId")) : cname || cemail ? { name: cname || cemail, company: fd.get("ccompany") || "", email: cemail || "", phone: "" } : null });
       ui.lastProject = i.projectId;
+      if (createFiles.length) { const files = createFiles; createFiles = []; await syncNow(); await uploadFiles(i.id, files); }
       if (fd.get("another")) { const pid = i.projectId; createForm({ projectId: pid }); $("#create-form").another.checked = true; render(); toast(`${keyOf(i)} erstellt`); }
       else { closeModal(); render(); toast(`${keyOf(i)} erstellt`); openIssue(i.id); }
       break; }
@@ -3376,10 +3406,19 @@ document.addEventListener("click", (e) => { const th = e.target.closest("th[data
   const cur = $("#jql")?.value || ""; const base = cur.replace(/\s*ORDER\s+BY[\s\S]*$/i, "").trim(); let dir = "ASC";
   try { const o = parseJql(cur).order[0]; if (o && o.f === th.dataset.sort && o.dir === "ASC") dir = "DESC"; } catch {}
   go(`#/filters?jql=${encodeURIComponent(`${base}${base ? " " : ""}ORDER BY ${th.dataset.sort} ${dir}`)}`); });
+// Dateien aus der Zwischenablage (Strg+V, z. B. Bildschirmfoto oder im Explorer kopierte Dateien) = hochladen
+document.addEventListener("paste", (e) => {
+  const files = [...(e.clipboardData?.files || [])]; if (!files.length) return;
+  if ([...e.clipboardData.types].includes("text/plain") && ["INPUT", "TEXTAREA"].includes(e.target.tagName)) return; // Text (z. B. aus Word) normal einfügen
+  if (ui.modal === "issue" && ui.openIssue) { e.preventDefault(); uploadFiles(ui.openIssue, files.map(namePasted)); }
+  else if ($("#create-form")) { e.preventDefault(); addCreateFiles(files.map(namePasted)); }
+});
 // Dateien auf den geöffneten Vorgang ziehen = hochladen
-$("#modal").addEventListener("dragover", (e) => { if (ui.modal === "issue" && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#modal .att-drop")?.classList.add("drop-on"); } });
+$("#modal").addEventListener("dragover", (e) => { if ($("#create-form") && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#cf-drop")?.classList.add("drop-on"); return; }
+  if (ui.modal === "issue" && [...(e.dataTransfer?.types || [])].includes("Files")) { e.preventDefault(); $("#modal .att-drop")?.classList.add("drop-on"); } });
 $("#modal").addEventListener("dragleave", (e) => { if (!$("#modal").contains(e.relatedTarget)) $("#modal .att-drop")?.classList.remove("drop-on"); });
-$("#modal").addEventListener("drop", (e) => { if (ui.modal !== "issue" || !e.dataTransfer?.files?.length) return; e.preventDefault(); $("#modal .att-drop")?.classList.remove("drop-on"); uploadFiles(ui.openIssue, [...e.dataTransfer.files]); });
+$("#modal").addEventListener("drop", (e) => { if ($("#create-form") && e.dataTransfer?.files?.length) { e.preventDefault(); $("#cf-drop")?.classList.remove("drop-on"); addCreateFiles([...e.dataTransfer.files]); return; }
+  if (ui.modal !== "issue" || !e.dataTransfer?.files?.length) return; e.preventDefault(); $("#modal .att-drop")?.classList.remove("drop-on"); uploadFiles(ui.openIssue, [...e.dataTransfer.files]); });
 // Nur schließen, wenn der Klick auch auf dem Hintergrund begonnen hat (nicht beim Markieren von Text im Fenster)
 let overlayDown = false;
 $("#overlay").addEventListener("mousedown", (e) => (overlayDown = e.target === e.currentTarget));
@@ -3481,7 +3520,7 @@ async function renderRequest(token) {
       ${v.report ? `<div class="card pad" style="margin-top:12px;border-left:4px solid var(--ok)"><b>Servicebericht</b> <span class="small muted">· ${fmtDT(v.report.at)}</span>
         ${v.report.cause ? `<div style="margin-top:6px"><span class="small muted">Ursache:</span> ${esc(v.report.cause)}</div>` : ""}<div style="white-space:pre-wrap"><span class="small muted">Durchgeführte Arbeiten:</span> ${esc(v.report.action)}</div>
         ${v.report.parts ? `<div style="white-space:pre-wrap"><span class="small muted">Material/Ersatzteile:</span> ${esc(v.report.parts)}</div>` : ""}${v.report.hours ? `<div><span class="small muted">Arbeitszeit:</span> ${String(v.report.hours).replace(".", ",")} h</div>` : ""}</div>` : ""}
-      ${(v.attachments || []).length ? `<h3 style="font-size:15px;margin:18px 0 6px">Dateien</h3><div class="row" style="gap:6px">${v.attachments.map((a) => `<a class="chip gray" href="/api/portal/requests/${token}/files/${a.id}" download>📎 ${esc(a.name)}</a>`).join("")}</div>` : ""}
+      ${(v.attachments || []).length ? `<h3 style="font-size:15px;margin:18px 0 6px">Dateien</h3><div class="row" style="gap:6px">${v.attachments.map((a) => `<a class="chip gray" ${window.GFTLocal ? `href="#" data-gft-href="/api/portal/requests/${token}/files/${a.id}"` : `href="/api/portal/requests/${token}/files/${a.id}"`} download="${esc(a.name)}">📎 ${esc(a.name)}</a>`).join("")}</div>` : ""}
       ${v.closed ? "" : `<label class="btn sm" style="margin-top:10px;cursor:pointer">📷 Foto oder PDF hinzufügen<input type="file" id="pfile" accept="image/*,application/pdf" multiple hidden></label>`}
       <h3 style="font-size:15px;margin:18px 0 6px">Verlauf</h3>
       ${v.comments.map((c) => `<div class="comment"><span class="avatar" style="background:${c.fromCustomer ? "#5b6b8a" : "#2436e8"}">${c.fromCustomer ? "Sie" : "S"}</span><div class="body"><div class="small"><b>${esc(c.fromCustomer ? "Sie" : c.author)}</b> · <span class="muted">${fmtDT(c.at)}</span></div><div class="text">${esc(c.text)}</div></div></div>`).join("") || '<p class="muted small">Noch keine Nachrichten – wir melden uns schnellstmöglich.</p>'}
@@ -4331,7 +4370,9 @@ if (typeof module !== "undefined") module.exports = QR;
 /* ======================================================================
    GF Tracker – Einzeldatei-Version: Browser-Backend
    Bildet die Server-Schnittstellen (/api/...) im Browser nach und speichert
-   alle Daten im localStorage dieses Browsers. Mehrere Tabs desselben
+   alle Daten in der IndexedDB dieses Browsers (früher localStorage, max. ca. 5 MB –
+   wird beim ersten Start automatisch übernommen). Dateianhänge liegen ebenfalls
+   in der IndexedDB. Mehrere Tabs desselben
    Browsers sehen Änderungen live (BroadcastChannel). Fachlogik wie auf dem
    Server (server.mjs) – gemeinsame Regeln kommen aus shared.js.
    ====================================================================== */
@@ -4345,16 +4386,47 @@ const COMPANY = "Druckluft Chemnitz";
 const BASE = location.href.split(/[?#]/)[0];
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
-/* ---------- Datenhaltung ---------- */
-let mem = null; // Fallback, falls localStorage gesperrt ist
-function load() {
-  let d = null;
-  try { d = JSON.parse(localStorage.getItem(DB_KEY)); } catch {}
-  d = d || mem;
-  if (!d || !d.entities) d = initial();
-  return d;
+/* ---------- Datenhaltung: Arbeitsstand im Speicher, dauerhaft in der IndexedDB ---------- */
+let mem = null; let idbDb = null; let writeTimer = null, writing = Promise.resolve(); let storageFailed = false;
+function openIdb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) return reject(new Error("IndexedDB nicht verfügbar"));
+    const r = indexedDB.open("gft-tracker", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("kv"); r.result.createObjectStore("files"); };
+    r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); r.onblocked = () => reject(new Error("IndexedDB blockiert"));
+  });
 }
-function persist(d) { mem = d; try { localStorage.setItem(DB_KEY, JSON.stringify(d)); } catch {} }
+const idbReq = (store, mode, fn) => new Promise((resolve, reject) => { const t = idbDb.transaction(store, mode); const r = fn(t.objectStore(store)); t.oncomplete = () => resolve(r?.result); t.onerror = () => reject(t.error); t.onabort = () => reject(t.error || new Error("abgebrochen")); });
+const kvGet = (k) => idbReq("kv", "readonly", (s) => s.get(k));
+const kvPut = (k, v) => idbReq("kv", "readwrite", (s) => s.put(v, k));
+/** Startet die Datenhaltung: IndexedDB öffnen, ggf. Altbestand aus dem localStorage übernehmen. */
+const READY = (async () => {
+  try {
+    idbDb = await openIdb();
+    let d = await kvGet("db");
+    if (!d) { try { d = JSON.parse(localStorage.getItem(DB_KEY)); } catch {} if (d && d.entities) { await kvPut("db", d); try { localStorage.removeItem(DB_KEY); } catch {} } }
+    mem = d && d.entities ? d : null;
+  } catch (e) { // Notfall: alter Weg über localStorage (z. B. sehr alte Browser, privater Modus)
+    console.warn("IndexedDB nicht nutzbar, verwende localStorage:", e); idbDb = null;
+    try { const d = JSON.parse(localStorage.getItem(DB_KEY)); if (d && d.entities) mem = d; } catch {}
+  }
+  if (!mem) initial();
+  try { navigator.storage?.persist?.(); } catch {} // Browser soll die Daten nicht von sich aus löschen
+})();
+function load() { if (!mem) initial(); return mem; }
+function storageError(e) {
+  console.error("Speichern fehlgeschlagen:", e); if (storageFailed) return; storageFailed = true;
+  const b = document.createElement("div"); b.className = "note err"; b.style.cssText = "position:fixed;left:16px;right:16px;bottom:16px;z-index:200;box-shadow:var(--shadow-lg)";
+  b.innerHTML = "<b>Speichern im Browser ist fehlgeschlagen.</b> Bitte unter Einstellungen → Sicherung herunterladen und Speicherplatz bzw. Browser-Einstellungen prüfen. (" + String(e && e.message || e).replace(/[<>&]/g, "") + ")";
+  document.body.appendChild(b);
+}
+/** Speichert verzögert (bündelt schnelle Änderungen) und informiert danach die anderen Tabs. */
+function persist(d) {
+  mem = d; if (!idbDb) { try { localStorage.setItem(DB_KEY, JSON.stringify(d)); } catch (e) { storageError(e); } return; }
+  clearTimeout(writeTimer); writeTimer = setTimeout(flushNow, 40);
+}
+function flushNow() { clearTimeout(writeTimer); writeTimer = null; const d = mem; writing = writing.then(() => kvPut("db", d)).then(() => { try { channel?.postMessage(d.rev); } catch {} }).catch(storageError); return writing; }
+window.addEventListener("pagehide", () => { if (writeTimer) flushNow(); });
 function initial() {
   const d = { rev: 0, entities: {}, counters: {}, tokens: {}, created: new Date().toISOString() };
   COLLECTIONS.forEach((t) => (d.entities[t] = {}));
@@ -4385,9 +4457,9 @@ function tx(fn) {
 const sources = new Set();
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("gft-sa") : null;
 function emit(rev) { for (const s of sources) s._emit(rev); }
-function announce(rev) { setTimeout(() => emit(rev), 0); try { channel?.postMessage(rev); } catch {} }
-if (channel) channel.onmessage = (e) => emit(e.data);
-window.addEventListener("storage", (e) => { if (e.key === DB_KEY) emit(load().rev); });
+function announce(rev) { setTimeout(() => emit(rev), 0); if (!idbDb) try { channel?.postMessage(rev); } catch {} } // mit IndexedDB meldet flushNow nach dem Schreiben
+// Anderer Tab hat gespeichert: neuesten Stand aus der IndexedDB holen, dann die eigene Ansicht aktualisieren
+if (channel) channel.onmessage = async (e) => { if (idbDb) { try { const d = await kvGet("db"); if (d && d.rev >= (mem?.rev || 0)) mem = d; } catch {} } else { try { mem = JSON.parse(localStorage.getItem(DB_KEY)) || mem; } catch {} } emit(mem?.rev ?? e.data); };
 class LocalEventSource {
   constructor() { this.listeners = {}; sources.add(this); setTimeout(() => this._emit(load().rev), 0); }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
@@ -4574,6 +4646,7 @@ function portalView(d, issue) {
   const p = get(d, "projects", issue.projectId); const st = S.statusInfo(p, issue.status); const u = (id) => (id ? get(d, "users", id) : null);
   return { key: issueKey(d, issue), summary: issue.summary, description: issue.description, type: issue.type, status: st.name, statusCat: st.cat, closed: issue.status === "CLOSED", createdAt: issue.createdAt,
     appointmentAt: ["SCHEDULED", "WORKING"].includes(issue.status) ? issue.appointmentAt || null : null, technician: u(issue.assigneeId)?.name || null,
+    attachments: (issue.attachments || []).filter((a) => a.source === "portal" || a.source === "email" || a.public).map((a) => ({ id: a.id, name: a.name, size: a.size, type: a.type, fromCustomer: a.source !== "upload" })),
     report: issue.resolution && st.cat === "done" ? { cause: issue.resolution.cause, action: issue.resolution.action, parts: issue.resolution.parts, hours: issue.resolution.hours, at: issue.resolution.at } : null,
     comments: issue.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, text: c.text, fromCustomer: !c.userId, author: c.userId ? `${u(c.userId)?.name || "Service"} (Service)` : c.author || "Sie" })) };
 }
@@ -4702,8 +4775,8 @@ function handle(method, url, body) {
     });
   }
   if (/^\/api\/admin\/users\/[A-Za-z0-9_-]+\/password$/.test(p)) { needAdmin(); return { ok: true }; }
-  if (p === "/api/admin/export") { needAdmin(); download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(exportAll(d0), null, 2)); return { ok: true }; }
-  if (p === "/api/admin/import" && method === "POST") { needAdmin(); return importAll(body, user); }
+  if (p === "/api/admin/export") { needAdmin(); return exportWithFiles(d0).then((data) => { download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(data, null, 2)); return { ok: true, files: (data.files || []).length }; }); }
+  if (p === "/api/admin/import" && method === "POST") { needAdmin(); const r = importAll(body, user); return importFiles(body).then((n) => ({ ...r, files: n })); }
   if (p === "/api/me/calendar") return { standalone: true };
   if (p === "/api/archive") return { issues: [] };
   { const bk = p.match(/^\/api\/issues\/by-key\/([A-Za-z][A-Za-z0-9]*)-(\d+)$/); if (bk) { const pr = all(d0, "projects").find((x) => x.key === bk[1].toUpperCase()); const i = pr && all(d0, "issues").find((x) => x.projectId === pr.id && x.no === Number(bk[2])); if (!i) throw new HttpError(404, "Vorgang nicht gefunden."); return { issue: i }; } }
@@ -4713,35 +4786,103 @@ function handle(method, url, body) {
   throw new HttpError(404, "Unbekannte Schnittstelle.");
 }
 
+/* ---------- Dateianhänge: in der IndexedDB (Store "files"), Metadaten am Vorgang wie auf dem Server ---------- */
+const MAX_FILE = 25 * 1048576;
+const BLOCKED = /\.(exe|bat|cmd|com|scr|js|jse|vbs|vbe|ps1|msi|msp|dll|jar|hta|cpl|lnk|reg)$/i;
+const cleanName = (n) => String(n || "datei").normalize("NFC").replace(/[\\/\x00-\x1f"<>|:*?]/g, "_").replace(/^\.+/, "").slice(0, 150) || "datei";
+const fileGet = (id) => (idbDb ? idbReq("files", "readonly", (st) => st.get(id)) : Promise.resolve(null));
+const filePut = (id, rec) => { if (!idbDb) throw new HttpError(507, "Dateianhänge brauchen die IndexedDB des Browsers – im privaten Modus bzw. mit gesperrtem Website-Speicher nicht möglich."); return idbReq("files", "readwrite", (st) => st.put(rec, id)); };
+const fileDel = (id) => (idbDb ? idbReq("files", "readwrite", (st) => st.delete(id)) : Promise.resolve());
+async function addAttachment(issueId, file, name, { userId = null, by = null, source = "upload" } = {}) {
+  const fname = cleanName(name); if (BLOCKED.test(fname)) throw new HttpError(415, "Ausführbare Dateien sind aus Sicherheitsgründen nicht erlaubt.");
+  if (!file || !file.size) throw new HttpError(400, "Leere Datei."); if (file.size > MAX_FILE) throw new HttpError(413, `Datei zu groß (höchstens ${MAX_FILE / 1048576} MB).`);
+  if (!get(load(), "issues", issueId)) throw new HttpError(404, "Vorgang nicht gefunden.");
+  const meta = { id: S.uid(), name: fname, size: file.size, type: String(file.type || "application/octet-stream").split(";")[0].trim().toLowerCase().slice(0, 100), at: new Date().toISOString(), userId, by, source };
+  try { await filePut(meta.id, { blob: file, name: fname, type: meta.type, issueId }); } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(507, `Datei konnte nicht gespeichert werden (Speicher voll?): ${e.message}`); }
+  tx((d) => { const i = get(d, "issues", issueId); i.attachments = [...(i.attachments || []), meta]; i.history.unshift({ id: S.uid(), at: meta.at, userId, by: userId ? null : by, field: "Anhang", from: "", to: fname }); i.updatedAt = meta.at; put(d, "issues", i); });
+  return meta;
+}
+async function removeAttachment(user, issueId, fid) {
+  const i = get(load(), "issues", issueId); const a = i && (i.attachments || []).find((x) => x.id === fid); if (!a) throw new HttpError(404, "Datei nicht gefunden.");
+  if (a.source !== "upload" || (a.userId !== user.id && user.role !== "ADMIN")) throw new HttpError(403, "Nur eigene Uploads (oder als Administrator) können entfernt werden.");
+  tx((d) => { const x = get(d, "issues", issueId); x.attachments = x.attachments.filter((y) => y.id !== fid); x.history.unshift({ id: S.uid(), at: new Date().toISOString(), userId: user.id, field: "Anhang entfernt", from: a.name, to: "" }); x.updatedAt = new Date().toISOString(); put(d, "issues", x); });
+  await fileDel(fid); return { ok: true };
+}
+const blobUrls = new Map();
+/** Datei als Objekt-URL für <img>/<a> (wird zwischengespeichert). */
+async function fileUrl(id) { if (blobUrls.has(id)) return blobUrls.get(id); const r = await fileGet(id); if (!r) return null; const u = URL.createObjectURL(r.blob); blobUrls.set(id, u); return u; }
+/** Bilder und Links mit data-gft-src / data-gft-href auf die gespeicherten Dateien zeigen lassen. */
+function hydrateFiles(root = document) {
+  for (const el of root.querySelectorAll?.("[data-gft-src], [data-gft-href]") || []) {
+    const ref = el.dataset.gftSrc || el.dataset.gftHref; const id = (ref.match(/\/files\/([A-Za-z0-9_-]+)/) || [])[1]; if (!id || el.dataset.gftDone) continue; el.dataset.gftDone = "1";
+    fileUrl(id).then((u) => { if (!u) { el.title = "Datei nicht mehr im Browser vorhanden"; el.classList.add("att-missing"); return; } if (el.dataset.gftSrc) el.src = u; else el.href = u; });
+  }
+}
+new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) hydrateFiles(n.parentNode || n); }).observe(document.documentElement, { childList: true, subtree: true });
+const b64 = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+/** Sicherung: Daten plus alle Anhänge (Base64) – lässt sich auch in die Server-Version einspielen. */
+async function exportWithFiles(d) {
+  const data = exportAll(d); const ids = new Set(all(d, "issues").flatMap((i) => (i.attachments || []).map((a) => a.id))); data.files = [];
+  for (const id of ids) { const r = await fileGet(id); if (r) data.files.push({ id, name: r.name, type: r.type, data: await b64(r.blob) }); }
+  return data;
+}
+async function importFiles(data) {
+  let n = 0; for (const f of Array.isArray(data?.files) ? data.files : []) { if (!ID_RE.test(String(f.id)) || typeof f.data !== "string") continue;
+    const bin = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0)); await filePut(f.id, { blob: new Blob([bin], { type: f.type || "application/octet-stream" }), name: f.name, type: f.type }); n++; }
+  return n;
+}
+const json = (status, out) => new Response(JSON.stringify(out), { status, headers: { "Content-Type": "application/json" } });
+const hdr = (init, k) => { const h = init.headers || {}; return h instanceof Headers ? h.get(k) : h[k] ?? h[k.toLowerCase()]; };
+async function handleFiles(method, url, init) {
+  const p = url.pathname.replace(/^.*?(\/api\/)/, "/api/"); const name = decodeURIComponent(hdr(init, "X-Filename") || "datei");
+  let m = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments$/);
+  if (m && method === "POST") { const user = currentUser(load()); if (!user) throw new HttpError(401, "Nicht angemeldet."); const meta = await addAttachment(m[1], init.body, name, { userId: user.id }); return { ok: true, id: meta.id, attachment: meta }; }
+  m = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments\/([A-Za-z0-9_-]+)$/);
+  if (m && method === "DELETE") { const user = currentUser(load()); if (!user) throw new HttpError(401, "Nicht angemeldet."); return removeAttachment(user, m[1], m[2]); }
+  m = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})\/attachments$/);
+  if (m && method === "POST") {
+    const d = load(); const i = portalIssue(d, m[1]); if (i.status === "CLOSED") throw new HttpError(409, "Diese Anfrage ist abgeschlossen.");
+    if (!/^(image\/|application\/pdf)/.test(String(init.body?.type || ""))) throw new HttpError(415, "Bitte Fotos (JPG, PNG) oder PDF hochladen.");
+    const meta = await addAttachment(i.id, init.body, name, { by: i.customer?.name || "Kunde", source: "portal" });
+    tx((dd) => { const who = i.assigneeId || get(dd, "projects", i.projectId)?.leadId; if (who) createNotification(dd, who, "comment", `Kunde hat eine Datei geschickt: ${issueKey(dd, i)}`, meta.name, i.id); });
+    return { ok: true, id: meta.id };
+  }
+  m = p.match(/^\/api\/(?:files|portal\/requests\/[A-Za-z0-9_-]{20,64}\/files)\/([A-Za-z0-9_-]+)$/);
+  if (m && method === "GET") { const r = await fileGet(m[1]); if (!r) throw new HttpError(404, "Datei nicht gefunden."); return new Response(r.blob, { headers: { "Content-Type": r.type || "application/octet-stream" } }); }
+  return null;
+}
+
 const realFetch = window.fetch.bind(window);
 window.fetch = function (input, init = {}) {
   const raw = typeof input === "string" ? input : input.url;
   const url = new URL(raw, location.href);
   if (!/\/api\//.test(url.pathname) || (url.origin !== location.origin && url.protocol !== "file:")) return realFetch(input, init);
   const method = (init.method || "GET").toUpperCase();
-  if (/\/attachments$|\/api\/files\//.test(url.pathname)) return Promise.resolve(new Response(JSON.stringify({ error: "Dateianhänge gibt es nur in der Server-Version (die Einzeldatei speichert nur im Browser)." }), { status: 501, headers: { "Content-Type": "application/json" } }));
-  let status = 200, out;
-  try { out = handle(method, url, init.body ? JSON.parse(init.body) : undefined); }
-  catch (e) { status = e instanceof HttpError ? e.status : 500; out = { error: e instanceof HttpError ? e.message : `Interner Fehler: ${e.message}` }; if (!(e instanceof HttpError)) console.error(e); }
-  return Promise.resolve(new Response(JSON.stringify(out), { status, headers: { "Content-Type": "application/json" } }));
+  return READY.then(async () => {
+    try {
+      if (/\/attachments(\/[A-Za-z0-9_-]+)?$|\/files\/[A-Za-z0-9_-]+$/.test(url.pathname)) { const r = await handleFiles(method, url, init); if (r) return r instanceof Response ? r : json(200, r); }
+      return json(200, await handle(method, url, init.body ? JSON.parse(init.body) : undefined));
+    } catch (e) { if (!(e instanceof HttpError)) console.error(e); return json(e instanceof HttpError ? e.status : 500, { error: e instanceof HttpError ? e.message : `Interner Fehler: ${e.message}` }); }
+  });
 };
 window.EventSource = LocalEventSource;
 
 /* ---------- Öffentliche Hilfen für die Startseite ---------- */
 globalThis.GFTLocal = {
-  BASE,
+  BASE, ready: READY, files: true,
   users: () => all(load(), "users").filter((u) => u.active).map(publicUser),
   login(id) { try { sessionStorage.setItem(SESSION_KEY, id); localStorage.setItem(SESSION_KEY, id); } catch {} },
   current: () => { const u = currentUser(load()); return u ? publicUser(u) : null; },
-  reset() { try { localStorage.removeItem(DB_KEY); } catch {} mem = null; initial(); announce(load().rev); },
+  async reset() { try { localStorage.removeItem(DB_KEY); } catch {} mem = null; if (idbDb) await idbReq("files", "readwrite", (st) => st.clear()); initial(); await flushNow(); announce(load().rev); },
+  /** Belegter Speicher (Daten + Anhänge) laut Browser. */
+  async storage() { try { const e = await navigator.storage.estimate(); const persisted = await navigator.storage.persisted?.(); return { used: e.usage, quota: e.quota, persisted: !!persisted, idb: !!idbDb }; } catch { return { idb: !!idbDb }; } },
 };
-deadlineJob();
-setInterval(() => { try { deadlineJob(); } catch (e) { console.error(e); } }, 60e3);
+READY.then(() => { deadlineJob(); setInterval(() => { try { deadlineJob(); } catch (e) { console.error(e); } }, 60e3); });
 })();
 
 </script>
 <script>
-(() => {
+GFTLocal.ready.then(() => {
   const q = new URLSearchParams(location.search);
   const mode = q.has("portal") ? "portal" : q.has("login") || !GFTLocal.current() ? "login" : "app";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -4761,7 +4902,7 @@ setInterval(() => { try { deadlineJob(); } catch (e) { console.error(e); } }, 60
     const ini = (n) => n.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     document.title = "Anmelden · GF Tracker";
     document.body.innerHTML = `<main class="sa-login"><div class="card pad">
-      <div class="row" style="gap:10px;margin-bottom:6px"><span class="sa-logo">⚡</span><h1 style="font-size:20px;margin:0">GF Tracker</h1></div>
+      <div class="row" style="gap:10px;margin-bottom:6px"><img src="data:image/png;base64,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" alt="" width="34" height="34"><h1 style="font-size:20px;margin:0">GF Tracker</h1></div>
       <p class="muted small" style="margin:0 0 16px">Wer arbeitet gerade? Person wählen – jeder Tab kann als andere Person angemeldet sein (z. B. Disponent und Techniker nebeneinander).</p>
       <div class="sa-users">${GFTLocal.users().map((u) => `<button class="sa-user" data-id="${esc(u.id)}"><span class="avatar" style="background:${esc(u.color || "#2436e8")}">${esc(ini(u.name))}</span><span><b>${esc(u.name)}</b><br><span class="small muted">${esc(ROLE[u.role] || u.role)}</span></span></button>`).join("")}</div>
       <div class="row" style="margin-top:18px;justify-content:space-between"><a href="?portal" target="_blank" rel="noopener">Kundenportal öffnen ↗</a><button class="btn subtle sm" id="sa-reset">Beispieldaten zurücksetzen</button></div>
@@ -4769,12 +4910,12 @@ setInterval(() => { try { deadlineJob(); } catch (e) { console.error(e); } }, 60
     </div></main>`;
     document.addEventListener("click", (e) => {
       const b = e.target.closest(".sa-user"); if (b) { GFTLocal.login(b.dataset.id); location.href = GFTLocal.BASE; return; }
-      if (e.target.id === "sa-reset" && confirm("Alle Daten in diesem Browser löschen und Beispieldaten neu anlegen?")) { GFTLocal.reset(); location.reload(); }
+      if (e.target.id === "sa-reset" && confirm("Alle Daten und Anhänge in diesem Browser löschen und Beispieldaten neu anlegen?")) GFTLocal.reset().then(() => location.reload());
     });
     return;
   }
   document.body.innerHTML = src["app-body"];
   run("src-app");
-})();</script>
+});</script>
 </body>
 </html>

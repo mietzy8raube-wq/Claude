@@ -27,7 +27,7 @@ const app = patch("app.js", read("public/app.js"), [
   ["/portal?p=${p.key}", "?portal&p=${p.key}", 2],
   ["${esc(location.origin)}/portal?embed=1", "${esc(GFTLocal.BASE)}?portal&embed=1"],
   ["${esc(location.origin)}/portal", "${esc(GFTLocal.BASE)}?portal", 2],
-  ['location.href = authUrl("/api/admin/export")', 'api("/api/admin/export")'],
+  ['location.href = authUrl("/api/admin/export")', 'api("/api/admin/export").then((r) => toast(`Sicherung heruntergeladen${r.files ? ` (inkl. ${r.files} Anhänge)` : ""}.`)).catch((err) => toast(err.message))'],
   ['if ("serviceWorker" in navigator && !TEAMS)', "if (false)"],
   ['src="/icons/icon-64.png"', `src="data:image/png;base64,${fs.readFileSync(path.join(ROOT, "public/icons/icon-64.png")).toString("base64")}"`, 2],
 ]);
@@ -42,7 +42,7 @@ const favicon = "data:image/svg+xml," + encodeURIComponent(read("public/favicon.
 const embed = (id, js) => `<script type="text/plain" id="${id}">${js.replace(/<\/(script)/gi, "<\\/$1")}</script>`;
 
 const loader = `
-(() => {
+GFTLocal.ready.then(() => {
   const q = new URLSearchParams(location.search);
   const mode = q.has("portal") ? "portal" : q.has("login") || !GFTLocal.current() ? "login" : "app";
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -62,7 +62,7 @@ const loader = `
     const ini = (n) => n.split(/\\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     document.title = "Anmelden · GF Tracker";
     document.body.innerHTML = \`<main class="sa-login"><div class="card pad">
-      <div class="row" style="gap:10px;margin-bottom:6px"><span class="sa-logo">⚡</span><h1 style="font-size:20px;margin:0">GF Tracker</h1></div>
+      <div class="row" style="gap:10px;margin-bottom:6px"><img src="${"data:image/png;base64," + fs.readFileSync(path.join(ROOT, "public/icons/icon-64.png")).toString("base64")}" alt="" width="34" height="34"><h1 style="font-size:20px;margin:0">GF Tracker</h1></div>
       <p class="muted small" style="margin:0 0 16px">Wer arbeitet gerade? Person wählen – jeder Tab kann als andere Person angemeldet sein (z. B. Disponent und Techniker nebeneinander).</p>
       <div class="sa-users">\${GFTLocal.users().map((u) => \`<button class="sa-user" data-id="\${esc(u.id)}"><span class="avatar" style="background:\${esc(u.color || "#2436e8")}">\${esc(ini(u.name))}</span><span><b>\${esc(u.name)}</b><br><span class="small muted">\${esc(ROLE[u.role] || u.role)}</span></span></button>\`).join("")}</div>
       <div class="row" style="margin-top:18px;justify-content:space-between"><a href="?portal" target="_blank" rel="noopener">Kundenportal öffnen ↗</a><button class="btn subtle sm" id="sa-reset">Beispieldaten zurücksetzen</button></div>
@@ -70,13 +70,13 @@ const loader = `
     </div></main>\`;
     document.addEventListener("click", (e) => {
       const b = e.target.closest(".sa-user"); if (b) { GFTLocal.login(b.dataset.id); location.href = GFTLocal.BASE; return; }
-      if (e.target.id === "sa-reset" && confirm("Alle Daten in diesem Browser löschen und Beispieldaten neu anlegen?")) { GFTLocal.reset(); location.reload(); }
+      if (e.target.id === "sa-reset" && confirm("Alle Daten und Anhänge in diesem Browser löschen und Beispieldaten neu anlegen?")) GFTLocal.reset().then(() => location.reload());
     });
     return;
   }
   document.body.innerHTML = src["app-body"];
   run("src-app");
-})();`;
+});`;
 
 const html = `<!doctype html>
 <html lang="de">

@@ -1,7 +1,9 @@
 /* ======================================================================
    GF Tracker – Einzeldatei-Version: Browser-Backend
    Bildet die Server-Schnittstellen (/api/...) im Browser nach und speichert
-   alle Daten im localStorage dieses Browsers. Mehrere Tabs desselben
+   alle Daten in der IndexedDB dieses Browsers (früher localStorage, max. ca. 5 MB –
+   wird beim ersten Start automatisch übernommen). Dateianhänge liegen ebenfalls
+   in der IndexedDB. Mehrere Tabs desselben
    Browsers sehen Änderungen live (BroadcastChannel). Fachlogik wie auf dem
    Server (server.mjs) – gemeinsame Regeln kommen aus shared.js.
    ====================================================================== */
@@ -15,16 +17,47 @@ const COMPANY = "Druckluft Chemnitz";
 const BASE = location.href.split(/[?#]/)[0];
 class HttpError extends Error { constructor(status, message) { super(message); this.status = status; } }
 
-/* ---------- Datenhaltung ---------- */
-let mem = null; // Fallback, falls localStorage gesperrt ist
-function load() {
-  let d = null;
-  try { d = JSON.parse(localStorage.getItem(DB_KEY)); } catch {}
-  d = d || mem;
-  if (!d || !d.entities) d = initial();
-  return d;
+/* ---------- Datenhaltung: Arbeitsstand im Speicher, dauerhaft in der IndexedDB ---------- */
+let mem = null; let idbDb = null; let writeTimer = null, writing = Promise.resolve(); let storageFailed = false;
+function openIdb() {
+  return new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) return reject(new Error("IndexedDB nicht verfügbar"));
+    const r = indexedDB.open("gft-tracker", 1);
+    r.onupgradeneeded = () => { r.result.createObjectStore("kv"); r.result.createObjectStore("files"); };
+    r.onsuccess = () => resolve(r.result); r.onerror = () => reject(r.error); r.onblocked = () => reject(new Error("IndexedDB blockiert"));
+  });
 }
-function persist(d) { mem = d; try { localStorage.setItem(DB_KEY, JSON.stringify(d)); } catch {} }
+const idbReq = (store, mode, fn) => new Promise((resolve, reject) => { const t = idbDb.transaction(store, mode); const r = fn(t.objectStore(store)); t.oncomplete = () => resolve(r?.result); t.onerror = () => reject(t.error); t.onabort = () => reject(t.error || new Error("abgebrochen")); });
+const kvGet = (k) => idbReq("kv", "readonly", (s) => s.get(k));
+const kvPut = (k, v) => idbReq("kv", "readwrite", (s) => s.put(v, k));
+/** Startet die Datenhaltung: IndexedDB öffnen, ggf. Altbestand aus dem localStorage übernehmen. */
+const READY = (async () => {
+  try {
+    idbDb = await openIdb();
+    let d = await kvGet("db");
+    if (!d) { try { d = JSON.parse(localStorage.getItem(DB_KEY)); } catch {} if (d && d.entities) { await kvPut("db", d); try { localStorage.removeItem(DB_KEY); } catch {} } }
+    mem = d && d.entities ? d : null;
+  } catch (e) { // Notfall: alter Weg über localStorage (z. B. sehr alte Browser, privater Modus)
+    console.warn("IndexedDB nicht nutzbar, verwende localStorage:", e); idbDb = null;
+    try { const d = JSON.parse(localStorage.getItem(DB_KEY)); if (d && d.entities) mem = d; } catch {}
+  }
+  if (!mem) initial();
+  try { navigator.storage?.persist?.(); } catch {} // Browser soll die Daten nicht von sich aus löschen
+})();
+function load() { if (!mem) initial(); return mem; }
+function storageError(e) {
+  console.error("Speichern fehlgeschlagen:", e); if (storageFailed) return; storageFailed = true;
+  const b = document.createElement("div"); b.className = "note err"; b.style.cssText = "position:fixed;left:16px;right:16px;bottom:16px;z-index:200;box-shadow:var(--shadow-lg)";
+  b.innerHTML = "<b>Speichern im Browser ist fehlgeschlagen.</b> Bitte unter Einstellungen → Sicherung herunterladen und Speicherplatz bzw. Browser-Einstellungen prüfen. (" + String(e && e.message || e).replace(/[<>&]/g, "") + ")";
+  document.body.appendChild(b);
+}
+/** Speichert verzögert (bündelt schnelle Änderungen) und informiert danach die anderen Tabs. */
+function persist(d) {
+  mem = d; if (!idbDb) { try { localStorage.setItem(DB_KEY, JSON.stringify(d)); } catch (e) { storageError(e); } return; }
+  clearTimeout(writeTimer); writeTimer = setTimeout(flushNow, 40);
+}
+function flushNow() { clearTimeout(writeTimer); writeTimer = null; const d = mem; writing = writing.then(() => kvPut("db", d)).then(() => { try { channel?.postMessage(d.rev); } catch {} }).catch(storageError); return writing; }
+window.addEventListener("pagehide", () => { if (writeTimer) flushNow(); });
 function initial() {
   const d = { rev: 0, entities: {}, counters: {}, tokens: {}, created: new Date().toISOString() };
   COLLECTIONS.forEach((t) => (d.entities[t] = {}));
@@ -55,9 +88,9 @@ function tx(fn) {
 const sources = new Set();
 const channel = "BroadcastChannel" in window ? new BroadcastChannel("gft-sa") : null;
 function emit(rev) { for (const s of sources) s._emit(rev); }
-function announce(rev) { setTimeout(() => emit(rev), 0); try { channel?.postMessage(rev); } catch {} }
-if (channel) channel.onmessage = (e) => emit(e.data);
-window.addEventListener("storage", (e) => { if (e.key === DB_KEY) emit(load().rev); });
+function announce(rev) { setTimeout(() => emit(rev), 0); if (!idbDb) try { channel?.postMessage(rev); } catch {} } // mit IndexedDB meldet flushNow nach dem Schreiben
+// Anderer Tab hat gespeichert: neuesten Stand aus der IndexedDB holen, dann die eigene Ansicht aktualisieren
+if (channel) channel.onmessage = async (e) => { if (idbDb) { try { const d = await kvGet("db"); if (d && d.rev >= (mem?.rev || 0)) mem = d; } catch {} } else { try { mem = JSON.parse(localStorage.getItem(DB_KEY)) || mem; } catch {} } emit(mem?.rev ?? e.data); };
 class LocalEventSource {
   constructor() { this.listeners = {}; sources.add(this); setTimeout(() => this._emit(load().rev), 0); }
   addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
@@ -244,6 +277,7 @@ function portalView(d, issue) {
   const p = get(d, "projects", issue.projectId); const st = S.statusInfo(p, issue.status); const u = (id) => (id ? get(d, "users", id) : null);
   return { key: issueKey(d, issue), summary: issue.summary, description: issue.description, type: issue.type, status: st.name, statusCat: st.cat, closed: issue.status === "CLOSED", createdAt: issue.createdAt,
     appointmentAt: ["SCHEDULED", "WORKING"].includes(issue.status) ? issue.appointmentAt || null : null, technician: u(issue.assigneeId)?.name || null,
+    attachments: (issue.attachments || []).filter((a) => a.source === "portal" || a.source === "email" || a.public).map((a) => ({ id: a.id, name: a.name, size: a.size, type: a.type, fromCustomer: a.source !== "upload" })),
     report: issue.resolution && st.cat === "done" ? { cause: issue.resolution.cause, action: issue.resolution.action, parts: issue.resolution.parts, hours: issue.resolution.hours, at: issue.resolution.at } : null,
     comments: issue.comments.filter((c) => !c.internal).map((c) => ({ at: c.at, text: c.text, fromCustomer: !c.userId, author: c.userId ? `${u(c.userId)?.name || "Service"} (Service)` : c.author || "Sie" })) };
 }
@@ -372,8 +406,8 @@ function handle(method, url, body) {
     });
   }
   if (/^\/api\/admin\/users\/[A-Za-z0-9_-]+\/password$/.test(p)) { needAdmin(); return { ok: true }; }
-  if (p === "/api/admin/export") { needAdmin(); download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(exportAll(d0), null, 2)); return { ok: true }; }
-  if (p === "/api/admin/import" && method === "POST") { needAdmin(); return importAll(body, user); }
+  if (p === "/api/admin/export") { needAdmin(); return exportWithFiles(d0).then((data) => { download(`gf-tracker-sicherung-${S.today()}.json`, JSON.stringify(data, null, 2)); return { ok: true, files: (data.files || []).length }; }); }
+  if (p === "/api/admin/import" && method === "POST") { needAdmin(); const r = importAll(body, user); return importFiles(body).then((n) => ({ ...r, files: n })); }
   if (p === "/api/me/calendar") return { standalone: true };
   if (p === "/api/archive") return { issues: [] };
   { const bk = p.match(/^\/api\/issues\/by-key\/([A-Za-z][A-Za-z0-9]*)-(\d+)$/); if (bk) { const pr = all(d0, "projects").find((x) => x.key === bk[1].toUpperCase()); const i = pr && all(d0, "issues").find((x) => x.projectId === pr.id && x.no === Number(bk[2])); if (!i) throw new HttpError(404, "Vorgang nicht gefunden."); return { issue: i }; } }
@@ -383,28 +417,96 @@ function handle(method, url, body) {
   throw new HttpError(404, "Unbekannte Schnittstelle.");
 }
 
+/* ---------- Dateianhänge: in der IndexedDB (Store "files"), Metadaten am Vorgang wie auf dem Server ---------- */
+const MAX_FILE = 25 * 1048576;
+const BLOCKED = /\.(exe|bat|cmd|com|scr|js|jse|vbs|vbe|ps1|msi|msp|dll|jar|hta|cpl|lnk|reg)$/i;
+const cleanName = (n) => String(n || "datei").normalize("NFC").replace(/[\\/\x00-\x1f"<>|:*?]/g, "_").replace(/^\.+/, "").slice(0, 150) || "datei";
+const fileGet = (id) => (idbDb ? idbReq("files", "readonly", (st) => st.get(id)) : Promise.resolve(null));
+const filePut = (id, rec) => { if (!idbDb) throw new HttpError(507, "Dateianhänge brauchen die IndexedDB des Browsers – im privaten Modus bzw. mit gesperrtem Website-Speicher nicht möglich."); return idbReq("files", "readwrite", (st) => st.put(rec, id)); };
+const fileDel = (id) => (idbDb ? idbReq("files", "readwrite", (st) => st.delete(id)) : Promise.resolve());
+async function addAttachment(issueId, file, name, { userId = null, by = null, source = "upload" } = {}) {
+  const fname = cleanName(name); if (BLOCKED.test(fname)) throw new HttpError(415, "Ausführbare Dateien sind aus Sicherheitsgründen nicht erlaubt.");
+  if (!file || !file.size) throw new HttpError(400, "Leere Datei."); if (file.size > MAX_FILE) throw new HttpError(413, `Datei zu groß (höchstens ${MAX_FILE / 1048576} MB).`);
+  if (!get(load(), "issues", issueId)) throw new HttpError(404, "Vorgang nicht gefunden.");
+  const meta = { id: S.uid(), name: fname, size: file.size, type: String(file.type || "application/octet-stream").split(";")[0].trim().toLowerCase().slice(0, 100), at: new Date().toISOString(), userId, by, source };
+  try { await filePut(meta.id, { blob: file, name: fname, type: meta.type, issueId }); } catch (e) { if (e instanceof HttpError) throw e; throw new HttpError(507, `Datei konnte nicht gespeichert werden (Speicher voll?): ${e.message}`); }
+  tx((d) => { const i = get(d, "issues", issueId); i.attachments = [...(i.attachments || []), meta]; i.history.unshift({ id: S.uid(), at: meta.at, userId, by: userId ? null : by, field: "Anhang", from: "", to: fname }); i.updatedAt = meta.at; put(d, "issues", i); });
+  return meta;
+}
+async function removeAttachment(user, issueId, fid) {
+  const i = get(load(), "issues", issueId); const a = i && (i.attachments || []).find((x) => x.id === fid); if (!a) throw new HttpError(404, "Datei nicht gefunden.");
+  if (a.source !== "upload" || (a.userId !== user.id && user.role !== "ADMIN")) throw new HttpError(403, "Nur eigene Uploads (oder als Administrator) können entfernt werden.");
+  tx((d) => { const x = get(d, "issues", issueId); x.attachments = x.attachments.filter((y) => y.id !== fid); x.history.unshift({ id: S.uid(), at: new Date().toISOString(), userId: user.id, field: "Anhang entfernt", from: a.name, to: "" }); x.updatedAt = new Date().toISOString(); put(d, "issues", x); });
+  await fileDel(fid); return { ok: true };
+}
+const blobUrls = new Map();
+/** Datei als Objekt-URL für <img>/<a> (wird zwischengespeichert). */
+async function fileUrl(id) { if (blobUrls.has(id)) return blobUrls.get(id); const r = await fileGet(id); if (!r) return null; const u = URL.createObjectURL(r.blob); blobUrls.set(id, u); return u; }
+/** Bilder und Links mit data-gft-src / data-gft-href auf die gespeicherten Dateien zeigen lassen. */
+function hydrateFiles(root = document) {
+  for (const el of root.querySelectorAll?.("[data-gft-src], [data-gft-href]") || []) {
+    const ref = el.dataset.gftSrc || el.dataset.gftHref; const id = (ref.match(/\/files\/([A-Za-z0-9_-]+)/) || [])[1]; if (!id || el.dataset.gftDone) continue; el.dataset.gftDone = "1";
+    fileUrl(id).then((u) => { if (!u) { el.title = "Datei nicht mehr im Browser vorhanden"; el.classList.add("att-missing"); return; } if (el.dataset.gftSrc) el.src = u; else el.href = u; });
+  }
+}
+new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) hydrateFiles(n.parentNode || n); }).observe(document.documentElement, { childList: true, subtree: true });
+const b64 = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+/** Sicherung: Daten plus alle Anhänge (Base64) – lässt sich auch in die Server-Version einspielen. */
+async function exportWithFiles(d) {
+  const data = exportAll(d); const ids = new Set(all(d, "issues").flatMap((i) => (i.attachments || []).map((a) => a.id))); data.files = [];
+  for (const id of ids) { const r = await fileGet(id); if (r) data.files.push({ id, name: r.name, type: r.type, data: await b64(r.blob) }); }
+  return data;
+}
+async function importFiles(data) {
+  let n = 0; for (const f of Array.isArray(data?.files) ? data.files : []) { if (!ID_RE.test(String(f.id)) || typeof f.data !== "string") continue;
+    const bin = Uint8Array.from(atob(f.data), (c) => c.charCodeAt(0)); await filePut(f.id, { blob: new Blob([bin], { type: f.type || "application/octet-stream" }), name: f.name, type: f.type }); n++; }
+  return n;
+}
+const json = (status, out) => new Response(JSON.stringify(out), { status, headers: { "Content-Type": "application/json" } });
+const hdr = (init, k) => { const h = init.headers || {}; return h instanceof Headers ? h.get(k) : h[k] ?? h[k.toLowerCase()]; };
+async function handleFiles(method, url, init) {
+  const p = url.pathname.replace(/^.*?(\/api\/)/, "/api/"); const name = decodeURIComponent(hdr(init, "X-Filename") || "datei");
+  let m = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments$/);
+  if (m && method === "POST") { const user = currentUser(load()); if (!user) throw new HttpError(401, "Nicht angemeldet."); const meta = await addAttachment(m[1], init.body, name, { userId: user.id }); return { ok: true, id: meta.id, attachment: meta }; }
+  m = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments\/([A-Za-z0-9_-]+)$/);
+  if (m && method === "DELETE") { const user = currentUser(load()); if (!user) throw new HttpError(401, "Nicht angemeldet."); return removeAttachment(user, m[1], m[2]); }
+  m = p.match(/^\/api\/portal\/requests\/([A-Za-z0-9_-]{20,64})\/attachments$/);
+  if (m && method === "POST") {
+    const d = load(); const i = portalIssue(d, m[1]); if (i.status === "CLOSED") throw new HttpError(409, "Diese Anfrage ist abgeschlossen.");
+    if (!/^(image\/|application\/pdf)/.test(String(init.body?.type || ""))) throw new HttpError(415, "Bitte Fotos (JPG, PNG) oder PDF hochladen.");
+    const meta = await addAttachment(i.id, init.body, name, { by: i.customer?.name || "Kunde", source: "portal" });
+    tx((dd) => { const who = i.assigneeId || get(dd, "projects", i.projectId)?.leadId; if (who) createNotification(dd, who, "comment", `Kunde hat eine Datei geschickt: ${issueKey(dd, i)}`, meta.name, i.id); });
+    return { ok: true, id: meta.id };
+  }
+  m = p.match(/^\/api\/(?:files|portal\/requests\/[A-Za-z0-9_-]{20,64}\/files)\/([A-Za-z0-9_-]+)$/);
+  if (m && method === "GET") { const r = await fileGet(m[1]); if (!r) throw new HttpError(404, "Datei nicht gefunden."); return new Response(r.blob, { headers: { "Content-Type": r.type || "application/octet-stream" } }); }
+  return null;
+}
+
 const realFetch = window.fetch.bind(window);
 window.fetch = function (input, init = {}) {
   const raw = typeof input === "string" ? input : input.url;
   const url = new URL(raw, location.href);
   if (!/\/api\//.test(url.pathname) || (url.origin !== location.origin && url.protocol !== "file:")) return realFetch(input, init);
   const method = (init.method || "GET").toUpperCase();
-  if (/\/attachments$|\/api\/files\//.test(url.pathname)) return Promise.resolve(new Response(JSON.stringify({ error: "Dateianhänge gibt es nur in der Server-Version (die Einzeldatei speichert nur im Browser)." }), { status: 501, headers: { "Content-Type": "application/json" } }));
-  let status = 200, out;
-  try { out = handle(method, url, init.body ? JSON.parse(init.body) : undefined); }
-  catch (e) { status = e instanceof HttpError ? e.status : 500; out = { error: e instanceof HttpError ? e.message : `Interner Fehler: ${e.message}` }; if (!(e instanceof HttpError)) console.error(e); }
-  return Promise.resolve(new Response(JSON.stringify(out), { status, headers: { "Content-Type": "application/json" } }));
+  return READY.then(async () => {
+    try {
+      if (/\/attachments(\/[A-Za-z0-9_-]+)?$|\/files\/[A-Za-z0-9_-]+$/.test(url.pathname)) { const r = await handleFiles(method, url, init); if (r) return r instanceof Response ? r : json(200, r); }
+      return json(200, await handle(method, url, init.body ? JSON.parse(init.body) : undefined));
+    } catch (e) { if (!(e instanceof HttpError)) console.error(e); return json(e instanceof HttpError ? e.status : 500, { error: e instanceof HttpError ? e.message : `Interner Fehler: ${e.message}` }); }
+  });
 };
 window.EventSource = LocalEventSource;
 
 /* ---------- Öffentliche Hilfen für die Startseite ---------- */
 globalThis.GFTLocal = {
-  BASE,
+  BASE, ready: READY, files: true,
   users: () => all(load(), "users").filter((u) => u.active).map(publicUser),
   login(id) { try { sessionStorage.setItem(SESSION_KEY, id); localStorage.setItem(SESSION_KEY, id); } catch {} },
   current: () => { const u = currentUser(load()); return u ? publicUser(u) : null; },
-  reset() { try { localStorage.removeItem(DB_KEY); } catch {} mem = null; initial(); announce(load().rev); },
+  async reset() { try { localStorage.removeItem(DB_KEY); } catch {} mem = null; if (idbDb) await idbReq("files", "readwrite", (st) => st.clear()); initial(); await flushNow(); announce(load().rev); },
+  /** Belegter Speicher (Daten + Anhänge) laut Browser. */
+  async storage() { try { const e = await navigator.storage.estimate(); const persisted = await navigator.storage.persisted?.(); return { used: e.usage, quota: e.quota, persisted: !!persisted, idb: !!idbDb }; } catch { return { idb: !!idbDb }; } },
 };
-deadlineJob();
-setInterval(() => { try { deadlineJob(); } catch (e) { console.error(e); } }, 60e3);
+READY.then(() => { deadlineJob(); setInterval(() => { try { deadlineJob(); } catch (e) { console.error(e); } }, 60e3); });
 })();

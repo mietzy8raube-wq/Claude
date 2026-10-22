@@ -460,3 +460,8 @@ th.sortable { cursor: pointer; user-select: none; } th.sortable:hover { color: v
 .dr-foot { border-top: 1px solid var(--border); padding: 6px 8px; display: grid; }
 body.drawer-open { overflow: hidden; }
 [id^="sec-"] { scroll-margin-top: 72px; } .flash { animation: flash 1.6s ease; } @keyframes flash { 0%, 40% { background: var(--sel); box-shadow: 0 0 0 6px var(--sel); border-radius: 4px; } 100% { background: transparent; box-shadow: none; } }
+/* Anhänge beim Erstellen */
+.cf-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border: 1px dashed var(--border); border-radius: 8px; }
+.cf-drop.drop-on { border-color: var(--primary); background: var(--primary-soft); }
+.cf-list { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; } .cf-list:empty { display: none; } .cf-list .chip { display: inline-flex; align-items: center; gap: 4px; }
+.att-missing { opacity: .5; }

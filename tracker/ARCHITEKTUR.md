@@ -357,7 +357,8 @@ Regeländerungen stehen im Audit-Protokoll.
 
 In der Einzel-HTML-Datei unter *Einstellungen → Sicherung speichern* eine
 JSON-Datei erzeugen und im Server unter *Einstellungen → Sicherung einspielen*
-hochladen (ersetzt alle Projekte und Vorgänge). Personen ohne Passwort erhalten
+hochladen (ersetzt alle Projekte und Vorgänge; **Dateianhänge sind in der Sicherung
+enthalten und werden mit übernommen**). Personen ohne Passwort erhalten
 anschließend über „Passwort“ in der Personenliste ein Startpasswort.
 
 ### Updates
