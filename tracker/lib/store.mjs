@@ -61,6 +61,10 @@ export class Store {
         if (!has("accounts", "last_login")) this.db.exec("ALTER TABLE accounts ADD COLUMN last_login INTEGER");
         this.db.exec("CREATE TABLE IF NOT EXISTS auth_tokens (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, kind TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, created_by TEXT, used_at INTEGER)");
       },
+      () => { // Audit-Protokoll: wer hat wann was Wichtiges getan
+        this.db.exec("CREATE TABLE IF NOT EXISTS audit_log (id INTEGER PRIMARY KEY AUTOINCREMENT, at INTEGER NOT NULL, user_id TEXT, user_name TEXT, action TEXT NOT NULL, detail TEXT, ip TEXT)");
+        this.db.exec("CREATE INDEX IF NOT EXISTS audit_log_at ON audit_log (at)");
+      },
     ];
     const cur = Number(this.db.prepare("SELECT value FROM meta WHERE key = 'schema'").get()?.value || 0);
     for (let v = cur; v < steps.length; v++) {

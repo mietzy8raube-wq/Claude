@@ -626,6 +626,7 @@ function render() {
       case "dashboard": html = viewDashboard(); break;
       case "portal": html = `<div class="empty">Das Kundenportal ist öffentlich erreichbar unter <a href="/portal" target="_blank" rel="noopener">${esc(location.origin)}/portal</a> – diesen Link können Sie an Kunden weitergeben.</div>`; break;
       case "settings": html = viewSettings(); break;
+      case "system": html = viewSystem(); break;
       case "issue": { html = viewYourWork(); findByKey(parts[1]).then((i) => (i ? openIssue(i.id) : toast(`Vorgang ${parts[1]} nicht gefunden.`))); break; }
       default: html = viewYourWork();
     }
@@ -1681,6 +1682,7 @@ function viewSettings() {
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
     ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">Integrationen &amp; Schnittstellen</h3><p class="small muted" style="margin:0">Microsoft 365 (E-Mail, Postfach, Kalender, Anmeldung), Factorial, REST-API für Ihre Programme, Webhooks für Teams, Datenimport.</p></div><a class="btn primary" href="#/integrations">Integrationen öffnen</a></div>` : ""}
+    ${isAdmin ? `<div class="card pad" style="grid-column:1/-1;display:flex;align-items:center;gap:14px;flex-wrap:wrap"><div style="flex:1;min-width:240px"><h3 style="font-size:15px;margin:0 0 4px">System &amp; Protokoll</h3><p class="small muted" style="margin:0">Sicherungen (Datenbank und Anhänge), Speicher, Auslastung, Fehler und das Audit-Protokoll: wer hat wann was geändert.</p></div><a class="btn" href="#/system">System öffnen</a></div>` : ""}
     ${isAdmin ? `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Daten &amp; Sicherung</h3><p class="small muted" style="margin:0 0 12px">Der Server sichert die Datenbank automatisch jede Nacht (Ordner <code>data/backups</code>). Zusätzlich können Sie hier eine Sicherung herunterladen oder eine Sicherung bzw. Daten aus der Einzel-HTML-Version einspielen.</p>
       <div class="row"><button class="btn" data-act="export-json">${icon("download")} Sicherung herunterladen</button><button class="btn" data-act="import-json">${icon("upload")} Sicherung einspielen</button><input type="file" id="json-file" accept=".json,application/json" hidden><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>
       <h3 style="font-size:15px;margin:18px 0 6px">E-Mail-Versand</h3><p class="small muted" style="margin:0 0 8px">${sync.mail ? "Eingerichtet über Microsoft 365." : "Nicht eingerichtet – Benachrichtigungen erscheinen nur in der App. Einrichtung siehe ARCHITEKTUR.md (Microsoft-365-App-Registrierung)."}</p>
@@ -1689,6 +1691,50 @@ function viewSettings() {
       <textarea id="embed-code" class="jql" rows="3" readonly>&lt;iframe src="${esc(location.origin)}/portal?embed=1" title="Service-Portal" style="width:100%;min-height:900px;border:0" loading="lazy"&gt;&lt;/iframe&gt;</textarea>
       <div class="row" style="margin-top:6px"><button class="btn sm" data-act="copy-embed">Code kopieren</button><span class="small muted">Für das Einbetten muss Ihre Website-Adresse in <code>PORTAL_FRAME_ANCESTORS</code> stehen (siehe ARCHITEKTUR.md).</span></div></div>` : `<div class="card pad"><h3 style="font-size:15px;margin-bottom:6px">Export</h3><button class="btn" data-act="goto" data-href="#/import">${icon("upload")} Daten importieren (Excel/CSV)</button><button class="btn primary" data-act="export-all-xlsx">${icon("download")} Excel-Auswertung (alle Daten)</button><button class="btn" data-act="export-all-csv">${icon("download")} Alle Vorgänge (CSV)</button></div>`}
     </div>`;
+}
+
+/* ---------- Ansicht: System & Protokoll (Administration) ---------- */
+const fmtBytes = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1).replace(".", ",")} GB` : fmtSize(n || 0));
+function loadSystem() {
+  ui.sysLoading = true;
+  Promise.all([api("/api/admin/system"), api(`/api/admin/audit?${new URLSearchParams(ui.auditQ || {})}`)])
+    .then(([sys, a]) => { ui.sys = sys; ui.audit = a; }).catch((e) => { ui.sys = { error: e.status === 404 ? "Systemstatus und Protokoll gibt es in der Server-Version." : e.message }; })
+    .finally(() => { ui.sysLoading = false; if (route().parts[0] === "system") render(); });
+}
+function viewSystem() {
+  if (me().role !== "ADMIN") return `<div class="empty">Nur für Administratoren.</div>`;
+  const y = ui.sys; if (!y) { if (!ui.sysLoading) loadSystem(); return `<div class="page-head"><h1>System &amp; Protokoll</h1></div><p class="muted">Lade …</p>`; }
+  if (y.error) return `<div class="page-head"><h1>System &amp; Protokoll</h1></div><div class="card pad">${esc(y.error)}</div>`;
+  const tile = (v, l, sub = "", warn = false) => `<div class="card stat"${warn ? ' style="border-left:3px solid var(--danger,#c9372c)"' : ""}><div class="v">${v}</div><div class="l">${l}</div>${sub ? `<div class="small muted">${sub}</div>` : ""}</div>`;
+  const lastB = y.backups.last; const bAge = lastB ? (Date.now() - lastB.at) / 36e5 : Infinity; const diskLow = y.disk && y.disk.free < 2 * 1073741824;
+  const A = ui.audit || { entries: [], actions: {} }; const q = ui.auditQ || {};
+  return `<div class="page-head"><div><div class="crumbs"><a href="#/settings">Einstellungen</a></div><h1>System &amp; Protokoll</h1></div><button class="btn" data-act="sys-reload">Aktualisieren</button></div>
+    <div class="grid g4" style="margin-bottom:14px">
+      ${tile(esc(y.version), "Version", `Node ${esc(y.node)}`)}
+      ${tile(ago(new Date(y.startedAt).toISOString()).replace(/^vor /, ""), "Server läuft seit", fmtDT(new Date(y.startedAt).toISOString()))}
+      ${tile(`${y.online}`, "Gerade online", `${y.activeToday} Personen heute aktiv · ${y.sessions.n} Sitzungen`)}
+      ${tile(lastB ? ago(new Date(lastB.at).toISOString()) : "nie", "Letzte Sicherung", lastB ? `${esc(lastB.file)}` : "", bAge > 26)}
+      ${tile(fmtBytes(y.db.bytes + y.db.wal), "Datenbank", `Schema-Version ${y.schema}`)}
+      ${tile(`${y.files.count}`, "Anhänge", fmtBytes(y.files.bytes))}
+      ${tile(fmtBytes(y.memory.rss), "Arbeitsspeicher", `davon Daten ${fmtBytes(y.memory.heap)}`)}
+      ${tile(y.disk ? fmtBytes(y.disk.free) : "–", "Freier Plattenplatz", y.disk ? `von ${fmtBytes(y.disk.total)}${diskLow ? " – bitte aufräumen!" : ""}` : "", diskLow)}
+    </div>
+    <div class="grid g2" style="margin-bottom:14px">
+      <div class="card pad"><div class="row" style="margin-bottom:8px"><h3 class="h3" style="flex:1;margin:0">Sicherungen</h3><button class="btn sm primary" data-act="sys-backup">Jetzt sichern</button></div>
+        <p class="small muted" style="margin:0 0 8px">Jede Nacht automatisch: Datenbank-Kopie (die letzten ${y.backups.keep} bleiben) und alle Anhänge (${y.backups.mirror.count} Dateien, ${fmtBytes(y.backups.mirror.bytes)}) in <code>data/backups</code>. Diesen Ordner zusätzlich außerhalb des Servers sichern (NAS/Cloud).</p>
+        <div class="tbl-wrap" style="max-height:260px;overflow:auto"><table><tbody>${y.backups.list.map((b) => `<tr><td class="small">${esc(b.name)}</td><td class="small muted">${fmtTs(b.at)}</td><td class="small muted">${fmtBytes(b.bytes)}</td><td><a class="btn subtle sm" href="/api/admin/backups/${encodeURIComponent(b.name)}" download>Herunterladen</a></td></tr>`).join("") || '<tr><td class="muted small">Noch keine Sicherung.</td></tr>'}</tbody></table></div></div>
+      <div class="card pad"><h3 class="h3">Daten &amp; Leistung</h3>
+        <div class="kv" style="grid-template-columns:max-content 1fr">${[["Vorgänge", `${y.counts.issues}${y.snapshot ? ` · ${y.snapshot.archived} im Archiv (älter als ${y.archiveDays} Tage erledigt)` : ""}`], ["Kunden", y.counts.customers], ["Personen / Teams", `${y.counts.users} / ${y.counts.teams}`], ["Projekte", y.counts.projects], ["Benachrichtigungen", y.counts.notifications],
+          ["Startdaten", y.snapshot ? `${fmtBytes(y.snapshot.gz)} übertragen (${fmtBytes(y.snapshot.bytes)} entpackt), erstellt in ${y.snapshot.ms} ms` : "–"], ["Webhooks", `${y.webhooks.pending || 0} wartend · ${y.webhooks.failed || 0} fehlgeschlagen`], ["E-Mail-Versand", y.mail ? "eingerichtet" : "nicht eingerichtet"]]
+          .map(([k, v]) => `<span>${k}</span><span>${esc(String(v))}</span>`).join("")}</div>
+        ${y.errors.length ? `<h3 class="h3" style="margin-top:14px">Fehler der letzten 7 Tage</h3>${y.errors.map((e) => `<div class="small" style="padding:4px 0;border-bottom:1px solid var(--border)"><span class="muted">${fmtTs(e.at)} · ${esc(e.source)}</span><br>${esc(e.message)}</div>`).join("")}` : '<p class="small muted" style="margin-top:12px">✓ Keine Fehler in den letzten 7 Tagen.</p>'}</div>
+    </div>
+    <div class="card pad"><h3 class="h3">Audit-Protokoll</h3><p class="small muted" style="margin:0 0 8px">Wer hat wann was Wichtiges getan: Anmeldungen, Personen und Rechte, Löschungen, Schlüssel, Einstellungen, Sicherungen. Einträge bleiben 2 Jahre.</p>
+      <form id="audit-form" class="row" style="margin-bottom:8px"><input type="search" name="q" value="${esc(q.q || "")}" placeholder="Suchen: Person, E-Mail, Vorgang, IP" style="width:min(320px,100%)" aria-label="Protokoll durchsuchen">
+        <select name="action" style="width:auto" aria-label="Art"><option value="">Alle Arten</option>${Object.entries(A.actions).map(([k, v]) => `<option value="${k}" ${q.action === k ? "selected" : ""}>${esc(v)}</option>`).join("")}</select><button class="btn" type="submit">Filtern</button></form>
+      <div class="tbl-wrap"><table><thead><tr><th>Zeit</th><th>Person</th><th>Aktion</th><th>Details</th><th class="hide-m">IP</th></tr></thead><tbody>
+        ${A.entries.map((e) => `<tr><td class="small nowrap">${fmtTs(e.at)}</td><td class="small">${esc(e.user_name || "–")}</td><td><span class="chip ${e.action === "login.failed" || e.action === "delete" ? "red" : e.action.startsWith("login") || e.action === "logout" ? "gray" : "blue"}">${esc(A.actions[e.action] || e.action)}</span></td><td class="small">${esc(e.detail || "")}</td><td class="small muted hide-m">${esc(e.ip || "")}</td></tr>`).join("") || '<tr><td colspan="5" class="muted small">Keine Einträge.</td></tr>'}</tbody></table>
+        ${A.entries.length >= 100 ? `<div class="row" style="justify-content:center;padding:10px"><button class="btn sm" data-act="audit-more">Ältere Einträge</button></div>` : ""}</div></div>`;
 }
 
 /* ---------- Vorgang: Detailansicht ---------- */
@@ -2217,6 +2263,9 @@ document.addEventListener("click", (e) => {
     case "create": e.preventDefault(); createForm({ projectId: el.dataset.project || (el.dataset.team && db.projects.find((p) => p.teamId === el.dataset.team)?.id) || undefined, type: el.dataset.type, epicId: el.dataset.epic, ...(el.dataset.team ? { teamId: el.dataset.team } : {}) }); break;
     case "integ-reload": ui.integ = null; render(); break;
     case "load-archive": ensureArchive(); break;
+    case "sys-reload": ui.sys = null; render(); break;
+    case "sys-backup": el.disabled = true; api("/api/admin/backup", { method: "POST" }).then((r) => { toast(`Sicherung erstellt: ${r.file}${r.copied ? ` · ${r.copied} Anhänge neu gesichert` : ""}`); ui.sys = null; render(); }).catch((err) => { el.disabled = false; toast(err.message); }); break;
+    case "audit-more": { const last = ui.audit.entries.at(-1); api(`/api/admin/audit?${new URLSearchParams({ ...(ui.auditQ || {}), before: last.id })}`).then((r) => { ui.audit.entries.push(...r.entries); render(); }).catch((err) => toast(err.message)); break; }
     case "more-rows": ui.rowLimit += ROW_PAGE; renderSoft(); break;
     case "all-rows": ui.rowLimit = Number(el.dataset.n); renderSoft(); break;
     case "outlook-token": if (ui.outlook?.key && !confirm("Neuen Schlüssel erzeugen? Der bisherige funktioniert dann im Add-in nicht mehr.")) return;
@@ -2466,6 +2515,7 @@ async function handleSubmit(e, f) {
       if (t) { if (me().role === "ADMIN") Object.assign(t, { name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null }); t.memberIds = members; t.desc = String(fd.get("desc") || ""); fix(t); }
       else db.teams.push(fix({ id: uid(), name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null, memberIds: members, desc: String(fd.get("desc") || "") }));
       save(); closeModal(); render(); toast(t ? `Team „${t.name}“ gespeichert` : "Team angelegt"); break; }
+    case "audit-form": ui.auditQ = Object.fromEntries([...fd].filter(([, v]) => v)); ui.sys = null; render(); break;
     case "user-form": {
       const pw = String(fd.get("password") || "");
       const r = await api("/api/admin/users", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), role: fd.get("role"), ...(pw ? { password: pw } : { invite: true }) } });

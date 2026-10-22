@@ -356,7 +356,15 @@ Sicherung herunterladen.
 
 ### Sicherung und Wiederherstellung
 
-- **Automatisch:** jede Nacht eine Kopie in `data/backups/` (14 Tage).
+- **Automatisch:** jede Nacht eine Kopie der Datenbank in `data/backups/`
+  (die letzten `BACKUP_KEEP`, Standard 14) und ein Spiegel aller Anhänge in
+  `data/backups/files/`. Vor dem Einspielen einer JSON-Sicherung wird
+  automatisch eine zusätzliche Kopie erstellt.
+- **System & Protokoll** (*Einstellungen → System öffnen*, nur Administration):
+  „Jetzt sichern“, Sicherungen herunterladen (SQLite-Datei), letzte Sicherung,
+  Speicher- und Plattenplatz, aktive Personen, Fehler der letzten 7 Tage und
+  das **Audit-Protokoll** (Anmeldungen inkl. Fehlversuchen, Personen/Rollen,
+  Löschungen, API-Schlüssel, Webhooks, Einstellungen, Sicherungen; 2 Jahre).
 - **Wichtig:** Den Ordner `data/backups/` zusätzlich **außerhalb des Servers**
   sichern (z. B. nächtlich per `rsync`/Backup-Software auf NAS oder Cloud-Speicher)
   – sonst ist bei einem Serverausfall auch die Sicherung weg.
@@ -367,6 +375,7 @@ Sicherung herunterladen.
 docker compose stop tracker
 cp data/backups/tracker-2026-10-15.db data/tracker.db
 rm -f data/tracker.db-wal data/tracker.db-shm
+cp -n data/backups/files/* data/files/     # Anhänge (nur fehlende)
 docker compose start tracker
 ```
 
@@ -377,6 +386,8 @@ Testen Sie die Wiederherstellung einmal, bevor Sie sich darauf verlassen.
 - `https://tracker.ihre-firma.de/api/health` liefert `{"ok":true,…}` – eignet
   sich für einen Uptime-Monitor (z. B. Uptime Kuma oder den Monitor Ihres
   Hosters).
+- Datenbank-Umstellungen bei Updates laufen beim Start automatisch und
+  nummeriert (Stand: *System & Protokoll* → Schema-Version).
 - Protokolle: `docker compose logs -f tracker` (Anmeldungen, angelegte
   Personen, E-Mail-Versand, Sicherungen, Fehler).
 

@@ -15,6 +15,7 @@ import { createWebhooks, WEBHOOK_EVENTS } from "./lib/webhooks.mjs";
 import { createM365 } from "./lib/m365.mjs";
 import { createFactorial } from "./lib/factorial.mjs";
 import { Accounts } from "./lib/accounts.mjs";
+import { createOps, AUDIT_ACTIONS } from "./lib/ops.mjs";
 import * as ICS from "./lib/ics.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -135,6 +136,11 @@ function serveFile(req, res, file, extraHeaders = {}) {
 
 /* ---------- Anhänge (Dateien im Datenordner, Metadaten am Vorgang) ---------- */
 const FILES = path.join(CFG.dataDir, "files"); fs.mkdirSync(FILES, { recursive: true });
+const VERSION = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).version;
+const ops = createOps({ store, cfg: CFG, log, filesDir: FILES, version: VERSION, extra: () => ({
+  snapshot: snapshot ? { ms: snapshot.ms, issues: snapshot.issues, archived: snapshot.archived, bytes: snapshot.json.length, gz: snapshot.gz.length } : null,
+  archiveDays: ARCHIVE_DAYS, online: new Set([...clients].map((c) => c.userId)).size, mail: mailer.configured }) });
+const audit = ops.audit;
 const MAX_FILE = Number(env.MAX_UPLOAD_MB || 15) * 1024 * 1024;
 const BLOCKED = /\.(exe|bat|cmd|com|scr|js|jse|vbs|vbe|ps1|msi|msp|dll|jar|hta|cpl|lnk|reg)$/i;
 const INLINE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"]);
@@ -290,13 +296,15 @@ function sanitize(type, obj, cur) {
   }
   return obj;
 }
+const AUDITED_DELETES = { issues: "Vorgang", projects: "Projekt", customers: "Kunde", teams: "Team", sprints: "Sprint", users: "Person", absences: "Abwesenheit" };
+const auditLabel = (type, o) => type === "issues" ? `${issueKey(o)} ${o.summary}` : type === "projects" ? `${o.key} – ${o.name}` : type === "absences" ? `${userById(o.userId)?.name || "?"} ${o.from}–${o.to}` : o.name || o.email || o.id;
 function applyOp(user, op, effects) {
   const { type, id } = op;
   if (!COLLECTIONS.includes(type) || !ID_RE.test(String(id))) throw new HttpError(400, "Ungültiges Objekt.");
   const cur = store.get(type, id);
   if (op.op === "delete") {
     const err = canWrite(user, type, "delete", cur, {}); if (err) throw new HttpError(403, err);
-    if (cur) store.del(type, id);
+    if (cur) { store.del(type, id); if (AUDITED_DELETES[type]) audit(user, "delete", `${AUDITED_DELETES[type]}: ${auditLabel(type, cur)}`); }
     return { type, id, deleted: true };
   }
   let next;
@@ -320,6 +328,9 @@ function applyOp(user, op, effects) {
   next.id = id; next = sanitize(type, next, cur);
   if (JSON.stringify(next).length > 400e3) throw new HttpError(413, "Objekt zu groß.");
   if (type === "users" && cur && cur.active && next.active === false) effects.deactivated.push(id);
+  if (type === "users" && cur && cur.role !== next.role) audit(user, "user.role", `${next.email}: ${S.ROLES[cur.role] || cur.role} → ${S.ROLES[next.role] || next.role}`);
+  if (type === "users" && cur && !!cur.active !== !!next.active) audit(user, "user.active", `${next.email}: ${next.active ? "aktiviert" : "deaktiviert"}`);
+  if (type === "projects" && !cur) audit(user, "project.created", `${next.key} – ${next.name}`);
   if (type === "issues") effects.issues.push({ before: cur, after: next });
   if (type === "customers") effects.customers.push(next);
   store.put(type, next);
@@ -479,13 +490,7 @@ async function notificationMailJob() {
   await flushMailQueue();
 }
 function backupJob() {
-  const t = S.today(); const file = path.join(CFG.dataDir, "backups", `tracker-${t}.db`);
-  if (fs.existsSync(file)) return;
-  try {
-    store.backup(file); log(`Sicherung erstellt: ${file}`);
-    const files = fs.readdirSync(path.join(CFG.dataDir, "backups")).filter((f) => /^tracker-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort();
-    for (const f of files.slice(0, Math.max(0, files.length - CFG.backupKeep))) fs.unlinkSync(path.join(CFG.dataDir, "backups", f));
-  } catch (e) { log("Sicherung fehlgeschlagen:", e.message); }
+  try { ops.backup(); } catch (e) { log("Sicherung fehlgeschlagen:", e.message); ilog("backup", "error", `Sicherung fehlgeschlagen: ${e.message}`); }
 }
 
 /* ---------- Kundenportal ---------- */
@@ -675,8 +680,8 @@ async function handleApi(req, res, url, session) {
     const acc = store.db.prepare("SELECT user_id, password_hash FROM accounts WHERE email = ?").get(email);
     const u = acc && userById(acc.user_id);
     const ok = verifyPassword(String(b.password || ""), acc?.password_hash || DUMMY_HASH); // gleiche Rechenzeit auch bei unbekannter E-Mail
-    if (!acc || !u || !u.active || !ok) { loginLimiter.hit(key); throw new HttpError(401, "E-Mail oder Passwort falsch."); }
-    loginLimiter.reset(key); log(`Anmeldung: ${email}`);
+    if (!acc || !u || !u.active || !ok) { loginLimiter.hit(key); audit(u || null, "login.failed", email, clientIp(req)); throw new HttpError(401, "E-Mail oder Passwort falsch."); }
+    loginLimiter.reset(key); log(`Anmeldung: ${email}`); audit(u, "login", "", clientIp(req));
     return { __cookie: sessions.create(u.id, req, clientIp(req)), body: { user: publicUser(u) } };
   }
   // Passwort vergessen / Einladung annehmen (öffentlich, Link mit Einmal-Token)
@@ -693,10 +698,10 @@ async function handleApi(req, res, url, session) {
   }
   if (p === "/api/password/set" && m === "POST") {
     const b = await readJson(req, 8e3);
-    try { const u = accounts.redeem(b.token, b.password); broadcast(); return { __cookie: sessions.create(u.id, req, clientIp(req)), body: { ok: true } }; }
+    try { const u = accounts.redeem(b.token, b.password); audit(u, "password.link", "", clientIp(req)); broadcast(); return { __cookie: sessions.create(u.id, req, clientIp(req)), body: { ok: true } }; }
     catch (e) { if (e.status) throw new HttpError(e.status, e.message); throw e; }
   }
-  if (p === "/api/logout" && m === "POST") return { __cookie: sessions.destroy(req), body: { ok: true } };
+  if (p === "/api/logout" && m === "POST") { if (user) audit(user, "logout", "", clientIp(req)); return { __cookie: sessions.destroy(req), body: { ok: true } }; }
 
   if (p === "/api/auth/config") return { microsoft: m365.settings().sso };
   // Kundenportal (öffentlich)
@@ -756,7 +761,7 @@ async function handleApi(req, res, url, session) {
     const err = validatePassword(b.next); if (err) throw new HttpError(400, err);
     store.db.prepare("UPDATE accounts SET password_hash = ? WHERE user_id = ?").run(hashPassword(b.next), user.id);
     store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash);
-    return { ok: true };
+    audit(user, "password.changed", "", clientIp(req)); return { ok: true };
   }
   if (p === "/api/me/sessions" && m === "GET") return { sessions: sessions.list(user.id, session.tokenHash) };
   if (p === "/api/me/sessions/others" && m === "DELETE") { store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash); return { ok: true }; }
@@ -817,7 +822,7 @@ async function handleApi(req, res, url, session) {
     const existing = store.all("users").find((u) => u.email.toLowerCase() === email);
     const u = existing ? { ...existing, name, role: b.role, active: true } : { id: S.uid(), name, email, role: b.role, active: true, color: S.hashColor(email), notifyEmail: true };
     store.tx(() => { store.put("users", u); if (!invite) store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(u.id, email, hashPassword(b.password), new Date().toISOString()); });
-    broadcast(); log(`Benutzer angelegt: ${email} (${b.role}) durch ${user.email}`);
+    broadcast(); log(`Benutzer angelegt: ${email} (${b.role}) durch ${user.email}`); audit(user, "user.created", `${name} <${email}> · ${S.ROLES[b.role]}${invite ? " · Einladung" : ""}`, clientIp(req));
     return { user: publicUser(u), ...(invite ? { invite: await accounts.invite(u, user) } : {}) };
   }
   if (p === "/api/admin/integrations" && m === "GET") { needAdmin(); return integrationStatus(); }
@@ -826,19 +831,19 @@ async function handleApi(req, res, url, session) {
     if ("mailInbox" in b) { const v = str(b.mailInbox, 200).toLowerCase(); if (v && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new HttpError(400, "Postfach: bitte eine E-Mail-Adresse angeben."); store.meta("mailInbox", v); }
     for (const k of ["mailInEnabled", "calendarSync", "ssoMicrosoft", "factorialCreateUsers", "calendarInviteCustomer", "calendarPull"]) if (k in b) store.meta(k, b[k] ? "1" : "0");
     if ("calendarMinutes" in b) store.meta("calendarMinutes", String(Math.min(600, Math.max(15, Number(b.calendarMinutes) || 120))));
-    ilog("settings", "info", `Integrationseinstellungen geändert durch ${user.email}`);
+    ilog("settings", "info", `Integrationseinstellungen geändert durch ${user.email}`); audit(user, "settings", `Integrationen: ${Object.keys(b).join(", ")}`, clientIp(req));
     if (b.calendarSync) for (const i of store.all("issues")) if (i.status === "SCHEDULED" && i.appointmentAt) m365.calendarTouch(i);
     return integrationStatus();
   }
   if (p === "/api/admin/factorial/sync" && m === "POST") { needAdmin(); try { return await factorial.sync(); } catch (e) { throw new HttpError(502, e.message); } }
   if (p === "/api/admin/mail/poll" && m === "POST") { needAdmin(); if (!mailer.appConfigured) throw new HttpError(409, "Microsoft 365 ist nicht eingerichtet (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET)."); if (!m365.settings().inbox) throw new HttpError(409, "Kein Postfach hinterlegt."); return await m365.pollMailbox(); }
-  if (p === "/api/admin/api-keys" && m === "POST") { needAdmin(); const b = await readJson(req, 8e3); const k = apiV1.createKey(b.name, b.scope, user.id); ilog("api", "info", `API-Schlüssel „${str(b.name, 80)}“ (${b.scope === "write" ? "lesen+schreiben" : "nur lesen"}) erstellt von ${user.email}`); return k; }
+  if (p === "/api/admin/api-keys" && m === "POST") { needAdmin(); const b = await readJson(req, 8e3); const k = apiV1.createKey(b.name, b.scope, user.id); ilog("api", "info", `API-Schlüssel „${str(b.name, 80)}“ (${b.scope === "write" ? "lesen+schreiben" : "nur lesen"}) erstellt von ${user.email}`); audit(user, "apikey.created", `${str(b.name, 80)} (${b.scope === "write" ? "lesen+schreiben" : "nur lesen"})`, clientIp(req)); return k; }
   pm = p.match(/^\/api\/admin\/api-keys\/([A-Za-z0-9_-]+)$/);
-  if (pm && m === "DELETE") { needAdmin(); if (!apiV1.revokeKey(pm[1])) throw new HttpError(404, "Schlüssel nicht gefunden."); ilog("api", "info", `API-Schlüssel widerrufen durch ${user.email}`); return { ok: true }; }
-  if (p === "/api/admin/webhooks" && m === "POST") { needAdmin(); try { const h = webhooks.add(await readJson(req, 16e3)); ilog("webhook", "info", `Webhook „${h.name}“ angelegt`); return h; } catch (e) { throw new HttpError(400, e.message); } }
+  if (pm && m === "DELETE") { needAdmin(); if (!apiV1.revokeKey(pm[1])) throw new HttpError(404, "Schlüssel nicht gefunden."); ilog("api", "info", `API-Schlüssel widerrufen durch ${user.email}`); audit(user, "apikey.revoked", pm[1], clientIp(req)); return { ok: true }; }
+  if (p === "/api/admin/webhooks" && m === "POST") { needAdmin(); try { const h = webhooks.add(await readJson(req, 16e3)); ilog("webhook", "info", `Webhook „${h.name}“ angelegt`); audit(user, "webhook", `angelegt: ${h.name}`, clientIp(req)); return h; } catch (e) { throw new HttpError(400, e.message); } }
   pm = p.match(/^\/api\/admin\/webhooks\/([A-Za-z0-9_-]+)(\/test)?$/);
   if (pm && m === "PATCH" && !pm[2]) { needAdmin(); try { const h = webhooks.update(pm[1], await readJson(req, 16e3)); if (!h) throw new HttpError(404, "Webhook nicht gefunden."); return { ok: true }; } catch (e) { throw e instanceof HttpError ? e : new HttpError(400, e.message); } }
-  if (pm && m === "DELETE" && !pm[2]) { needAdmin(); if (!webhooks.remove(pm[1])) throw new HttpError(404, "Webhook nicht gefunden."); return { ok: true }; }
+  if (pm && m === "DELETE" && !pm[2]) { needAdmin(); if (!webhooks.remove(pm[1])) throw new HttpError(404, "Webhook nicht gefunden."); audit(user, "webhook", `gelöscht: ${pm[1]}`, clientIp(req)); return { ok: true }; }
   if (pm && m === "POST" && pm[2]) { needAdmin(); try { return { ok: true, status: await webhooks.test(pm[1]) }; } catch (e) { ilog("webhook", "error", `Test fehlgeschlagen: ${e.message}`); throw new HttpError(502, `Test fehlgeschlagen: ${e.message}`); } }
   if (p === "/api/admin/users/import" && m === "POST") {
     needAdmin(); const b = await readJson(req, 4e6); if (!Array.isArray(b.users) || b.users.length > 2000) throw new HttpError(400, "Ungültige Liste.");
@@ -850,16 +855,16 @@ async function handleApi(req, res, url, session) {
       if (ex) { store.put("users", { ...ex, name, role: ex.id === user.id ? ex.role : role, active: true }); updated++; }
       else { store.put("users", { id: S.uid(), name, email, role, active: true, color: S.hashColor(email), notifyEmail: true }); created++; }
     } });
-    broadcast(); log(`Mitarbeiter-Import durch ${user.email}: ${created} neu, ${updated} aktualisiert`);
+    broadcast(); log(`Mitarbeiter-Import durch ${user.email}: ${created} neu, ${updated} aktualisiert`); audit(user, "user.import", `${created} neu, ${updated} aktualisiert`, clientIp(req));
     return { created, updated, skipped };
   }
   if (p === "/api/admin/accounts" && m === "GET") { needAdmin(); return { accounts: accounts.overview(), mail: mailer.configured }; }
   pm = p.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/(invite|logout)$/);
   if (pm && m === "POST") {
     needAdmin(); const target = userById(pm[1]); if (!target) throw new HttpError(404, "Benutzer nicht gefunden.");
-    if (pm[2] === "logout") { sessions.destroyUser(target.id); log(`Alle Sitzungen von ${target.email} beendet durch ${user.email}`); return { ok: true }; }
+    if (pm[2] === "logout") { sessions.destroyUser(target.id); log(`Alle Sitzungen von ${target.email} beendet durch ${user.email}`); audit(user, "user.logout", target.email, clientIp(req)); return { ok: true }; }
     if (!target.active) throw new HttpError(409, "Die Person ist deaktiviert.");
-    return await accounts.invite(target, user);
+    const inv = await accounts.invite(target, user); audit(user, "user.invited", `${target.email}${inv.mailed ? " (per E-Mail)" : ""}`, clientIp(req)); return inv;
   }
   pm = p.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/password$/);
   if (pm && m === "POST") {
@@ -869,11 +874,16 @@ async function handleApi(req, res, url, session) {
     const exists = store.db.prepare("SELECT 1 FROM accounts WHERE user_id = ?").get(target.id);
     if (exists) store.db.prepare("UPDATE accounts SET password_hash = ? WHERE user_id = ?").run(h, target.id);
     else store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(target.id, target.email.toLowerCase(), h, new Date().toISOString());
-    sessions.destroyUser(target.id); log(`Passwort gesetzt für ${target.email} durch ${user.email}`);
+    sessions.destroyUser(target.id); log(`Passwort gesetzt für ${target.email} durch ${user.email}`); audit(user, "password.admin", target.email, clientIp(req));
     return { ok: true };
   }
-  if (p === "/api/admin/export" && m === "GET") { needAdmin(); return { __download: `gf-tracker-sicherung-${S.today()}.json`, body: exportAll() }; }
-  if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 50e6); return importAll(b, user); }
+  if (p === "/api/admin/export" && m === "GET") { needAdmin(); audit(user, "backup.download", "JSON-Export", clientIp(req)); return { __download: `gf-tracker-sicherung-${S.today()}.json`, body: exportAll() }; }
+  if (p === "/api/admin/import" && m === "POST") { needAdmin(); const b = await readJson(req, 50e6); try { ops.backup({ force: true }); } catch (e) { log("Sicherung vor Import:", e.message); } const r = importAll(b, user); audit(user, "backup.restore", `${r.imported} Vorgänge eingespielt (vorher automatisch gesichert)`, clientIp(req)); return r; }
+  if (p === "/api/admin/system" && m === "GET") { needAdmin(); return ops.status(); }
+  if (p === "/api/admin/backup" && m === "POST") { needAdmin(); const r = ops.backup({ force: true }); audit(user, "backup.created", r.file, clientIp(req)); return r; }
+  pm = p.match(/^\/api\/admin\/backups\/([A-Za-z0-9T._-]+)$/);
+  if (pm && m === "GET") { needAdmin(); const f = ops.backupPath(pm[1]); if (!f) throw new HttpError(404, "Sicherung nicht gefunden."); audit(user, "backup.download", pm[1], clientIp(req)); return { __dbfile: f, name: pm[1] }; }
+  if (p === "/api/admin/audit" && m === "GET") { needAdmin(); const q = url.searchParams; return { actions: AUDIT_ACTIONS, entries: ops.auditList({ q: str(q.get("q"), 100), action: str(q.get("action"), 40), before: Number(q.get("before")) || 0, limit: Number(q.get("limit")) || 100 }) }; }
   if (p === "/api/admin/mail-test" && m === "POST") {
     needAdmin(); if (!mailer.configured) throw new HttpError(409, "E-Mail ist nicht eingerichtet (MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET, MAIL_SENDER).");
     try { await mailer.send({ to: user.email, subject: `[${CFG.company}] Test-E-Mail`, html: mailTemplate({ company: CFG.company, title: "Der E-Mail-Versand funktioniert.", lines: [`Absender: ${env.MAIL_SENDER}`] }) }); }
@@ -899,6 +909,7 @@ const server = http.createServer(async (req, res) => {
       if (out && out.__status) return send(res, out.__status, out.body, extra);
       if (out && out.__file) return sendAttachment(req, res, out.__file, url);
       if (out && out.__snapshot) return sendSnapshot(res);
+      if (out && out.__dbfile) { res.writeHead(200, { "Content-Type": "application/vnd.sqlite3", "Content-Length": fs.statSync(out.__dbfile).size, "Content-Disposition": `attachment; filename="${out.name}"`, "Cache-Control": "no-store", ...SECURITY_HEADERS }); return fs.createReadStream(out.__dbfile).pipe(res); }
       if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });
       if (out && out.__download) return send(res, 200, JSON.stringify(out.body, null, 2), { "Content-Type": "application/json; charset=utf-8", "Content-Disposition": `attachment; filename="${out.__download}"`, "Cache-Control": "no-store", ...extra });
       return send(res, 200, out, extra);
@@ -946,7 +957,7 @@ const server = http.createServer(async (req, res) => {
 setupInitialData();
 deadlineJob(); backupJob();
 setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); }, 60e3).unref();
-setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); }, 60 * 60e3).unref();
+setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); ops.cleanup(); }, 60 * 60e3).unref();
 server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
 const shutdown = () => { log("Beende…"); for (const c of clients) c.res.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);

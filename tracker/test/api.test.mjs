@@ -128,6 +128,30 @@ test("Zugänge: Einladung per Link, Passwort selbst festlegen, Link nur einmal, 
   assert.equal((await fetch(`${BASE}/password`)).status, 200);
 });
 
+test("Betrieb: Audit-Protokoll, Sicherung mit Anhängen, Systemstatus – nur Administration", async () => {
+  await new Client().login("anna.mueller@druckluft-chemnitz.de", "falsch-falsch");
+  const st = (await anna.req("/api/state")).data; const victim = st.issues.find((i) => i.summary.startsWith("Rechnungen im Portal"));
+  const up = await fetch(`${BASE}/api/issues/${victim.id}/attachments`, { method: "POST", headers: { cookie: anna.cookie, "X-GFT": "1", "Content-Type": "text/plain", "X-Filename": "notiz.txt" }, body: "Hallo Sicherung" });
+  assert.equal(up.status, 200);
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: victim.id, op: "delete" }] } });
+  const lisaId = st.users.find((u) => u.email.startsWith("lisa")).id;
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: lisaId, op: "patch", patch: { set: { role: "AGENT" } } }] } });
+  const a = (await anna.req("/api/admin/audit")).data; const acts = a.entries.map((e) => e.action);
+  for (const x of ["login", "login.failed", "delete", "user.role"]) assert.ok(acts.includes(x), `Audit enthält ${x}`);
+  assert.match(a.entries.find((e) => e.action === "delete").detail, /Vorgang: \w+-\d+ Rechnungen im Portal/);
+  assert.match(a.entries.find((e) => e.action === "user.role").detail, /lisa.*Mitglied → Service-Mitarbeiter/);
+  assert.equal((await anna.req("/api/admin/audit?action=login.failed")).data.entries.every((e) => e.action === "login.failed"), true);
+  assert.equal((await lisa.req("/api/admin/audit")).status, 403); assert.equal((await lisa.req("/api/admin/system")).status, 403);
+  const b = await anna.req("/api/admin/backup", { method: "POST" }); assert.equal(b.status, 200); assert.ok(b.data.copied >= 1, "Anhang gespiegelt");
+  assert.ok(fs.readdirSync(path.join(dataDir, "backups", "files")).length >= 1);
+  const sys = (await anna.req("/api/admin/system")).data; assert.ok(sys.backups.list.some((x) => x.name === b.data.file)); assert.equal(sys.schema, 3); assert.ok(sys.counts.issues > 0);
+  const dl = await fetch(`${BASE}/api/admin/backups/${b.data.file}`, { headers: { cookie: anna.cookie } }); assert.equal(dl.status, 200);
+  assert.equal(Buffer.from(await dl.arrayBuffer()).subarray(0, 15).toString(), "SQLite format 3");
+  assert.equal((await fetch(`${BASE}/api/admin/backups/..%2Ftracker.db`, { headers: { cookie: anna.cookie } })).status, 404);
+  assert.equal((await fetch(`${BASE}/api/admin/backups/${b.data.file}`, { headers: { cookie: lisa.cookie } })).status, 403);
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: lisaId, op: "patch", patch: { set: { role: "MEMBER" } } }] } });
+});
+
 test("Kundenportal: Anfrage stellen, verfolgen, antworten – interne Notizen bleiben verborgen", async () => {
   const pub = new Client();
   const bad = await pub.req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "A", company: "B", email: "kein-mail", summary: "x", description: "y" } });
