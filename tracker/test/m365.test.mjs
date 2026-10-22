@@ -204,3 +204,19 @@ test("Outlook-Kalender: Kalender-Abo (ICS) mit Einsätzen, Fristen und Abwesenhe
   const n = await until(async () => (await mehmet.req("/api/state")).data.notifications.find((x) => x.title.startsWith("Termin in Outlook gelöscht")));
   assert.ok(n, "Hinweis bei gelöschtem Termin");
 });
+
+test("Zugänge per E-Mail: Einladung und „Passwort vergessen“ verschicken einen Einmal-Link", async () => {
+  const r = await anna.req("/api/admin/users", { method: "POST", body: { name: "Paul Post", email: "paul@druckluft-chemnitz.de", role: "MEMBER", invite: true } });
+  assert.equal(r.data.invite.mailed, true);
+  const inv = await until(() => M.sent.find((x) => x.subject.startsWith("Einladung zum GF Tracker") && x.toRecipients[0].emailAddress.address === "paul@druckluft-chemnitz.de"));
+  assert.ok(inv.body.content.includes(r.data.invite.link.replace(/&/g, "&amp;")), "Link in der Einladung");
+  const before = M.sent.length;
+  assert.deepEqual((await new Client().req("/api/password/forgot", { method: "POST", body: { email: "Anna.Mueller@druckluft-chemnitz.de" } })).data, { ok: true, mail: true });
+  const mail = await until(() => M.sent.slice(before).find((x) => x.subject.startsWith("Passwort zurücksetzen")));
+  const link = mail.body.content.match(/https?:\/\/[^"]+\/password\?t=[A-Za-z0-9_-]+/)[0];
+  const c = new Client(); assert.equal((await c.req("/api/password/set", { method: "POST", body: { token: new URL(link).searchParams.get("t"), password: "Annas neues Passwort" } })).status, 200);
+  assert.equal((await anna.req("/api/me")).status, 401, "andere Sitzungen abgemeldet");
+  assert.equal((await anna.req("/api/login", { method: "POST", body: { email: "anna.mueller@druckluft-chemnitz.de", password: "Annas neues Passwort" } })).status, 200);
+  await new Client().req("/api/password/forgot", { method: "POST", body: { email: "unbekannt@example.com" } });
+  await new Promise((r) => setTimeout(r, 300)); assert.ok(!M.sent.some((x) => x.toRecipients[0].emailAddress.address === "unbekannt@example.com"));
+});

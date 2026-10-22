@@ -888,6 +888,11 @@ function viewIntegrations() {
     <div class="card pad isec"><h3 class="h3">Protokoll</h3>
       ${I.log.length ? `<div class="tbl-wrap" style="max-height:360px;overflow:auto"><table class="ilog"><tbody>${I.log.map((l) => `<tr><td class="small nowrap">${fmtTs(l.at)}</td><td><span class="chip ${l.level === "error" ? "red" : l.level === "warn" ? "yellow" : "gray"}">${esc(l.source)}</span></td><td class="small">${esc(l.message)}</td></tr>`).join("")}</tbody></table></div>` : '<p class="small muted" style="margin:0">Noch keine Einträge.</p>'}</div>`;
 }
+function inviteModal(u, r) {
+  const until = fmtDay(dayKey(new Date(r.expiresAt)));
+  secretModal(`Zugang für ${u.name}`, r.mailed ? `Die E-Mail mit dem Link wurde an <b>${esc(u.email)}</b> geschickt. Falls sie nicht ankommt, können Sie den Link auch selbst weitergeben (gültig bis ${until}, nur einmal verwendbar):`
+    : `${r.mailError ? `<span class="note err" style="display:block;margin-bottom:8px">E-Mail konnte nicht gesendet werden: ${esc(r.mailError)}</span>` : ""}Geben Sie diesen Link an ${esc(u.name)} weiter (z. B. per Teams-Chat). Er ist bis ${until} gültig und nur einmal verwendbar – damit legt die Person ihr Passwort selbst fest.`, r.link);
+}
 function secretModal(title, intro, secret, extra = "") {
   openModal(`<div class="modal-h"><h2>${esc(title)}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
     <div class="modal-b"><p style="margin:0">${intro}</p><div class="secret"><code id="secret-val">${esc(secret)}</code><button class="btn sm" data-act="copy" data-v="${esc(secret)}">Kopieren</button></div>
@@ -1599,6 +1604,24 @@ function quarterCard() {
 }
 
 /* ---------- Ansicht: Einstellungen ---------- */
+/** Zugangsstatus einer Person (nur Administration). */
+function accountLine(x) {
+  const a = ui.accounts?.accounts?.[x.id]; if (!ui.accounts || ui.accounts.standalone) return "";
+  if (!a) return `<div class="small" style="color:var(--warn-text,#a54800)">Noch kein Zugang</div>`;
+  const parts = [];
+  if (a.account) parts.push(a.lastLogin ? `zuletzt angemeldet ${ago(new Date(a.lastLogin).toISOString())}` : "noch nie angemeldet");
+  else parts.push("Noch kein Passwort");
+  if (a.inviteUntil) parts.push(`Einladung offen bis ${fmtDay(dayKey(new Date(a.inviteUntil)))}`);
+  if (a.sessions) parts.push(`${a.sessions} Gerät${a.sessions === 1 ? "" : "e"}`);
+  return `<div class="small muted trunc">${parts.join(" · ")}</div>`;
+}
+function accountMenu(x) {
+  const a = ui.accounts?.accounts?.[x.id]; const st = !ui.accounts || ui.accounts.standalone;
+  return `<details class="menu-d"><summary class="btn subtle sm" aria-label="Zugang verwalten">Zugang ▾</summary><div class="menu-pop">
+    ${st ? "" : `<button data-act="user-invite" data-id="${x.id}" ${x.active ? "" : "disabled"}>${a?.account ? "Link zum Zurücksetzen" : a?.inviteUntil ? "Einladung erneut senden" : "Einladen"}</button>`}
+    <button data-act="set-password" data-id="${x.id}">Passwort direkt setzen</button>
+    ${!st && a?.sessions && x.id !== db.currentUserId ? `<button data-act="user-logout" data-id="${x.id}">Auf allen Geräten abmelden</button>` : ""}</div></details>`;
+}
 function viewSettings() {
   const u = me(); const isAdmin = u.role === "ADMIN";
   return `<div class="page-head"><h1>Einstellungen</h1></div><div class="grid g2">
@@ -1612,6 +1635,11 @@ function viewSettings() {
         <input type="password" name="next" placeholder="Neues Passwort (mind. 10 Zeichen)" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort">
         <input type="password" name="repeat" placeholder="Neues Passwort wiederholen" minlength="10" autocomplete="new-password" required aria-label="Neues Passwort wiederholen">
         <div><button class="btn" type="submit">Passwort ändern</button></div></form>
+      <h3 style="font-size:15px;margin:20px 0 6px">Angemeldete Geräte</h3>
+      ${(() => { const d = ui.mySessions; if (!d) { if (!ui.mySessionsLoading) { ui.mySessionsLoading = true; api("/api/me/sessions").then((r) => { ui.mySessions = r.sessions; }).catch(() => { ui.mySessions = "n/a"; }).finally(() => { ui.mySessionsLoading = false; if (route().parts[0] === "settings") render(); }); } return '<p class="small muted">Lade …</p>'; }
+        if (d === "n/a") return '<p class="small muted" style="margin:0">Die Geräteübersicht gibt es in der Server-Version.</p>';
+        return `${d.map((x) => `<div class="row nowrap" style="padding:6px 0;border-bottom:1px solid var(--border)"><div style="flex:1;min-width:0"><div class="b trunc">${esc(x.device)}${x.current ? ' <span class="chip green">dieses Gerät</span>' : ""}</div><div class="small muted">aktiv ${ago(new Date(x.lastSeen).toISOString())}${x.ip ? ` · ${esc(x.ip)}` : ""} · angemeldet seit ${fmtDay(dayKey(new Date(x.createdAt)))}</div></div>${x.current ? "" : `<button class="btn subtle sm" data-act="session-revoke" data-id="${x.id}">Abmelden</button>`}</div>`).join("")}
+          ${d.length > 1 ? `<div style="margin-top:8px"><button class="btn sm" data-act="session-revoke-others">Alle anderen Geräte abmelden</button></div>` : ""}`; })()}
       <h3 style="font-size:15px;margin:20px 0 6px">Outlook-Kalender abonnieren</h3>
       ${(() => { const c = ui.calFeed; if (!c) { if (!ui.calFeedLoading) { ui.calFeedLoading = true; api("/api/me/calendar").then((r) => { ui.calFeed = r; if (route().parts[0] === "settings") render(); }).catch(() => {}); } return '<p class="small muted">Lade …</p>'; }
         if (c.standalone) return '<p class="small muted" style="margin:0">Das Kalender-Abo gibt es in der Server-Version.</p>';
@@ -1640,13 +1668,14 @@ function viewSettings() {
         <b>iPhone/iPad:</b> in Safari „Teilen“ → „Zum Home-Bildschirm“. <b>Android:</b> Chrome-Menü → „App installieren“.</p>`}
       <h3 style="font-size:15px;margin:20px 0 6px">Tastenkürzel</h3><div class="small" style="line-height:2"><span class="kbd">c</span> Vorgang erstellen · <span class="kbd">/</span> Suche · <span class="kbd">Esc</span> Schließen · <span class="kbd">Strg</span>+<span class="kbd">Enter</span> Kommentar senden</div></div>
     <div class="card pad"><h3 style="font-size:15px;margin-bottom:10px">Personen</h3>
-      ${db.users.map((x) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border);${x.active ? "" : "opacity:.5"}">${avatar(x.id)}<div style="flex:1;min-width:0"><div class="b trunc">${esc(x.name)}</div><div class="small muted trunc">${esc(x.email)}</div></div>
+      ${(() => { if (isAdmin && !ui.accounts && !ui.accountsLoading) { ui.accountsLoading = true; api("/api/admin/accounts").then((r) => { ui.accounts = r; }).catch(() => { ui.accounts = { standalone: true, accounts: {} }; }).finally(() => { ui.accountsLoading = false; if (route().parts[0] === "settings") render(); }); } return ""; })()}
+      ${db.users.map((x) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border);${x.active ? "" : "opacity:.5"}">${avatar(x.id)}<div style="flex:1;min-width:0"><div class="b trunc">${esc(x.name)}</div><div class="small muted trunc">${esc(x.email)}</div>${isAdmin ? accountLine(x) : ""}</div>
         ${isAdmin ? `<select style="width:auto" data-act="user-role" data-id="${x.id}" ${x.id === u.id ? "disabled" : ""}>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === x.role ? "selected" : ""}>${v}</option>`).join("")}</select>
         <label class="small row nowrap"><input type="checkbox" data-act="user-active" data-id="${x.id}" ${x.active ? "checked" : ""} ${x.id !== u.id ? "" : "disabled"}> aktiv</label>
-        <button class="btn subtle sm" data-act="set-password" data-id="${x.id}" title="Passwort setzen">Passwort</button>` : `<span class="small muted">${ROLES[x.role] || x.role}</span>`}</div>`).join("")}
+        ${accountMenu(x)}` : `<span class="small muted">${ROLES[x.role] || x.role}</span>`}</div>`).join("")}
       ${isAdmin ? `<h3 style="font-size:15px;margin:16px 0 8px">Person hinzufügen</h3><form id="user-form" class="grid g2" style="gap:8px"><input type="text" name="name" placeholder="Name" required aria-label="Name"><input type="email" name="email" placeholder="E-Mail" required aria-label="E-Mail">
-        <select name="role" aria-label="Rolle">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === "MEMBER" ? "selected" : ""}>${v}</option>`).join("")}</select><input type="text" name="password" placeholder="Startpasswort (mind. 10 Zeichen)" minlength="10" required aria-label="Startpasswort">
-        <div style="grid-column:1/-1"><button class="btn primary" type="submit">${icon("plus")} Person anlegen</button></div></form>
+        <select name="role" aria-label="Rolle">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === "MEMBER" ? "selected" : ""}>${v}</option>`).join("")}</select><input type="text" name="password" placeholder="Startpasswort – leer lassen für Einladung" minlength="10" aria-label="Startpasswort (optional)">
+        <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit">${icon("plus")} Person anlegen</button><span class="small muted">Ohne Startpasswort erhält die Person einen Einladungslink${sync.mail ? " per E-Mail" : " zum Weitergeben"} und legt ihr Passwort selbst fest.</span></div></form>
         <p class="small muted">Rollen: <b>Administrator</b> verwaltet Personen, Projekte und Sicherungen · <b>Mitglied</b> arbeitet in allen Projekten · <b>Service-Mitarbeiter</b> wird zusätzlich über neue Kundenanfragen informiert.</p>` : '<p class="small muted">Personen verwalten nur Administratoren.</p>'}</div>
     <div class="card pad"><div class="row" style="margin-bottom:6px"><h3 style="font-size:15px;flex:1">Teams</h3>${isAdmin ? `<button class="btn sm" data-act="team-new">${icon("plus")} Team anlegen</button>` : ""}</div>
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
@@ -2258,6 +2287,12 @@ document.addEventListener("click", (e) => {
     case "export-json": location.href = "/api/admin/export"; break;
     case "import-json": $("#json-file").click(); break;
     case "logout": api("/api/logout", { method: "POST" }).finally(() => (location.href = "/login")); break;
+    case "user-invite": { const u = user(id); el.closest("details")?.removeAttribute("open");
+      api(`/api/admin/users/${id}/invite`, { method: "POST" }).then((r) => { ui.accounts = null; inviteModal(u, r); }).catch((err) => toast(err.message)); break; }
+    case "user-logout": { const u = user(id); if (!confirm(`${u.name} auf allen Geräten abmelden?`)) break;
+      api(`/api/admin/users/${id}/logout`, { method: "POST" }).then(() => { ui.accounts = null; render(); toast(`${u.name} wurde abgemeldet.`); }).catch((err) => toast(err.message)); break; }
+    case "session-revoke": api(`/api/me/sessions/${id}`, { method: "DELETE" }).then(() => { ui.mySessions = null; render(); toast("Gerät abgemeldet."); }).catch((err) => toast(err.message)); break;
+    case "session-revoke-others": api("/api/me/sessions/others", { method: "DELETE" }).then(() => { ui.mySessions = null; render(); toast("Alle anderen Geräte wurden abgemeldet."); }).catch((err) => toast(err.message)); break;
     case "set-password": { const u = user(id); const pw = prompt(`Neues Passwort für ${u.name} (mind. 10 Zeichen):`); if (!pw) break;
       api(`/api/admin/users/${id}/password`, { method: "POST", body: { password: pw } }).then(() => toast(`Passwort für ${u.name} gesetzt – bitte persönlich übergeben.`)).catch((err) => toast(err.message)); break; }
     case "install-app": if (installPrompt) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; render(); }); } break;
@@ -2432,8 +2467,10 @@ async function handleSubmit(e, f) {
       else db.teams.push(fix({ id: uid(), name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null, memberIds: members, desc: String(fd.get("desc") || "") }));
       save(); closeModal(); render(); toast(t ? `Team „${t.name}“ gespeichert` : "Team angelegt"); break; }
     case "user-form": {
-      const r = await api("/api/admin/users", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), role: fd.get("role"), password: fd.get("password") } });
-      applyServer({ type: "users", id: r.user.id, data: r.user }); f.reset(); render(); toast(`${r.user.name} angelegt – Zugangsdaten bitte persönlich übergeben.`); break; }
+      const pw = String(fd.get("password") || "");
+      const r = await api("/api/admin/users", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), role: fd.get("role"), ...(pw ? { password: pw } : { invite: true }) } });
+      applyServer({ type: "users", id: r.user.id, data: r.user }); f.reset(); ui.accounts = null; render();
+      if (r.invite) inviteModal(r.user, r.invite); else toast(`${r.user.name} angelegt – Zugangsdaten bitte persönlich übergeben.`); break; }
     case "profile-form": { const u = user(db.currentUserId); u.name = String(fd.get("name")).trim() || u.name; u.notifyEmail = !!fd.get("notifyEmail"); save(); render(); toast("Gespeichert"); break; }
     case "password-form": {
       if (fd.get("next") !== fd.get("repeat")) return toast("Die neuen Passwörter stimmen nicht überein.");

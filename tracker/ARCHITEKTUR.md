@@ -317,6 +317,27 @@ npm test         # automatische Tests
 | `SEED_DEMO` | `1` = Beispieldaten beim ersten Start (nur zum Testen) |
 | `DATA_DIR`, `PORT`, `HOST`, `TRUST_PROXY`, `COOKIE_SECURE` | Technische Feineinstellungen; in Docker vorbelegt |
 
+### Personen einladen und Zugänge verwalten
+
+Unter *Einstellungen → Personen* (nur Administration):
+
+- **Person anlegen ohne Startpasswort** → die Person erhält einen
+  **Einladungslink** (per E-Mail, wenn der Versand eingerichtet ist – sonst wird
+  der Link angezeigt und kann z. B. per Teams-Chat weitergegeben werden). Sie
+  legt ihr Passwort selbst fest und ist danach direkt angemeldet. Der Link gilt
+  7 Tage und nur einmal.
+- **Zugang ▾** je Person: Einladung erneut senden bzw. Link zum Zurücksetzen,
+  Passwort direkt setzen, auf allen Geräten abmelden. Die Liste zeigt die letzte
+  Anmeldung, offene Einladungen und die Zahl angemeldeter Geräte.
+- **Passwort vergessen?** auf der Anmeldeseite schickt einen Link (60 Minuten
+  gültig) – nur bei eingerichtetem E-Mail-Versand. Die Seite verrät nicht, ob es
+  eine Adresse gibt; das Anfordern ist auf 5 Versuche je 15 Minuten begrenzt.
+- Jede Person sieht unter *Einstellungen → Angemeldete Geräte* ihre Sitzungen
+  (Browser, Gerät, zuletzt aktiv) und kann einzelne oder alle anderen abmelden.
+
+Links und Sitzungen werden nur als SHA-256-Hash gespeichert. Nach dem Setzen
+eines Passworts über einen Link werden alle bisherigen Sitzungen beendet.
+
 ### Daten aus der Einzel-HTML-Version übernehmen
 
 In der Einzel-HTML-Datei unter *Einstellungen → Sicherung speichern* eine

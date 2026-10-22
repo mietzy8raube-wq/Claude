@@ -402,3 +402,7 @@ pre.code { background: var(--surface-2); padding: 10px; border-radius: 6px; font
 .att-thumb { width: 52px; height: 52px; border-radius: 6px; overflow: hidden; flex: none; display: grid; place-items: center; background: var(--surface-2); }
 .att-thumb img { width: 100%; height: 100%; object-fit: cover; } .att-ic { font-size: 11px; font-weight: 700; color: var(--fg-2); text-decoration: none; }
 .att-meta { min-width: 0; flex: 1; } .att-meta a { display: block; color: var(--fg); }
+/* Kleines Aufklappmenü (z. B. Zugang verwalten) */
+.menu-d { position: relative; } .menu-d > summary { list-style: none; cursor: pointer; } .menu-d > summary::-webkit-details-marker { display: none; }
+.menu-pop { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; min-width: 220px; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; box-shadow: var(--shadow-lg); padding: 4px; display: grid; }
+.menu-pop button { text-align: left; background: none; border: 0; padding: 8px 10px; border-radius: 4px; color: var(--fg); font: inherit; cursor: pointer; } .menu-pop button:hover:not(:disabled) { background: var(--surface-2); } .menu-pop button:disabled { opacity: .5; cursor: default; }

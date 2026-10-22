@@ -96,6 +96,38 @@ test("Administration: Person anlegen, anmelden, deaktivieren sperrt den Zugang",
   assert.equal((await neu.req("/api/me")).status, 401);
 });
 
+test("Zugänge: Einladung per Link, Passwort selbst festlegen, Link nur einmal, Geräte verwalten", async () => {
+  const r = await anna.req("/api/admin/users", { method: "POST", body: { name: "Eva Eingeladen", email: "eva@druckluft-chemnitz.de", role: "AGENT", invite: true } });
+  assert.equal(r.status, 200); assert.equal(r.data.invite.mailed, false); const t = new URL(r.data.invite.link).searchParams.get("t");
+  assert.equal((await new Client().login("eva@druckluft-chemnitz.de", "irgendwas123")).status, 401, "vor Annahme kein Zugang");
+  assert.equal((await lisa.req("/api/admin/users/" + r.data.user.id + "/invite", { method: "POST" })).status, 403, "nur Administration lädt ein");
+  const ov = (await anna.req("/api/admin/accounts")).data.accounts; assert.equal(ov[r.data.user.id].account, false); assert.ok(ov[r.data.user.id].inviteUntil > Date.now());
+  const chk = (await new Client().req(`/api/password/check?t=${t}`)).data; assert.deepEqual([chk.valid, chk.kind, chk.email], [true, "invite", "eva@druckluft-chemnitz.de"]);
+  const eva = new Client();
+  assert.equal((await eva.req("/api/password/set", { method: "POST", body: { token: t, password: "kurz" } })).status, 400);
+  assert.equal((await eva.req("/api/password/set", { method: "POST", body: { token: t, password: "Evas langes Passwort" } })).status, 200);
+  assert.equal((await eva.req("/api/me")).data.user.email, "eva@druckluft-chemnitz.de", "direkt angemeldet");
+  assert.equal((await new Client().req("/api/password/set", { method: "POST", body: { token: t, password: "Noch ein Passwort" } })).status, 410, "Link nur einmal");
+  assert.equal((await new Client().req(`/api/password/check?t=${t}`)).data.valid, false);
+  // Zweites Gerät, Geräteübersicht, einzelnes Gerät abmelden
+  const eva2 = new Client(); assert.equal((await eva2.req("/api/login", { method: "POST", body: { email: "eva@druckluft-chemnitz.de", password: "Evas langes Passwort" }, headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari/604.1" } })).status, 200);
+  const list = (await eva.req("/api/me/sessions")).data.sessions; assert.equal(list.length, 2);
+  const other = list.find((x) => !x.current); assert.equal(other.device, "Safari auf iPhone/iPad");
+  assert.equal((await eva.req(`/api/me/sessions/${other.id}`, { method: "DELETE" })).status, 200);
+  assert.equal((await eva2.req("/api/me")).status, 401, "abgemeldetes Gerät verliert den Zugang"); assert.equal((await eva.req("/api/me")).status, 200);
+  assert.ok((await anna.req("/api/admin/accounts")).data.accounts[r.data.user.id].lastLogin > 0);
+  // Administration: auf allen Geräten abmelden; Link zum Zurücksetzen für bestehenden Zugang
+  assert.equal((await anna.req(`/api/admin/users/${r.data.user.id}/logout`, { method: "POST" })).status, 200);
+  assert.equal((await eva.req("/api/me")).status, 401);
+  const reset = (await anna.req(`/api/admin/users/${r.data.user.id}/invite`, { method: "POST" })).data;
+  assert.equal((await new Client().req("/api/password/set", { method: "POST", body: { token: new URL(reset.link).searchParams.get("t"), password: "Neues Passwort für Eva" } })).status, 200);
+  assert.equal((await new Client().login("eva@druckluft-chemnitz.de", "Evas langes Passwort")).status, 401, "altes Passwort ungültig");
+  assert.equal((await new Client().login("eva@druckluft-chemnitz.de", "Neues Passwort für Eva")).status, 200);
+  // Passwort vergessen ohne E-Mail-Versand: verrät nichts, Seite ist erreichbar
+  const f = await new Client().req("/api/password/forgot", { method: "POST", body: { email: "gibt-es-nicht@example.com" } }); assert.deepEqual(f.data, { ok: true, mail: false });
+  assert.equal((await fetch(`${BASE}/password`)).status, 200);
+});
+
 test("Kundenportal: Anfrage stellen, verfolgen, antworten – interne Notizen bleiben verborgen", async () => {
   const pub = new Client();
   const bad = await pub.req("/api/portal/requests", { method: "POST", body: { projectKey: "SD", type: "INCIDENT", name: "A", company: "B", email: "kein-mail", summary: "x", description: "y" } });

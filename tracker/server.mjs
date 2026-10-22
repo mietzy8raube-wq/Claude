@@ -14,6 +14,7 @@ import { createApiV1 } from "./lib/apiv1.mjs";
 import { createWebhooks, WEBHOOK_EVENTS } from "./lib/webhooks.mjs";
 import { createM365 } from "./lib/m365.mjs";
 import { createFactorial } from "./lib/factorial.mjs";
+import { Accounts } from "./lib/accounts.mjs";
 import * as ICS from "./lib/ics.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -48,6 +49,8 @@ const loginLimiter = new RateLimiter(10, 15 * 60e3);
 const portalLimiter = new RateLimiter(8, 10 * 60e3);
 const mailer = new Mailer({ tenantId: env.MS_TENANT_ID, clientId: env.MS_CLIENT_ID, clientSecret: env.MS_CLIENT_SECRET, sender: env.MAIL_SENDER, loginHost: env.MS_LOGIN_HOST, graphBase: env.MS_GRAPH_BASE });
 const log = (...a) => console.log(new Date().toISOString(), ...a);
+const accounts = new Accounts({ store, sessions, mailer, cfg: CFG, userById: (id) => userById(id), log });
+const forgotLimiter = new RateLimiter(5, 15 * 60e3);
 const DUMMY_HASH = hashPassword(randomToken(16));
 
 /** Integrationsprotokoll (sichtbar unter Einstellungen → Integrationen). */
@@ -674,7 +677,24 @@ async function handleApi(req, res, url, session) {
     const ok = verifyPassword(String(b.password || ""), acc?.password_hash || DUMMY_HASH); // gleiche Rechenzeit auch bei unbekannter E-Mail
     if (!acc || !u || !u.active || !ok) { loginLimiter.hit(key); throw new HttpError(401, "E-Mail oder Passwort falsch."); }
     loginLimiter.reset(key); log(`Anmeldung: ${email}`);
-    return { __cookie: sessions.create(u.id), body: { user: publicUser(u) } };
+    return { __cookie: sessions.create(u.id, req, clientIp(req)), body: { user: publicUser(u) } };
+  }
+  // Passwort vergessen / Einladung annehmen (öffentlich, Link mit Einmal-Token)
+  if (p === "/api/password/forgot" && m === "POST") {
+    const b = await readJson(req, 4e3); const ip = clientIp(req);
+    if (!forgotLimiter.check(ip)) throw new HttpError(429, "Zu viele Anfragen. Bitte 15 Minuten warten.");
+    forgotLimiter.hit(ip);
+    try { await accounts.forgot(str(b.email, 200)); } catch (e) { log("Passwort-Link konnte nicht verschickt werden:", e.message); }
+    return { ok: true, mail: mailer.configured };
+  }
+  if (p === "/api/password/check" && m === "GET") {
+    const c = accounts.check(url.searchParams.get("t"));
+    return c.valid ? { valid: true, kind: c.kind, name: c.user.name, email: c.user.email } : { valid: false, reason: c.reason };
+  }
+  if (p === "/api/password/set" && m === "POST") {
+    const b = await readJson(req, 8e3);
+    try { const u = accounts.redeem(b.token, b.password); broadcast(); return { __cookie: sessions.create(u.id, req, clientIp(req)), body: { ok: true } }; }
+    catch (e) { if (e.status) throw new HttpError(e.status, e.message); throw e; }
   }
   if (p === "/api/logout" && m === "POST") return { __cookie: sessions.destroy(req), body: { ok: true } };
 
@@ -738,6 +758,10 @@ async function handleApi(req, res, url, session) {
     store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash);
     return { ok: true };
   }
+  if (p === "/api/me/sessions" && m === "GET") return { sessions: sessions.list(user.id, session.tokenHash) };
+  if (p === "/api/me/sessions/others" && m === "DELETE") { store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash); return { ok: true }; }
+  pm = p.match(/^\/api\/me\/sessions\/([a-f0-9]{16})$/);
+  if (pm && m === "DELETE") { if (!sessions.revoke(user.id, pm[1])) throw new HttpError(404, "Sitzung nicht gefunden."); return { ok: true }; }
   if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "base") return { __snapshot: true };
   if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "notifications")
     return { notifications: store.all("notifications").filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300) };
@@ -787,13 +811,14 @@ async function handleApi(req, res, url, session) {
     const name = str(b.name, 120), email = str(b.email, 200).toLowerCase();
     if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new HttpError(400, "Bitte Name und gültige E-Mail angeben.");
     if (!S.ROLES[b.role]) throw new HttpError(400, "Unbekannte Rolle.");
-    const err = validatePassword(b.password); if (err) throw new HttpError(400, err);
+    const invite = !!b.invite; // Einladung: die Person legt ihr Passwort über einen Link selbst fest
+    if (!invite) { const err = validatePassword(b.password); if (err) throw new HttpError(400, err); }
     if (store.db.prepare("SELECT 1 FROM accounts WHERE email = ?").get(email)) throw new HttpError(409, "Diese E-Mail-Adresse hat bereits einen Zugang.");
     const existing = store.all("users").find((u) => u.email.toLowerCase() === email);
     const u = existing ? { ...existing, name, role: b.role, active: true } : { id: S.uid(), name, email, role: b.role, active: true, color: S.hashColor(email), notifyEmail: true };
-    store.tx(() => { store.put("users", u); store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(u.id, email, hashPassword(b.password), new Date().toISOString()); });
+    store.tx(() => { store.put("users", u); if (!invite) store.db.prepare("INSERT INTO accounts (user_id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").run(u.id, email, hashPassword(b.password), new Date().toISOString()); });
     broadcast(); log(`Benutzer angelegt: ${email} (${b.role}) durch ${user.email}`);
-    return { user: publicUser(u) };
+    return { user: publicUser(u), ...(invite ? { invite: await accounts.invite(u, user) } : {}) };
   }
   if (p === "/api/admin/integrations" && m === "GET") { needAdmin(); return integrationStatus(); }
   if (p === "/api/admin/integrations/settings" && m === "POST") {
@@ -827,6 +852,14 @@ async function handleApi(req, res, url, session) {
     } });
     broadcast(); log(`Mitarbeiter-Import durch ${user.email}: ${created} neu, ${updated} aktualisiert`);
     return { created, updated, skipped };
+  }
+  if (p === "/api/admin/accounts" && m === "GET") { needAdmin(); return { accounts: accounts.overview(), mail: mailer.configured }; }
+  pm = p.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/(invite|logout)$/);
+  if (pm && m === "POST") {
+    needAdmin(); const target = userById(pm[1]); if (!target) throw new HttpError(404, "Benutzer nicht gefunden.");
+    if (pm[2] === "logout") { sessions.destroyUser(target.id); log(`Alle Sitzungen von ${target.email} beendet durch ${user.email}`); return { ok: true }; }
+    if (!target.active) throw new HttpError(409, "Die Person ist deaktiviert.");
+    return await accounts.invite(target, user);
   }
   pm = p.match(/^\/api\/admin\/users\/([A-Za-z0-9_-]+)\/password$/);
   if (pm && m === "POST") {
@@ -897,6 +930,7 @@ const server = http.createServer(async (req, res) => {
       catch (e) { return send(res, 302, "", { Location: `/login?sso=${encodeURIComponent(e.code === "unknown" ? `Für ${e.email || "dieses Konto"} gibt es noch keinen Zugang im GF Tracker. Bitte an die Administration wenden.` : e.message)}` }); }
     }
     if (url.pathname === "/login") return serveFile(req, res, "login.html");
+    if (url.pathname === "/password") return serveFile(req, res, "password.html", { "Referrer-Policy": "no-referrer" });
     if (url.pathname === "/portal" || url.pathname.startsWith("/portal/")) {
       // Das Portal darf auf freigegebenen Websites eingebettet werden; die App selbst nie.
       const frame = CFG.portalFrameAncestors.length ? { "Content-Security-Policy": SECURITY_HEADERS["Content-Security-Policy"].replace("frame-ancestors 'none'", `frame-ancestors 'self' ${CFG.portalFrameAncestors.join(" ")}`), "X-Frame-Options": undefined } : {};
@@ -912,7 +946,7 @@ const server = http.createServer(async (req, res) => {
 setupInitialData();
 deadlineJob(); backupJob();
 setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); }, 60e3).unref();
-setInterval(() => { backupJob(); sessions.cleanup(); }, 60 * 60e3).unref();
+setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); }, 60 * 60e3).unref();
 server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
 const shutdown = () => { log("Beende…"); for (const c of clients) c.res.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);
