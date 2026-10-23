@@ -59,7 +59,7 @@ GFTLocal.ready.then(() => {
     return run("src-portal");
   }
   if (mode === "login") {
-    const ROLE = { ADMIN: "Administrator", MEMBER: "Mitarbeiter", AGENT: "Service-Techniker", VIEWER: "Nur lesen" };
+    const ROLE = TrackerShared.ROLES;
     const ini = (n) => n.split(/\\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
     document.title = "Anmelden · GF Tracker";
     document.body.innerHTML = \`<main class="sa-login"><div class="card pad">

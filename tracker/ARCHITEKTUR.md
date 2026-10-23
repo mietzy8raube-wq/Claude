@@ -226,12 +226,24 @@ Getrennt davon (nie an Browser ausgeliefert): `accounts` (Passwort-Hashes),
 
 **Rollen**
 
-| Rolle | Darf |
-| --- | --- |
-| **Administrator** | alles, zusätzlich Personen anlegen/deaktivieren, Passwörter setzen, Projekte anlegen/ändern/löschen, Sicherungen herunterladen/einspielen |
-| **Mitglied** | in allen Projekten Vorgänge, Sprints und Filter anlegen und bearbeiten; eigenen Namen, eigenes Passwort und E-Mail-Benachrichtigungen ändern |
-| **Service-Mitarbeiter** | wie Mitglied; wird zusätzlich über jede neue Kundenanfrage benachrichtigt |
-| **Kunde** (ohne Konto) | über das Portal Anfragen stellen und – nur mit seinem persönlichen Link – den Stand sehen und antworten; sieht keine internen Notizen |
+| Rolle | Sieht | Darf |
+| --- | --- | --- |
+| **Administrator** | alles | alles, zusätzlich Personen/Rollen/Sichtbereiche, Projekte, Integrationen, Automatik, System und Sicherungen |
+| **Geschäftsführung** | immer alle Projekte; Start: Dashboard, Menü beginnt mit „Überblick & Auswertungen“ | Vorgänge bearbeiten, Auswertungen – ohne Verwaltung |
+| **Servicekoordinator** | standardmäßig den eigenen Bereich; Start: Einsatzplanung | Vorgänge im Bereich bearbeiten und einplanen; wird über neue Kundenanfragen informiert |
+| **Mitarbeiter** | standardmäßig alle Projekte | Vorgänge, Sprints und Filter bearbeiten |
+| **Service-Techniker** | standardmäßig den eigenen Bereich | wie Mitarbeiter im Bereich; wird über neue Kundenanfragen informiert |
+| **Nur lesen** | standardmäßig alle Projekte | ansehen und suchen, nichts ändern (Bearbeiten-Knöpfe ausgeblendet, Server lehnt ab) |
+| **Kunde** (ohne Konto) | nur die eigene Anfrage (persönlicher Link) | über das Portal Anfragen stellen, Stand sehen und antworten; sieht keine internen Notizen |
+
+**Sichtbereich** (*Einstellungen → Personen → „Bereich“*): außer Administration und
+Geschäftsführung kann jede Person auf **„Alle Projekte“** oder **„Eigener Bereich“**
+stehen. Eigener Bereich = Projekte der eigenen Teams (bzw. als Projektleitung) +
+zusätzlich freigegebene Projekte + alles, was der Person zugewiesen ist, was sie
+gemeldet hat oder beobachtet. Der **Server** liefert nur Daten aus dem Bereich aus –
+Listen, Suche, Live-Abgleich, Dateien, REST-API mit persönlichem Schlüssel und
+Benachrichtigungen. Ändert sich der Bereich, laden geöffnete Browser automatisch
+neu. Jede Person kann unter *Einstellungen → Profil* ihre **Startseite** wählen.
 
 ---
 

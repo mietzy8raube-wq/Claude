@@ -139,7 +139,7 @@ test("Betrieb: Audit-Protokoll, Sicherung mit Anhängen, Systemstatus – nur Ad
   const a = (await anna.req("/api/admin/audit")).data; const acts = a.entries.map((e) => e.action);
   for (const x of ["login", "login.failed", "delete", "user.role"]) assert.ok(acts.includes(x), `Audit enthält ${x}`);
   assert.match(a.entries.find((e) => e.action === "delete").detail, /Vorgang: \w+-\d+ Rechnungen im Portal/);
-  assert.match(a.entries.find((e) => e.action === "user.role").detail, /lisa.*Mitglied → Service-Mitarbeiter/);
+  assert.match(a.entries.find((e) => e.action === "user.role").detail, /lisa.*Mitarbeiter → Service-Techniker/);
   assert.equal((await anna.req("/api/admin/audit?action=login.failed")).data.entries.every((e) => e.action === "login.failed"), true);
   assert.equal((await lisa.req("/api/admin/audit")).status, 403); assert.equal((await lisa.req("/api/admin/system")).status, 403);
   const b = await anna.req("/api/admin/backup", { method: "POST" }); assert.equal(b.status, 200); assert.ok(b.data.copied >= 1, "Anhang gespiegelt");
@@ -193,6 +193,40 @@ test("Microsoft Teams: App-Paket, Anmeldung per Token ohne Cookie, Einbettung nu
   assert.equal((await fetch(`${BASE}/vendor/MicrosoftTeams.min.js`)).status, 200);
   const out = await fetch(`${BASE}/api/logout`, { method: "POST", headers: { "X-GFT-Token": token, "X-GFT": "1" } }); assert.equal(out.status, 200);
   assert.equal((await fetch(`${BASE}/api/me`, { headers: { "X-GFT-Token": token } })).status, 401, "Abmelden beendet die Teams-Sitzung");
+});
+
+test("Sichtbereich: Service-Techniker sieht nur seinen Bereich, Geschäftsführung alles, Nur-Lesen ändert nichts", async () => {
+  const sarah = new Client(); assert.equal((await sarah.login("sarah.becker@druckluft-chemnitz.de")).status, 200); // Service-Techniker, Team Service & Technik → Projekt SD
+  const all = (await anna.req("/api/state")).data; const gf = all.issues.find((i) => i.projectId === "pGF" && i.assigneeId !== "u6" && i.reporterId !== "u6" && !(i.watchers || []).includes("u6") && i.teamId !== "tSVC");
+  const st = (await sarah.req("/api/state?part=base")).data;
+  assert.ok(st.issues.length > 0 && st.issues.length < all.issues.length, "weniger Vorgänge");
+  assert.ok(st.issues.every((i) => i.projectId === "pSD" || i.assigneeId === "u6" || i.reporterId === "u6" || (i.watchers || []).includes("u6") || i.teamId === "tSVC"), "nur eigener Bereich");
+  assert.ok(!st.issues.some((i) => i.id === gf.id), "fremder Vorgang nicht sichtbar"); assert.ok(st.access && st.access !== "all");
+  assert.ok(st.projects.every((p) => p.id === "pSD" || st.issues.some((i) => i.projectId === p.id)), "fremde Projekte nur, soweit eigene Vorgänge darin liegen");
+  const key = `GF-${gf.no}`; assert.equal((await sarah.req(`/api/issues/by-key/${key}`)).status, 404, "auch per Nummer nicht");
+  const w = await sarah.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: gf.id, op: "patch", patch: { set: { priority: "LOW" } } }] } });
+  assert.match(w.data.results[0].error, /Kein Zugriff/);
+  const rev = (await anna.req("/api/state")).data.rev;
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: gf.id, op: "patch", patch: { set: { priority: "HIGH" } } }] } });
+  const ch = (await sarah.req(`/api/changes?since=${rev}`)).data; assert.ok(ch.changes.some((c) => c.id === gf.id && c.deleted && !c.data), "Änderung an fremdem Vorgang kommt nur als ‚nicht sichtbar‘ an");
+  // Wird Sarah ein fremder Vorgang zugewiesen, sieht sie ihn
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: gf.id, op: "patch", patch: { set: { assigneeId: "u6" } } }] } });
+  assert.equal((await sarah.req(`/api/issues/by-key/${key}`)).status, 200);
+  // Administration erweitert den Bereich auf alle Projekte → Sichtbereich ändert sich
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u6", op: "patch", patch: { set: { scope: "all" } } }] } });
+  const st2 = (await sarah.req("/api/state?part=base")).data; assert.equal(st2.issues.length, (await anna.req("/api/state?part=base")).data.issues.length); assert.equal(st2.access, undefined);
+  assert.match(String((await sarah.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u6", op: "patch", patch: { set: { scope: "area", role: "ADMIN" } } }] } })).data.results[0].error), /dürfen nur/, "eigenen Bereich/Rolle nicht selbst ändern");
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u6", op: "patch", patch: { unset: ["scope"] } }, { type: "issues", id: gf.id, op: "patch", patch: { set: { assigneeId: gf.assigneeId ?? null } } }] } });
+  // Geschäftsführung sieht alles, Nur-Lesen ändert nichts
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u4", op: "patch", patch: { set: { role: "MANAGEMENT", scope: "area" } } }] } });
+  const jonas = new Client(); await jonas.login("jonas.neumann@druckluft-chemnitz.de");
+  assert.equal((await jonas.req("/api/state?part=base")).data.issues.length, (await anna.req("/api/state?part=base")).data.issues.length, "Geschäftsführung: alles trotz Bereichs-Einstellung");
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u4", op: "patch", patch: { set: { role: "VIEWER" }, unset: ["scope"] } }] } });
+  const ro = await jonas.req("/api/sync", { method: "POST", body: { ops: [{ type: "issues", id: gf.id, op: "patch", patch: { set: { priority: "LOW" } } }] } }); assert.match(ro.data.results[0].error, /Nur-Lese/);
+  assert.equal((await jonas.req(`/api/projects/pGF/reserve`, { method: "POST" })).status, 403);
+  const k = (await jonas.req("/api/me/outlook", { method: "POST" })).data.token;
+  assert.equal((await fetch(`${BASE}/api/v1/issues`, { method: "POST", headers: { Authorization: `Bearer ${k}`, "Content-Type": "application/json" }, body: JSON.stringify({ project: "GF", summary: "x" }) })).status, 403);
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "users", id: "u4", op: "patch", patch: { set: { role: "MEMBER" } } }] } });
 });
 
 test("Kundenportal: Anfrage stellen, verfolgen, antworten – interne Notizen bleiben verborgen", async () => {

@@ -100,7 +100,10 @@ class LocalEventSource {
 }
 
 /* ---------- Fachliche Hilfen (wie server.mjs) ---------- */
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false, notifyTeams: u.notifyTeams !== false, ...(u.scope ? { scope: u.scope } : {}), ...(u.projectIds?.length ? { projectIds: u.projectIds } : {}), ...(u.home ? { home: u.home } : {}) });
+/* Sichtbereich wie auf dem Server (Regeln in shared.js) */
+const accessFor = (d, u) => S.accessContext(u, { projects: all(d, "projects"), teams: all(d, "teams") });
+function scopeData(out, ctx) { if (!ctx) return out; out.issues = out.issues.filter((i) => S.canSeeIssue(ctx, i)); const pids = new Set([...ctx.projectIds, ...out.issues.map((i) => i.projectId)]); out.projects = out.projects.filter((p) => pids.has(p.id)); out.sprints = out.sprints.filter((x) => pids.has(x.projectId)); return out; }
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 const hash = (s) => { let h = 2166136261; for (const c of s) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return (h >>> 0).toString(36); };
 const notifId = (key, userId) => "n" + hash(`${key}:${userId}`) + hash(`${userId}|${key}`);
@@ -128,7 +131,7 @@ function canWrite(user, type, op, cur, data, d = load()) {
     if (op === "delete") return "Benutzer können nur deaktiviert werden.";
     if (admin) return null;
     if (cur.id !== user.id) return "Nur Administratoren dürfen andere Benutzer ändern.";
-    const allowed = new Set(["name", "notifyEmail"]);
+    const allowed = new Set(["name", "notifyEmail", "notifyTeams", "home"]);
     const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
@@ -193,6 +196,8 @@ function applyOp(d, user, op) {
   const { type, id } = op;
   if (!COLLECTIONS.includes(type) || !ID_RE.test(String(id))) throw new HttpError(400, "Ungültiges Objekt.");
   const cur = get(d, type, id);
+  if (!S.canEdit(user) && !["notifications", "users", "filters"].includes(type)) throw new HttpError(403, "Sie haben einen Nur-Lese-Zugang.");
+  if (type === "issues") { const ctx = accessFor(d, user); if (ctx && (cur ? !S.canSeeIssue(ctx, cur) : !ctx.projectIds.has(op.data?.projectId) && op.data?.assigneeId !== user.id)) throw new HttpError(403, "Kein Zugriff auf diesen Bereich."); }
   if (op.op === "delete") {
     const err = canWrite(user, type, "delete", cur, {}); if (err) throw new HttpError(403, err);
     if (cur) del(d, type, id);
@@ -364,15 +369,17 @@ function handle(method, url, body) {
     for (const t of COLLECTIONS) out[t] = all(d0, t);
     out.users = out.users.map(publicUser);
     out.notifications = out.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300);
+    const ctx = accessFor(d0, user); scopeData(out, ctx); out.access = S.accessSig(ctx);
     return out;
   }
   if (p === "/api/changes") {
-    const since = Number(url.searchParams.get("since") || 0); const changes = [];
+    const since = Number(url.searchParams.get("since") || 0); const changes = []; const ctx = accessFor(d0, user); const pidOk = (pid) => !ctx || ctx.projectIds.has(pid);
+    const hidden = (t, e) => ctx && ((t === "issues" && !S.canSeeIssue(ctx, e.data)) || (t === "projects" && !pidOk(e.data.id)) || (t === "sprints" && !pidOk(e.data.projectId)));
     for (const t of COLLECTIONS) for (const [id, e] of Object.entries(d0.entities[t])) {
       if (e.rev <= since || (t === "notifications" && e.data.userId !== user.id)) continue;
-      changes.push({ rev: e.rev, c: e.deleted ? { type: t, id, deleted: true } : { type: t, id, data: t === "users" ? publicUser(e.data) : e.data } });
+      changes.push({ rev: e.rev, c: e.deleted || hidden(t, e) ? { type: t, id, deleted: true } : { type: t, id, data: t === "users" ? publicUser(e.data) : e.data } });
     }
-    return { rev: d0.rev, changes: changes.sort((a, b) => a.rev - b.rev).map((x) => x.c) };
+    return { rev: d0.rev, changes: changes.sort((a, b) => a.rev - b.rev).map((x) => x.c), access: S.accessSig(ctx) };
   }
   if (p === "/api/sync" && method === "POST") {
     if (!Array.isArray(body?.ops)) throw new HttpError(400, "Ungültige Änderungen.");

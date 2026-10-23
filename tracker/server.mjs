@@ -247,6 +247,28 @@ function stateSnapshot() {
   if (snapshot.ms > 300) log(`Startdatensatz: ${snapshot.issues} Vorgänge (+${archived} im Archiv), ${(snapshot.json.length / 1048576).toFixed(1)} MB → ${(snapshot.gz.length / 1048576).toFixed(1)} MB komprimiert, ${snapshot.ms} ms`);
   return snapshot;
 }
+/* ---------- Sichtbereich je Person (Rolle bzw. eingestellter Bereich) ---------- */
+const accessFor = (u) => S.accessContext(u, { projects: store.all("projects"), teams: store.all("teams") });
+/** Vorgänge/Projekte/Sprints auf den Sichtbereich beschränken. */
+function scopeData(out, ctx) {
+  if (!ctx) return out;
+  out.issues = out.issues.filter((i) => S.canSeeIssue(ctx, i));
+  const pids = new Set([...ctx.projectIds, ...out.issues.map((i) => i.projectId)]);
+  out.projects = out.projects.filter((p) => pids.has(p.id)); out.sprints = (out.sprints || []).filter((sp) => pids.has(sp.projectId));
+  return out;
+}
+const scopedSnap = new Map(); // je Person mit eingeschränktem Bereich: eigener Startdatensatz (gleiche Revision wie der gemeinsame)
+function sendScopedState(res, user, ctx) {
+  const base = stateSnapshot(); const sig = S.accessSig(ctx); const hit = scopedSnap.get(user.id);
+  if (!hit || hit.rev !== base.rev || hit.sig !== sig) {
+    const out = JSON.parse(base.json.toString()); const cutoff = archiveCutoff();
+    scopeData(out, ctx); out.archive = { count: store.all("issues").filter((i) => isArchived(i, cutoff) && S.canSeeIssue(ctx, i)).length, days: ARCHIVE_DAYS }; out.access = sig;
+    const json = JSON.stringify(out); scopedSnap.set(user.id, { rev: base.rev, sig, json: Buffer.from(json), gz: zlib.gzipSync(json, { level: 5 }) });
+  }
+  const snap = scopedSnap.get(user.id); const gz = acceptsGzip(res);
+  res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Accept-Encoding", ...(gz ? { "Content-Encoding": "gzip" } : {}) });
+  res.end(gz ? snap.gz : snap.json);
+}
 function sendSnapshot(res) {
   const snap = stateSnapshot(); const gz = acceptsGzip(res);
   res.writeHead(200, { ...SECURITY_HEADERS, "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", Vary: "Accept-Encoding", ...(gz ? { "Content-Encoding": "gzip" } : {}), "Content-Length": (gz ? snap.gz : snap.json).length });
@@ -263,12 +285,13 @@ const userById = (id) => (id ? store.get("users", id) : null);
 const projectById = (id) => store.get("projects", id);
 const issueKey = (i) => `${projectById(i.projectId)?.key || "?"}-${i.no}`;
 const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false, notifyTeams: u.notifyTeams !== false });
+const publicUser = (u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, active: u.active, color: u.color, notifyEmail: u.notifyEmail !== false, notifyTeams: u.notifyTeams !== false, ...(u.scope ? { scope: u.scope } : {}), ...(u.projectIds?.length ? { projectIds: u.projectIds } : {}), ...(u.home ? { home: u.home } : {}) });
 const notifId = (key, userId) => "n" + sha256(`${key}:${userId}`).slice(0, 22);
 function createNotification(userId, type, title, text, issueId, key) {
   const id = key ? notifId(key, userId) : S.uid();
   if (store.get("notifications", id, true)) return false; // schon einmal erzeugt (auch wenn inzwischen gelöscht)
   const u = userById(userId); if (!u || !u.active) return false;
+  if (issueId) { const i = store.get("issues", issueId); if (i && !S.canSeeIssue(accessFor(u), i)) return false; } // nichts außerhalb des eigenen Bereichs melden
   store.put("notifications", { id, userId, type, title, text, issueId, at: new Date().toISOString(), read: false, key: key || null });
   return true;
 }
@@ -287,7 +310,7 @@ function canWrite(user, type, op, cur, data) {
     if (op === "delete") return "Benutzer können nur deaktiviert werden.";
     if (admin) return null;
     if (cur.id !== user.id) return "Nur Administratoren dürfen andere Benutzer ändern.";
-    const allowed = new Set(["name", "notifyEmail", "notifyTeams"]);
+    const allowed = new Set(["name", "notifyEmail", "notifyTeams", "home"]);
     const fields = [...Object.keys(data.set || {}), ...(data.unset || []), ...Object.keys(data.arr || {})];
     return fields.every((f) => allowed.has(f)) ? null : "Sie dürfen nur Ihren Namen und Ihre Benachrichtigungen ändern.";
   }
@@ -354,6 +377,11 @@ function applyOp(user, op, effects) {
   const { type, id } = op;
   if (!COLLECTIONS.includes(type) || !ID_RE.test(String(id))) throw new HttpError(400, "Ungültiges Objekt.");
   const cur = store.get(type, id);
+  if (!S.canEdit(user) && !["notifications", "users", "filters"].includes(type)) throw new HttpError(403, "Sie haben einen Nur-Lese-Zugang.");
+  if (type === "issues") { // Sichtbereich: nur Vorgänge im eigenen Bereich ändern bzw. anlegen
+    const ctx = accessFor(user);
+    if (ctx && (cur ? !S.canSeeIssue(ctx, cur) : !ctx.projectIds.has(op.data?.projectId) && op.data?.assigneeId !== user.id)) throw new HttpError(403, "Kein Zugriff auf diesen Bereich.");
+  }
   if (op.op === "delete") {
     const err = canWrite(user, type, "delete", cur, {}); if (err) throw new HttpError(403, err);
     if (cur) { store.del(type, id); if (AUDITED_DELETES[type]) audit(user, "delete", `${AUDITED_DELETES[type]}: ${auditLabel(type, cur)}`); }
@@ -604,7 +632,7 @@ async function portalCreate(req) {
       description: [str(b.asset, 200) ? `Anlage/Standort: ${str(b.asset, 200)}` : "", description].filter(Boolean).join("\n\n"),
       customer: { name, company, email, phone: str(b.phone, 60) }, customerId: known?.id || null });
     store.put("issues", i); issueEffects({ before: null, after: i });
-    const agents = store.all("users").filter((u) => u.active && (u.role === "AGENT" || u.id === p.leadId));
+    const agents = store.all("users").filter((u) => u.active && (u.role === "AGENT" || u.role === "COORDINATOR" || u.id === p.leadId));
     for (const u of agents) createNotification(u.id, "new", `Neue Anfrage: ${p.key}-${i.no}`, `${company} · ${name}: ${summary}`, i.id);
     return i;
   });
@@ -817,7 +845,8 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/me" && m === "GET") return { user: publicUser(user), mail: mailer.configured, company: CFG.company, appUrl: CFG.appUrl, brand: brand() };
   pm = p.match(/^\/api\/issues\/([A-Za-z0-9_-]+)\/attachments$/);
   if (pm && m === "POST") {
-    if (!store.get("issues", pm[1])) throw new HttpError(404, "Vorgang nicht gefunden.");
+    const ti = store.get("issues", pm[1]); if (!ti || !S.canSeeIssue(accessFor(user), ti)) throw new HttpError(404, "Vorgang nicht gefunden.");
+    if (!S.canEdit(user)) throw new HttpError(403, "Sie haben einen Nur-Lese-Zugang.");
     const data = await readRaw(req, MAX_FILE);
     const meta = addAttachment(pm[1], { name: decodeURIComponent(String(req.headers["x-filename"] || "datei")), type: req.headers["content-type"], data, userId: user.id, source: "upload" });
     broadcast(); return meta;
@@ -831,7 +860,7 @@ async function handleApi(req, res, url, session) {
     fs.rmSync(path.join(FILES, a.id), { force: true }); broadcast(); return { ok: true };
   }
   pm = p.match(/^\/api\/files\/([A-Za-z0-9_-]+)$/);
-  if (pm && m === "GET") { const hit = findAttachment(pm[1]); if (!hit) throw new HttpError(404, "Datei nicht gefunden."); return { __file: hit.a }; }
+  if (pm && m === "GET") { const hit = findAttachment(pm[1]); if (!hit || !S.canSeeIssue(accessFor(user), hit.issue)) throw new HttpError(404, "Datei nicht gefunden."); return { __file: hit.a }; }
   if (p === "/api/me/outlook" && m === "GET") return { manifestUrl: `${CFG.appUrl}/outlook/manifest.xml`, key: apiV1.userKeyInfo(user.id), https: CFG.appUrl.startsWith("https://") };
   if (p === "/api/me/outlook" && m === "POST") { const k = apiV1.createUserKey(user.id); ilog("outlook", "info", `Zugangsschlüssel für das Outlook-Add-in erzeugt: ${user.email}`); return { token: k.token, key: apiV1.userKeyInfo(user.id) }; }
   if (p === "/api/me/calendar" && (m === "GET" || m === "POST")) {
@@ -856,20 +885,21 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/me/sessions/others" && m === "DELETE") { store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash); return { ok: true }; }
   pm = p.match(/^\/api\/me\/sessions\/([a-f0-9]{16})$/);
   if (pm && m === "DELETE") { if (!sessions.revoke(user.id, pm[1])) throw new HttpError(404, "Sitzung nicht gefunden."); return { ok: true }; }
-  if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "base") return { __snapshot: true };
+  if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "base") { const ctx = accessFor(user); return ctx ? { __scoped: ctx } : { __snapshot: true }; }
   if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "notifications")
     return { notifications: store.all("notifications").filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300) };
   if (p === "/api/archive" && m === "GET") { // archivierte Vorgänge nachladen (optional für einen Kunden)
     const cutoff = archiveCutoff(); const cust = url.searchParams.get("customer");
-    return { issues: store.all("issues").filter((i) => isArchived(i, cutoff) && (!cust || i.customerId === cust)) };
+    const ctx = accessFor(user); return { issues: store.all("issues").filter((i) => isArchived(i, cutoff) && (!cust || i.customerId === cust) && S.canSeeIssue(ctx, i)) };
   }
   pm = p.match(/^\/api\/issues\/by-key\/([A-Za-z][A-Za-z0-9]*)-(\d+)$/);
-  if (pm && m === "GET") { const pr = store.all("projects").find((x) => x.key === pm[1].toUpperCase()); const i = pr && store.issueByNo(pr.id, Number(pm[2])); if (!i) throw new HttpError(404, "Vorgang nicht gefunden."); return { issue: i }; }
+  if (pm && m === "GET") { const pr = store.all("projects").find((x) => x.key === pm[1].toUpperCase()); const i = pr && store.issueByNo(pr.id, Number(pm[2])); if (!i || !S.canSeeIssue(accessFor(user), i)) throw new HttpError(404, "Vorgang nicht gefunden."); return { issue: i }; }
   if (p === "/api/state" && m === "GET") {
     const out = { rev: store.rev() };
     for (const t of COLLECTIONS) out[t] = store.all(t);
     out.users = out.users.map(publicUser);
     out.notifications = out.notifications.filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300);
+    const ctx = accessFor(user); scopeData(out, ctx); out.access = S.accessSig(ctx);
     return out;
   }
   if (p === "/api/changes" && m === "GET") {
@@ -877,9 +907,11 @@ async function handleApi(req, res, url, session) {
     // Zu weit zurück (z. B. Gerät lange offline): lieber neu laden als Tausende Änderungen nachspielen
     if (since === store.rev()) return { rev: since, changes: [] };
     if (!(since > 0) || store.rev() - since > 5000) return { rev: store.rev(), reset: true, changes: [] };
+    const ctx = accessFor(user); const pidOk = (pid) => !ctx || ctx.projectIds.has(pid);
+    const hidden = (c) => ctx && ((c.type === "issues" && !S.canSeeIssue(ctx, c.data)) || (c.type === "projects" && !pidOk(c.id)) || (c.type === "sprints" && !pidOk(c.data.projectId)));
     const changes = store.since(since).filter((c) => c.type !== "notifications" || c.data.userId === user.id)
-      .map((c) => (c.deleted ? { type: c.type, id: c.id, deleted: true } : { type: c.type, id: c.id, data: c.type === "users" ? publicUser(c.data) : c.data }));
-    return { rev: store.rev(), changes };
+      .map((c) => (c.deleted || hidden(c) ? { type: c.type, id: c.id, deleted: true } : { type: c.type, id: c.id, data: c.type === "users" ? publicUser(c.data) : c.data }));
+    return { rev: store.rev(), changes, access: S.accessSig(ctx) };
   }
   if (p === "/api/sync" && m === "POST") {
     const b = await readJson(req); if (!Array.isArray(b.ops) || b.ops.length > 500) throw new HttpError(400, "Ungültige Änderungen.");
@@ -894,6 +926,7 @@ async function handleApi(req, res, url, session) {
   pm = p.match(/^\/api\/projects\/([A-Za-z0-9_-]+)\/reserve$/);
   if (pm && m === "POST") {
     if (!projectById(pm[1])) throw new HttpError(404, "Projekt nicht gefunden.");
+    if (!S.canEdit(user)) throw new HttpError(403, "Sie haben einen Nur-Lese-Zugang.");
     const count = Math.min(5000, Math.max(1, Number(url.searchParams.get("count")) || 1)); // Block für Importe
     return { no: store.tx(() => { const first = store.reserveNumber(pm[1]); if (count > 1) store.s.setCounter.run(pm[1], first + count); return first; }), count };
   }
@@ -1024,6 +1057,7 @@ const server = http.createServer(async (req, res) => {
       if (out && out.__status) return send(res, out.__status, out.body, extra);
       if (out && out.__file) return sendAttachment(req, res, out.__file, url);
       if (out && out.__snapshot) return sendSnapshot(res);
+      if (out && out.__scoped) return sendScopedState(res, userById(session.userId), out.__scoped);
       if (out && out.__zip) return send(res, 200, out.__zip, { "Content-Type": "application/zip", "Content-Disposition": `attachment; filename="${out.name}"`, "Cache-Control": "no-store" });
       if (out && out.__dbfile) { res.writeHead(200, { "Content-Type": "application/vnd.sqlite3", "Content-Length": fs.statSync(out.__dbfile).size, "Content-Disposition": `attachment; filename="${out.name}"`, "Cache-Control": "no-store", ...SECURITY_HEADERS }); return fs.createReadStream(out.__dbfile).pipe(res); }
       if (out && out.__cookie) return send(res, 200, out.body, { "Set-Cookie": out.__cookie });

@@ -637,3 +637,10 @@ tbody tr.click { transition: background .1s; } tbody tr.click:hover { background
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .overlay { background: rgba(0, 0, 0, .55); } }
 :root[data-theme="dark"] .topnav { background: color-mix(in srgb, var(--surface) 88%, transparent); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .topnav { background: color-mix(in srgb, var(--surface) 88%, transparent); } }
+/* Nur-Lese-Zugang: Bearbeiten ausblenden bzw. sperren (der Server lehnt Änderungen ohnehin ab) */
+body.readonly [data-act="create"], body.readonly [data-act="clone"], body.readonly [data-act="delete-issue"], body.readonly [data-act="add-subtask"], body.readonly [data-act="add-link"],
+body.readonly [data-act="assign-me"], body.readonly [data-act="take"], body.readonly [data-act="step"], body.readonly [data-act="customer-new"], body.readonly [data-act="customer-issue"], body.readonly [data-act="customer-edit"],
+body.readonly [data-act="contact-new"], body.readonly [data-act="asset-new"], body.readonly [data-act="att-delete"], body.readonly #comment-form, body.readonly label:has(#att-input), body.readonly .quick-create,
+body.readonly [data-act="new-sprint"], body.readonly [data-act="start-sprint"], body.readonly [data-act="complete-sprint"], body.readonly .wf-panel .btn { display: none !important; }
+body.readonly #modal [data-f], body.readonly .desc-view, body.readonly [draggable="true"] { pointer-events: none; }
+body.readonly #modal select[data-f], body.readonly #modal input[data-f] { border-color: transparent; background: transparent; background-image: none; }

@@ -32,7 +32,8 @@ export function createApiV1(ctx) {
     if (!m) throw new HttpError(401, "API-Schlüssel fehlt (Header: Authorization: Bearer gft_…).");
     const key = store.db.prepare("SELECT * FROM api_keys WHERE token_hash = ? AND revoked = 0").get(sha256(m[1]));
     if (!key) throw new HttpError(401, "API-Schlüssel ungültig oder widerrufen.");
-    if (key.user_id) { const u = userById(key.user_id); if (!u || !u.active) throw new HttpError(401, "Die Person zu diesem Schlüssel ist nicht mehr aktiv."); key.user = u; }
+    if (key.user_id) { const u = userById(key.user_id); if (!u || !u.active) throw new HttpError(401, "Die Person zu diesem Schlüssel ist nicht mehr aktiv."); key.user = u;
+      key.ctx = S.accessContext(u, { projects: store.all("projects"), teams: store.all("teams") }); } // persönlicher Schlüssel: nur der Sichtbereich der Person
     const now = Date.now(); const w = limiter.get(key.id) || { start: now, n: 0 }; if (now - w.start > 60e3) { w.start = now; w.n = 0; }
     if (++w.n > 600) throw new HttpError(429, "Zu viele Anfragen – höchstens 600 je Minute.");
     limiter.set(key.id, w);
@@ -69,11 +70,11 @@ export function createApiV1(ctx) {
     after.updatedAt = new Date().toISOString(); store.put("issues", after);
     issueEffects({ before, after });
   }
-  function resolveIssue(ref) { const r = decodeURIComponent(String(ref)); const m = r.match(/^([A-Za-z][A-Za-z0-9]*)-(\d+)$/);
+  function resolveIssue(ref, key = null) { const r = decodeURIComponent(String(ref)); const m = r.match(/^([A-Za-z][A-Za-z0-9]*)-(\d+)$/);
     const all = store.all("issues"); let i = null;
     if (m) { const p = store.all("projects").find((x) => x.key === m[1].toUpperCase()); i = p && store.issueByNo(p.id, Number(m[2])); }
     i = i || all.find((x) => x.id === r) || all.find((x) => x.externalId && x.externalId === r);
-    if (!i) throw new HttpError(404, `Vorgang ${r} nicht gefunden.`); return store.get("issues", i.id); }
+    if (!i || (key?.ctx && !S.canSeeIssue(key.ctx, i))) throw new HttpError(404, `Vorgang ${r} nicht gefunden.`); return store.get("issues", i.id); }
   function statusFor(p, v) { if (v == null || v === "") return null; const wf = S.workflowFor(p); const s = String(v).trim().toLowerCase();
     const st = wf.find((x) => x.id.toLowerCase() === s || x.name.toLowerCase() === s); if (!st) throw new HttpError(400, `Unbekannter Status „${v}“. Erlaubt: ${wf.map((x) => `${x.id} (${x.name})`).join(", ")}`); return st; }
   function prioFor(v) { if (v == null || v === "") return null; const s = String(v).trim().toUpperCase(); if (S.PRIOS[s]) return s;
@@ -153,12 +154,12 @@ export function createApiV1(ctx) {
     const m = req.method; const p = url.pathname.replace(/\/+$/, "");
     if (p === "/api/v1/openapi.json") return openapi();
     const key = authenticate(req);
-    const write = () => { if (key.scope !== "write") throw new HttpError(403, "Dieser API-Schlüssel darf nur lesen."); };
+    const write = () => { if (key.scope !== "write") throw new HttpError(403, "Dieser API-Schlüssel darf nur lesen."); if (key.user && !S.canEdit(key.user)) throw new HttpError(403, "Diese Person hat einen Nur-Lese-Zugang."); };
     const q = (k) => url.searchParams.get(k);
     if (p === "/api/v1" && m === "GET") return { name: "GF Tracker API", version: 1, key: { name: key.name, scope: key.scope }, docs: `${cfg.appUrl}/api/v1/openapi.json`,
       endpoints: ["GET /api/v1/issues", "POST /api/v1/issues", "GET /api/v1/issues/{key}", "PATCH /api/v1/issues/{key}", "POST /api/v1/issues/{key}/comments", "GET /api/v1/customers", "GET /api/v1/customers/{no|externalId|id}", "PUT /api/v1/customers/{no|externalId}", "GET /api/v1/projects", "GET /api/v1/users", "GET /api/v1/teams"] };
     if (p === "/api/v1/issues" && m === "GET") {
-      let list = store.all("issues");
+      let list = store.all("issues").filter((i) => S.canSeeIssue(key.ctx, i));
       if (q("project")) { const pr = store.all("projects").find((x) => x.key === q("project").toUpperCase()); list = list.filter((i) => i.projectId === pr?.id); }
       if (q("status")) list = list.filter((i) => i.status === q("status").toUpperCase());
       if (q("statusCategory")) list = list.filter((i) => S.statusInfo(projectById(i.projectId), i.status).cat === q("statusCategory"));
@@ -173,11 +174,11 @@ export function createApiV1(ctx) {
     }
     if (p === "/api/v1/issues" && m === "POST") { write(); const r = createIssue(key, await readJson(req, 1e6)); if (r.created) { broadcast(); ilog("api", "info", `${key.name}: ${issueKey(r.issue)} angelegt`); } return { __status: r.created ? 201 : 200, body: { created: r.created, issue: issueDto(r.issue) } }; }
     let pm = p.match(/^\/api\/v1\/issues\/([^/]+)$/);
-    if (pm && m === "GET") return issueDto(resolveIssue(pm[1]));
-    if (pm && m === "PATCH") { write(); const i = patchIssue(key, resolveIssue(pm[1]), await readJson(req, 1e6)); broadcast(); return issueDto(i); }
+    if (pm && m === "GET") return issueDto(resolveIssue(pm[1], key));
+    if (pm && m === "PATCH") { write(); const i = patchIssue(key, resolveIssue(pm[1], key), await readJson(req, 1e6)); broadcast(); return issueDto(i); }
     pm = p.match(/^\/api\/v1\/issues\/([^/]+)\/comments$/);
     if (pm && m === "POST") { write(); const b = await readJson(req, 1e6); const text = str(b.text, 8000); if (!text) throw new HttpError(400, "Feld „text“ fehlt.");
-      const i = resolveIssue(pm[1]); const before = JSON.parse(JSON.stringify(i)); const c = { id: ID(), userId: key.user?.id || null, author: key.user ? null : str(b.author, 80) || byApi(key), text, at: new Date().toISOString(), internal: b.internal !== false };
+      const i = resolveIssue(pm[1], key); const before = JSON.parse(JSON.stringify(i)); const c = { id: ID(), userId: key.user?.id || null, author: key.user ? null : str(b.author, 80) || byApi(key), text, at: new Date().toISOString(), internal: b.internal !== false };
       if (key.user && !i.watchers.includes(key.user.id)) i.watchers.push(key.user.id);
       i.comments.push(c); store.tx(() => commit(before, i)); broadcast(); customerMails({ before, after: i }); flushMailQueue();
       const who = i.assigneeId || projectById(i.projectId)?.leadId; if (who && who !== key.user?.id) ctx.createNotification(who, "comment", `Neuer Kommentar (${byApi(key)}): ${issueKey(i)}`, text.slice(0, 140), i.id);
@@ -186,13 +187,13 @@ export function createApiV1(ctx) {
     if (p === "/api/v1/lookup" && m === "GET") { // Absender einer E-Mail → Kunde, Ansprechpartner, Vorgänge (für das Outlook-Add-in)
       const e = String(q("email") || "").trim().toLowerCase(); if (!e) throw new HttpError(400, "Parameter email fehlt.");
       const c = ctx.findCustomerByEmail(e); const contact = c ? (c.contacts || []).find((k) => (k.email || "").toLowerCase() === e) || null : null;
-      const issues = store.all("issues").filter((i) => (c && i.customerId === c.id) || (i.customer?.email || "").toLowerCase() === e).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      const issues = store.all("issues").filter((i) => ((c && i.customerId === c.id) || (i.customer?.email || "").toLowerCase() === e) && S.canSeeIssue(key.ctx, i)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
       const open = issues.filter((i) => S.statusInfo(projectById(i.projectId), i.status).cat !== "done");
       return { email: e, customer: c ? customerDto(c) : null, contact: contact ? { name: contact.name, role: contact.role || "", phone: contact.phone || "" } : null,
         openIssues: open.slice(0, 20).map(issueDto), recentIssues: issues.filter((i) => !open.includes(i)).slice(0, 5).map(issueDto) };
     }
     pm = p.match(/^\/api\/v1\/issues\/([^/]+)\/attachments$/);
-    if (pm && m === "POST") { write(); const b = await readJson(req, 25e6); const i = resolveIssue(pm[1]);
+    if (pm && m === "POST") { write(); const b = await readJson(req, 25e6); const i = resolveIssue(pm[1], key);
       const data = Buffer.from(String(b.contentBase64 || ""), "base64"); if (!data.length) throw new HttpError(400, "contentBase64 fehlt.");
       const meta = ctx.addAttachment(i.id, { name: str(b.name, 150) || "datei", type: b.contentType, data, userId: key.user?.id || null, by: key.user ? null : byApi(key), source: b.source === "email" ? "email" : "upload" });
       broadcast(); return { __status: 201, body: { ok: true, id: meta.id, name: meta.name, size: meta.size } }; }
@@ -203,7 +204,7 @@ export function createApiV1(ctx) {
     }
     if (p === "/api/v1/customers" && m === "POST") { write(); const b = await readJson(req, 2e6); const r = upsertCustomer(b.no || b.externalId || "", b); broadcast(); return { __status: r.created ? 201 : 200, body: { created: r.created, customer: customerDto(r.customer) } }; }
     pm = p.match(/^\/api\/v1\/customers\/([^/]+)$/);
-    if (pm && m === "GET") { const c = findCustomer(decodeURIComponent(pm[1])); if (!c) throw new HttpError(404, "Kunde nicht gefunden."); return { ...customerDto(c), openIssues: store.all("issues").filter((i) => i.customerId === c.id && S.statusInfo(projectById(i.projectId), i.status).cat !== "done").map(issueDto) }; }
+    if (pm && m === "GET") { const c = findCustomer(decodeURIComponent(pm[1])); if (!c) throw new HttpError(404, "Kunde nicht gefunden."); return { ...customerDto(c), openIssues: store.all("issues").filter((i) => i.customerId === c.id && S.canSeeIssue(key.ctx, i) && S.statusInfo(projectById(i.projectId), i.status).cat !== "done").map(issueDto) }; }
     if (pm && m === "PUT") { write(); const r = upsertCustomer(decodeURIComponent(pm[1]), await readJson(req, 2e6)); broadcast(); ilog("api", "info", `${key.name}: Kunde ${r.customer.no || r.customer.name} ${r.created ? "angelegt" : "aktualisiert"}`); return { __status: r.created ? 201 : 200, body: { created: r.created, customer: customerDto(r.customer) } }; }
     if (p === "/api/v1/projects" && m === "GET") return { items: store.all("projects").map((x) => ({ key: x.key, name: x.name, type: x.type, statuses: S.workflowFor(x).map((s) => ({ id: s.id, name: s.name, category: s.cat })), issueTypes: S.PROJECT_TYPES[x.type].types })) };
     if (p === "/api/v1/users" && m === "GET") return { items: store.all("users").filter((u) => u.active).map((u) => ({ name: u.name, email: u.email, role: u.role, teams: store.all("teams").filter((t) => t.memberIds.includes(u.id)).map((t) => t.name) })) };

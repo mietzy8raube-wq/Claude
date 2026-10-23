@@ -95,7 +95,38 @@ const URGENCY = [
   { id: "LOW", name: "Nicht dringend" },
 ];
 const PALETTE = ["#2a78d6", "#8f5bd6", "#16946a", "#d0352c", "#c97b00", "#0e8a9c", "#c2477e", "#5b6b8a"];
-const ROLES = { ADMIN: "Administrator", MEMBER: "Mitglied", AGENT: "Service-Mitarbeiter" };
+const ROLES = { ADMIN: "Administrator", MANAGEMENT: "Geschäftsführung", COORDINATOR: "Servicekoordinator", MEMBER: "Mitarbeiter", AGENT: "Service-Techniker", VIEWER: "Nur lesen" };
+const ROLE_INFO = {
+  ADMIN: "sieht alles, verwaltet Personen, Projekte, Integrationen und System",
+  MANAGEMENT: "sieht alle Projekte, Auswertungen und Kennzahlen – ohne Verwaltung",
+  COORDINATOR: "sieht seinen Bereich (Projekte seiner Teams), plant Einsätze, wird über neue Kundenanfragen informiert",
+  MEMBER: "arbeitet in den Projekten (standardmäßig alle)",
+  AGENT: "Service vor Ort: sieht seinen Bereich und eigene Einsätze, wird über neue Kundenanfragen informiert",
+  VIEWER: "kann ansehen und suchen, aber nichts ändern",
+};
+
+/* ---------- Sichtbereich: wer sieht welche Vorgänge ----------
+   Administration und Geschäftsführung sehen immer alles. Alle anderen haben entweder „alle Projekte“
+   oder ihren „eigenen Bereich“: Projekte ihrer Teams + zusätzlich freigegebene Projekte + alles, was
+   ihnen zugewiesen ist, was sie gemeldet haben oder beobachten. */
+const FULL_ACCESS = new Set(["ADMIN", "MANAGEMENT"]);
+const DEFAULT_SCOPE = { COORDINATOR: "area", AGENT: "area" };
+const userScope = (u) => (!u ? "area" : FULL_ACCESS.has(u.role) ? "all" : u.scope === "all" || u.scope === "area" ? u.scope : DEFAULT_SCOPE[u.role] || "all");
+/** null = sieht alles; sonst die erlaubten Projekte und Teams. */
+function accessContext(u, { projects = [], teams = [] }) {
+  if (userScope(u) === "all") return null;
+  const teamIds = new Set(teams.filter((t) => (t.memberIds || []).includes(u.id) || t.leadId === u.id).map((t) => t.id));
+  const projectIds = new Set((u.projectIds || []).filter(Boolean));
+  for (const p of projects) if ((p.teamId && teamIds.has(p.teamId)) || p.leadId === u.id) projectIds.add(p.id);
+  return { userId: u.id, projectIds, teamIds };
+}
+function canSeeIssue(ctx, i) {
+  if (!ctx || !i) return true;
+  return ctx.projectIds.has(i.projectId) || i.assigneeId === ctx.userId || i.reporterId === ctx.userId || (i.watchers || []).includes(ctx.userId) || (!!i.teamId && ctx.teamIds.has(i.teamId));
+}
+/** Kurzform des Sichtbereichs – ändert er sich (z. B. neues Team), lädt der Browser neu. */
+const accessSig = (ctx) => (ctx ? `${[...ctx.projectIds].sort().join(",")}|${[...ctx.teamIds].sort().join(",")}` : "all");
+const canEdit = (u) => !!u && u.role !== "VIEWER";
 
 
 /* ---------- Datum & IDs ---------- */
@@ -254,7 +285,7 @@ function seed() {
     { id: "u2", name: "Thomas Weber", email: "thomas.weber@druckluft-chemnitz.de", role: "ADMIN", active: true },
     { id: "u3", name: "Lisa Schmidt", email: "lisa.schmidt@druckluft-chemnitz.de", role: "MEMBER", active: true },
     { id: "u4", name: "Jonas Neumann", email: "jonas.neumann@druckluft-chemnitz.de", role: "MEMBER", active: true },
-    { id: "u5", name: "Mehmet Yilmaz", email: "mehmet.yilmaz@druckluft-chemnitz.de", role: "AGENT", active: true },
+    { id: "u5", name: "Mehmet Yilmaz", email: "mehmet.yilmaz@druckluft-chemnitz.de", role: "COORDINATOR", active: true },
     { id: "u6", name: "Sarah Becker", email: "sarah.becker@druckluft-chemnitz.de", role: "AGENT", active: true },
   ];
   users.forEach((u) => (u.color = hashColor(u.email)));
@@ -385,7 +416,8 @@ function seed() {
   return { users, teams, customers, absences, projects, sprints, issues, filters: [], notifications: [] };
 }
 
-return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
+return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES, ROLE_INFO,
+  FULL_ACCESS, userScope, accessContext, canSeeIssue, accessSig, canEdit,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur,
   workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed,
   addMonths, nextMaintenance, customerSnapshot, customerAddress, maintenanceDue, maintenanceIssueData, completeMaintenance };

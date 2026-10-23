@@ -92,7 +92,7 @@ export function createM365(ctx) {
               customer: cust ? { ...S.customerSnapshot(cust, contact?.id), ...(contact ? {} : { name: fromName, email: from }) } : { name: fromName, company: "", email: from, phone: "" } });
             i.history[0] = { ...i.history[0], by: "E-Mail" }; store.put("issues", i); issueEffects({ before: null, after: i });
             const team = i.teamId ? store.get("teams", i.teamId) : null;
-            const notifyIds = new Set([...(team?.memberIds || []), ...store.all("users").filter((u) => u.active && u.role === "AGENT").map((u) => u.id), sp.leadId].filter(Boolean));
+            const notifyIds = new Set([...(team?.memberIds || []), ...store.all("users").filter((u) => u.active && (u.role === "AGENT" || u.role === "COORDINATOR")).map((u) => u.id), sp.leadId].filter(Boolean));
             for (const u of notifyIds) createNotification(u, "new", `Neue E-Mail-Anfrage: ${issueKey(i)}`, `${cust?.name || fromName}: ${i.summary}`, i.id);
             mapSet("mail", mid, msg.id, { issue: i.id });
             return i;

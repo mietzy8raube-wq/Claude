@@ -4,7 +4,7 @@
    als Patches synchronisiert und per Server-Sent Events live verteilt.
    Fachlogik (Workflows, SLA, Patch-Verfahren) steckt in shared.js.
    ====================================================================== */
-const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES,
+const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES, ROLE_INFO, FULL_ACCESS, userScope, accessContext, canEdit,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch,
   nextMaintenance, customerSnapshot, customerAddress, maintenanceIssueData } = TrackerShared;
 
@@ -94,7 +94,7 @@ async function api(path, { method = "GET", body } = {}) {
 const setBase = (type, obj) => sync.base[type].set(obj.id, clone(obj));
 function loadState(st) {
   for (const t of COLLECTIONS) { db[t] = st[t] || []; sync.base[t] = new Map(); db[t].forEach((o) => setBase(t, o)); }
-  sync.rev = st.rev; sync.pending = []; db.archiveInfo = st.archive || { count: 0, days: 0 }; ui.archiveLoaded = !db.archiveInfo.count;
+  sync.rev = st.rev; sync.access = st.access || "all"; sync.pending = []; db.archiveInfo = st.archive || { count: 0, days: 0 }; ui.archiveLoaded = !db.archiveInfo.count;
 }
 /** Startdaten: gemeinsamer, komprimierter Datensatz plus die eigenen Benachrichtigungen. */
 async function fetchState() {
@@ -192,6 +192,7 @@ async function pull() {
   try {
     const r = await api(`/api/changes?since=${sync.rev}`);
     if (r.reset) { sync.pulling = false; await reloadState({ flushFirst: false }); return; } // zu lange offline: Stand komplett neu laden
+    if (r.access && r.access !== sync.access) { sync.pulling = false; toast("Ihr Sichtbereich wurde geändert – Daten werden neu geladen."); await reloadState({ flushFirst: false }); return; }
     for (const c of r.changes) applyServer(c);
     sync.rev = r.rev; setOnline(true);
     if (r.changes.length) renderSoft();
@@ -667,14 +668,14 @@ function renderTop() {
   $("#topnav").innerHTML = `
     <button class="btn subtle icon hamb" data-act="menu" aria-label="Menü">${icon("menu")}</button>
     <span class="navbtns"><button class="btn subtle icon" id="nav-back" data-act="nav-back" title="Zurück (Alt+←)" aria-label="Zurück">‹</button><button class="btn subtle icon" id="nav-fwd" data-act="nav-fwd" title="Vor (Alt+→)" aria-label="Vor">›</button></span>
-    <a class="logo" href="#/your-work">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
+    <a class="logo" href="#/${homeRoute()}">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
     ${link("your-work", "Mein Tag", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink nav-portal" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
     <a class="btn subtle icon show-m" href="#/filters?state=open" data-act="m-search" aria-label="Suchen">${icon("search")}</a><div class="search gs-wrap">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen: Text, Nummer, Kunde …" aria-label="Suchen" autocomplete="off"><div id="gsugg" class="gsugg" hidden></div></div>
     <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Neuer Vorgang</span></button>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
     <button class="btn subtle icon hide-m" data-act="theme" aria-label="Hell/Dunkel">${icon("sun")}</button>
     <span id="sync-badge" class="chip gray" hidden></span>
-    <a href="#/settings" class="row nowrap" title="${esc(me().name)} – Einstellungen" style="gap:6px;color:var(--fg)">${avatar(db.currentUserId)}<span class="small b hide-m">${esc(me().name.split(" ")[0])}</span></a>
+    ${canEdit(me()) ? "" : '<span class="chip yellow" title="Sie können ansehen und suchen, aber nichts ändern">Nur lesen</span>'}<a href="#/settings" class="row nowrap" title="${esc(me().name)} – Einstellungen" style="gap:6px;color:var(--fg)">${avatar(db.currentUserId)}<span class="small b hide-m">${esc(me().name.split(" ")[0])}</span></a>
     <button class="btn subtle icon" data-act="logout" title="Abmelden" aria-label="Abmelden">${icon("logout")}</button>`;
   updateNavButtons();
   if (keep) { const g = $("#gsearch"); g.value = keep.v; if (keep.f) { g.focus(); g.setSelectionRange(keep.p, keep.p); } if (keep.sugg) showSuggestions(keep.v); }
@@ -1757,6 +1758,27 @@ function quarterCard() {
 }
 
 /* ---------- Ansicht: Einstellungen ---------- */
+/** Sichtbereich einer Person festlegen (Administration). */
+function scopeForm(x) {
+  const ctx = accessContext({ ...x, scope: "area" }, { projects: db.projects, teams: db.teams }); const teams = db.teams.filter((t) => ctx.teamIds.has(t.id));
+  openModal(`<div class="modal-h"><h2>Sichtbereich: ${esc(x.name)}</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
+    <form id="scope-form" data-id="${x.id}"><div class="modal-b">
+      <p class="small muted" style="margin:0">Rolle: <b>${esc(ROLES[x.role])}</b> – ${esc(ROLE_INFO[x.role])}</p>
+      <label class="row nowrap"><input type="radio" name="scope" value="all" ${userScope(x) === "all" ? "checked" : ""}> <span><b>Alle Projekte</b> – sieht sämtliche Vorgänge</span></label>
+      <label class="row nowrap" style="align-items:flex-start"><input type="radio" name="scope" value="area" ${userScope(x) === "area" ? "checked" : ""}> <span><b>Eigener Bereich</b> – Projekte der Teams ${teams.length ? teams.map((t) => `„${esc(t.name)}“`).join(", ") : "(noch in keinem Team)"}, plus unten gewählte Projekte, plus alles, was der Person zugewiesen ist, was sie gemeldet hat oder beobachtet</span></label>
+      <div class="f"><span>Zusätzlich freigegebene Projekte (bei „Eigener Bereich“)</span><div class="grid g2" style="gap:6px">${db.projects.map((p) => `<label class="row nowrap small"><input type="checkbox" name="projectIds" value="${p.id}" ${(x.projectIds || []).includes(p.id) ? "checked" : ""} ${ctx.projectIds.has(p.id) && !(x.projectIds || []).includes(p.id) ? "checked disabled title='über Team bereits enthalten'" : ""}> <span class="pavatar sm" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span> ${esc(p.name)}</label>`).join("")}</div></div>
+      <p class="small muted" style="margin:0">Änderungen wirken sofort – auch auf bereits geöffnete Browser der Person.</p></div>
+    <div class="modal-f"><button type="button" class="btn subtle" data-act="close">Abbrechen</button><button class="btn primary" type="submit">Speichern</button></div></form>`);
+}
+/** Startseite je Person: selbst gewählt oder passend zur Rolle. */
+function homeRoute(u = me()) {
+  if (u.home && (!u.home.startsWith("p/") || projByKey(u.home.split("/")[1]))) return u.home;
+  if (u.role === "MANAGEMENT") return "dashboard";
+  if (u.role === "COORDINATOR") { const p = db.projects.find((x) => x.type === "service"); if (p) return `p/${p.key}/dispatch`; }
+  return "your-work";
+}
+const homeOptions = () => [["", `Passend zur Rolle (${ROLES[me().role]})`], ["your-work", "Mein Tag"], ["dashboard", "Dashboard"], ["filters?state=open", "Suche"], ["customers", "Kunden & Anlagen"],
+  ...db.projects.flatMap((p) => projectViews(p).filter(([v]) => v !== "settings").map(([v, l]) => [`p/${p.key}/${v}`, `${p.key} – ${l}`]))];
 /** Zugangsstatus einer Person (nur Administration). */
 function accountLine(x) {
   const a = ui.accounts?.accounts?.[x.id]; if (!ui.accounts || ui.accounts.standalone) return "";
@@ -1799,6 +1821,7 @@ function viewSettings() {
     <div class="card pad"><h3 id="sec-profile" style="font-size:15px;margin-bottom:10px">Mein Profil</h3>
       <form id="profile-form" class="grid" style="gap:10px"><label class="f">Name<input type="text" name="name" value="${esc(u.name)}" required maxlength="120"></label>
         <label class="f">E-Mail<input type="email" value="${esc(u.email)}" disabled></label>
+        <label class="f">Startseite<select name="home">${homeOptions().map(([v, l]) => `<option value="${esc(v)}" ${(u.home || "") === v ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
         <label class="row nowrap small"><input type="checkbox" name="notifyTeams" ${u.notifyTeams !== false ? "checked" : ""}> Benachrichtigungen auch in Microsoft Teams (Aktivität 🔔), sofern eingerichtet</label>
         <label class="row nowrap small"><input type="checkbox" name="notifyEmail" ${u.notifyEmail !== false ? "checked" : ""}> Benachrichtigungen zusätzlich per E-Mail erhalten${sync.mail ? "" : ' <span class="muted">(E-Mail-Versand ist noch nicht eingerichtet)</span>'}</label>
         <div><button class="btn primary" type="submit">Speichern</button></div></form>
@@ -1844,12 +1867,14 @@ function viewSettings() {
       ${(() => { if (isAdmin && !ui.accounts && !ui.accountsLoading) { ui.accountsLoading = true; api("/api/admin/accounts").then((r) => { ui.accounts = r; }).catch(() => { ui.accounts = { standalone: true, accounts: {} }; }).finally(() => { ui.accountsLoading = false; if (route().parts[0] === "settings") render(); }); } return ""; })()}
       ${db.users.map((x) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border);${x.active ? "" : "opacity:.5"}">${avatar(x.id)}<div style="flex:1;min-width:0"><div class="b trunc">${esc(x.name)}</div><div class="small muted trunc">${esc(x.email)}</div>${isAdmin ? accountLine(x) : ""}</div>
         ${isAdmin ? `<select style="width:auto" data-act="user-role" data-id="${x.id}" ${x.id === u.id ? "disabled" : ""}>${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === x.role ? "selected" : ""}>${v}</option>`).join("")}</select>
+        <button class="btn subtle sm" data-act="user-scope" data-id="${x.id}" title="Sichtbereich" ${FULL_ACCESS.has(x.role) ? "disabled" : ""}>${userScope(x) === "all" ? "Alle Projekte" : "Eigener Bereich"}</button>
         <label class="small row nowrap"><input type="checkbox" data-act="user-active" data-id="${x.id}" ${x.active ? "checked" : ""} ${x.id !== u.id ? "" : "disabled"}> aktiv</label>
         ${accountMenu(x)}` : `<span class="small muted">${ROLES[x.role] || x.role}</span>`}</div>`).join("")}
       ${isAdmin ? `<h3 style="font-size:15px;margin:16px 0 8px">Person hinzufügen</h3><form id="user-form" class="grid g2" style="gap:8px"><input type="text" name="name" placeholder="Name" required aria-label="Name"><input type="email" name="email" placeholder="E-Mail" required aria-label="E-Mail">
         <select name="role" aria-label="Rolle">${Object.entries(ROLES).map(([k, v]) => `<option value="${k}" ${k === "MEMBER" ? "selected" : ""}>${v}</option>`).join("")}</select><input type="text" name="password" placeholder="Startpasswort – leer lassen für Einladung" minlength="10" aria-label="Startpasswort (optional)">
         <div style="grid-column:1/-1" class="row"><button class="btn primary" type="submit">${icon("plus")} Person anlegen</button><span class="small muted">Ohne Startpasswort erhält die Person einen Einladungslink${sync.mail ? " per E-Mail" : " zum Weitergeben"} und legt ihr Passwort selbst fest.</span></div></form>
-        <p class="small muted">Rollen: <b>Administrator</b> verwaltet Personen, Projekte und Sicherungen · <b>Mitglied</b> arbeitet in allen Projekten · <b>Service-Mitarbeiter</b> wird zusätzlich über neue Kundenanfragen informiert.</p>` : '<p class="small muted">Personen verwalten nur Administratoren.</p>'}</div>
+        <details class="ihelp"><summary>Rollen und Sichtbereiche</summary><ul style="margin:6px 0 0;padding-left:18px">${Object.entries(ROLES).map(([k, v]) => `<li><b>${v}</b> – ${ROLE_INFO[k]}</li>`).join("")}</ul>
+          <p class="small muted" style="margin:6px 0 0"><b>Eigener Bereich</b> = Projekte der eigenen Teams (bzw. als Projektleitung) + zusätzlich freigegebene Projekte + alles, was der Person zugewiesen ist, was sie gemeldet hat oder beobachtet. Einstellbar je Person über „Bereich“.</p></details>` : '<p class="small muted">Personen verwalten nur Administratoren.</p>'}</div>
     <div class="card pad"><div class="row" style="margin-bottom:6px"><h3 style="font-size:15px;flex:1">Teams</h3>${isAdmin ? `<button class="btn sm" data-act="team-new">${icon("plus")} Team anlegen</button>` : ""}</div>
       ${db.teams.map((t) => `<div class="row nowrap" style="padding:7px 0;border-bottom:1px solid var(--border)"><span class="tavatar sm" style="--tc:${t.color}">${esc(teamInitials(t.name))}</span><div style="flex:1;min-width:0"><a href="#/teams/${t.id}" class="b trunc">${esc(t.name)}</a><div class="small muted trunc">Leitung: ${esc(t.leadId ? uname(t.leadId) : "–")}</div></div><span class="avatars">${teamMembers(t).map((u) => avatar(u.id)).join("")}</span>${canManageTeam(t) ? `<button class="btn subtle sm" data-act="team-edit" data-id="${t.id}">Bearbeiten</button>` : ""}</div>`).join("") || '<p class="small muted">Noch keine Teams.</p>'}
       <p class="small muted">Teams bündeln Personen, die sich abstimmen. Vorgänge mit Team, aber ohne verantwortliche Person, landen im <b>Team-Eingang</b> – alle Mitglieder werden benachrichtigt und sehen sie unter „Mein Tag“.</p></div>
@@ -1996,17 +2021,18 @@ function drawerHtml({ docked: dock = false } = {}) {
   const sec = (title, body, open = true) => `<details class="dr-sec" ${open ? "open" : ""}><summary>${title}</summary>${body}</details>`;
   const projects = db.projects.map((p) => `<details class="dr-proj" ${parts[0] === "p" && parts[1] === p.key ? "open" : ""}><summary><span class="pavatar sm" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><span class="trunc">${esc(p.name)}</span><span class="dr-badge">${projIssues(p).filter((i) => !isDone(i) && i.type !== "EPIC").length}</span></summary>
       ${projectViews(p).map(([v, l, ic]) => it(`#/p/${p.key}/${v}`, l, ic, { kw: `${p.key} ${p.name}` })).join("")}</details>`).join("");
-  const b = ui.brand || {};
+  const b = ui.brand || {}; const AUSWERTEN = sec(me().role === "MANAGEMENT" ? "Überblick &amp; Auswertungen" : "Suchen &amp; Auswerten", it("#/filters?state=open", "Suche", "search", { kw: "finden text" }) + DEFAULT_FILTERS.slice(0, 3).map((f) => it(`#/filters?filter=${f.id}`, f.name, "filter")).join("")
+        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" })
+        + it("", "Excel-Auswertung", "chart", { act: "export-all-xlsx", kw: "export xlsx bericht quartal" }));
   return `<div class="dr-head">${b.logo ? `<img class="brand-logo" src="${esc(b.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<div class="trunc" style="flex:1"><div class="b trunc">${esc(b.appName || "GF Tracker")}</div><div class="small muted trunc">${esc(me().name)} · ${esc(ROLES[me().role] || "")}</div></div>${dock ? `<button class="btn subtle icon" data-act="menu" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen">«</button>` : `<button class="btn subtle icon" data-act="drawer-close" aria-label="Menü schließen">${icon("x")}</button>`}</div>
     <div class="dr-search">${icon("search")}<input type="search" id="drawer-q" placeholder="Funktion finden … (z. B. Import, Kunden, Board)" aria-label="Menü durchsuchen" autocomplete="off"></div>
     <nav class="dr-body">
+      ${me().role === "MANAGEMENT" ? AUSWERTEN : ""}
       ${sec("Arbeiten", it("#/your-work", "Mein Tag", "home", { badge: mineOpen, kw: "start übersicht aufgaben" }) + it("#/your-work?tab=watching", "Beobachtet", "eye") + it("#/your-work?tab=recent", "Zuletzt angesehen", "clock")
         + it("", "Neuer Vorgang", "plus", { act: "create", kw: "erstellen anlegen ticket aufgabe" }) + it("#/filters?filter=f-overdue", "Überfällig", "alert", { badge: overdue, warn: true }) + it("#/filters?filter=f-unassigned", "Nicht zugewiesen", "users", { badge: unassigned }))}
       ${sec("Projekte", projects + it("#/projects", "Alle Projekte", "grid", { kw: "projekt anlegen übersicht" }))}
       ${sec("Teams", db.teams.map((t) => it(`#/teams/${t.id}`, t.name, "users", { badge: db.issues.filter((i) => i.teamId === t.id && !i.assigneeId && !isDone(i)).length, kw: "team eingang" })).join("") + it("#/teams", "Alle Teams", "grid"), false)}
-      ${sec("Suchen &amp; Auswerten", it("#/filters?state=open", "Suche", "search", { kw: "finden text" }) + DEFAULT_FILTERS.slice(0, 3).map((f) => it(`#/filters?filter=${f.id}`, f.name, "filter")).join("")
-        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" })
-        + it("", "Excel-Auswertung", "chart", { act: "export-all-xlsx", kw: "export xlsx bericht quartal" }))}
+      ${me().role === "MANAGEMENT" ? "" : AUSWERTEN}
       ${sec("Kunden &amp; Service", it("#/customers", "Kunden &amp; Anlagen".replace("&amp;", "&"), "building", { badge: db.customers.length, kw: "kunde anlage wartung seriennummer" }) + it("", "Kunde anlegen", "plus", { act: "customer-new" })
         + it("/portal", "Kundenportal", "send", { ext: true, kw: "störung melden kunden" }) + it("", "Kundenstamm als Excel", "list", { act: "export-customers", kw: "export" }))}
       ${sec("Daten", it("#/import", "Daten importieren (Excel/CSV)", "upload", { kw: "import warenwirtschaft" }) + it("", "Alle Vorgänge als CSV", "list", { act: "export-all-csv", kw: "export" })
@@ -2668,6 +2694,7 @@ document.addEventListener("click", (e) => {
     case "export-json": location.href = authUrl("/api/admin/export"); break;
     case "import-json": $("#json-file").click(); break;
     case "logout": api("/api/logout", { method: "POST" }).finally(() => { if (TEAMS) { try { localStorage.removeItem("gft-teams-token"); } catch {} } location.href = LOGIN_URL; }); break;
+    case "user-scope": scopeForm(user(id)); break;
     case "user-invite": { const u = user(id); el.closest("details")?.removeAttribute("open");
       api(`/api/admin/users/${id}/invite`, { method: "POST" }).then((r) => { ui.accounts = null; inviteModal(u, r); }).catch((err) => toast(err.message)); break; }
     case "user-logout": { const u = user(id); if (!confirm(`${u.name} auf allen Geräten abmelden?`)) break;
@@ -2730,7 +2757,7 @@ document.addEventListener("change", (e) => {
       catch (err) { toast(err.message); }
     }; r.readAsText(el.files[0]); el.value = ""; return;
   }
-  if (el.dataset.act === "user-role") { const u = user(el.dataset.id); if (u) { u.role = el.value; save(); } return; }
+  if (el.dataset.act === "user-role") { const u = user(el.dataset.id); if (u) { u.role = el.value; save(); render(); toast(`${u.name}: ${ROLES[u.role]} – ${ROLE_INFO[u.role]}`); } return; }
   const cur = issue(ui.openIssue);
   if (el.dataset.f && cur) {
     const f = el.dataset.f; let v = el.value;
@@ -2869,6 +2896,7 @@ async function handleSubmit(e, f) {
       if (k === "remind") Object.assign(r, { status: fd.get("status") || null, days: Number(fd.get("days")), repeat: !!fd.get("repeat"), comment: String(fd.get("comment") || "") });
       const list = f.dataset.id ? ui.auto.rules.map((x) => (x.id === r.id ? r : x)) : [...ui.auto.rules, r];
       await saveRules(list); closeModal(); render(); toast(`Regel „${r.name}“ gespeichert`); break; }
+    case "scope-form": { const x = user(f.dataset.id); x.scope = fd.get("scope"); x.projectIds = fd.getAll("projectIds"); save(); closeModal(); render(); toast(`Sichtbereich von ${x.name}: ${x.scope === "all" ? "alle Projekte" : "eigener Bereich"}`); break; }
     case "brand-form": { const b = await api("/api/admin/brand", { method: "POST", body: { appName: fd.get("appName"), company: fd.get("company"), color: fd.get("color") } }); sync.company = b.company; applyBrand(b); render(); toast("Erscheinungsbild gespeichert"); break; }
     case "simple-search": { const ps = new URLSearchParams(); for (const [k, v] of fd) if (String(v).trim()) ps.set(k, String(v).trim()); const { params } = route(); for (const k of ["sort", "dir"]) if (params.get(k)) ps.set(k, params.get(k)); go(`#/filters?${ps}`); break; }
     case "audit-form": ui.auditQ = Object.fromEntries([...fd].filter(([, v]) => v)); ui.sys = null; render(); break;
@@ -2877,7 +2905,7 @@ async function handleSubmit(e, f) {
       const r = await api("/api/admin/users", { method: "POST", body: { name: fd.get("name"), email: fd.get("email"), role: fd.get("role"), ...(pw ? { password: pw } : { invite: true }) } });
       applyServer({ type: "users", id: r.user.id, data: r.user }); f.reset(); ui.accounts = null; render();
       if (r.invite) inviteModal(r.user, r.invite); else toast(`${r.user.name} angelegt – Zugangsdaten bitte persönlich übergeben.`); break; }
-    case "profile-form": { const u = user(db.currentUserId); u.name = String(fd.get("name")).trim() || u.name; u.notifyEmail = !!fd.get("notifyEmail"); u.notifyTeams = !!fd.get("notifyTeams"); save(); render(); toast("Gespeichert"); break; }
+    case "profile-form": { const u = user(db.currentUserId); u.name = String(fd.get("name")).trim() || u.name; u.notifyEmail = !!fd.get("notifyEmail"); u.notifyTeams = !!fd.get("notifyTeams"); u.home = fd.get("home") || undefined; if (!u.home) delete u.home; save(); render(); toast("Gespeichert"); break; }
     case "password-form": {
       if (fd.get("next") !== fd.get("repeat")) return toast("Die neuen Passwörter stimmen nicht überein.");
       await api("/api/me/password", { method: "POST", body: { current: fd.get("current"), next: fd.get("next") } }); f.reset(); toast("Passwort geändert. Andere Sitzungen wurden abgemeldet."); break; }
@@ -2958,6 +2986,8 @@ try { const th = localStorage.getItem("gft-theme"); if (th) document.documentEle
     const meRes = await api("/api/me");
     db.currentUserId = meRes.user.id; sync.mail = meRes.mail; sync.company = meRes.company; applyBrand(meRes.brand);
     loadState(await fetchState());
+    if (!location.hash || location.hash === "#" || location.hash === "#/") history.replaceState(null, "", `#/${homeRoute()}`);
+    document.body.classList.toggle("readonly", !canEdit(me()));
     onNavigate(); connectEvents();
     setInterval(() => { renderTop(); updateSyncBadge(); }, 60000);
   } catch (e) {
