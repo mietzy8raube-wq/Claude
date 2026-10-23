@@ -702,6 +702,33 @@ fertiges App-Paket (Name, Farbe aus dem Erscheinungsbild). Hochladen im
   E-Mails, installierter App und Teams-App. **QR-Code** unter „Als App nutzen“
   zum schnellen Installieren auf dem Handy.
 
+### 13.1c Systemlandschaft (3D) mit Live-Daten (fertig eingebaut)
+
+Die 3D-Übersicht „Digitale Welt“ aus der GF-Suite (Standorte, Programme, Abläufe,
+Fahrzeuge, Vorhaben) läuft als Seite des Trackers unter **`/landschaft`** – im Menü
+unter *Suchen & Auswerten* bzw. *Überblick & Auswertungen* → **Systemlandschaft (3D)**.
+Nur mit Anmeldung; gezeigt wird der eigene Sichtbereich.
+
+- **Live aus dem Tracker:** offene Vorgänge, SLA-Verletzungen, Überfälliges, Termine
+  heute und die wichtigsten Vorgänge je Standort (Klick öffnet den Vorgang), der
+  GF Tracker als Programm in der Systemebene, die Servicestände im Prozess
+  „Wartung & Reparatur“ (neu → eingeplant → Ersatzteil → in Arbeit → erledigt, mit
+  Stau-Markierung ab 2 Tagen) und neue/geänderte Vorgänge als Meldungen. Jede Änderung
+  im Tracker kommt sofort an (Live-Kanal); oben steht „Live · GF Tracker“.
+- **Standort zuordnen:** *Teams → Team bearbeiten → Standort* (Chemnitz, Siebenlehn,
+  Zwenkau). Vorgänge erscheinen beim Standort ihres Teams (sonst des Projekt-Teams),
+  ohne Zuordnung in Chemnitz.
+- **Schnittstelle:** `GET /api/landscape` (angemeldet) bzw. `GET /api/v1/landscape`
+  (API-Schlüssel) liefert die Zusammenfassung – so kann auch die GF-Suite die Zahlen
+  übernehmen.
+- **Quelle:** `landscape/digitale-welt.html` ist der unveränderte Prototyp aus der
+  GF-Suite (`prototypes/digitale-welt.html`). Ein neuer Stand wird einfach darüber
+  kopiert; `lib/landscape.mjs` passt ihn beim Start an (three.js lokal aus
+  `public/vendor/three`, keine fremden Server, Einhängepunkte für
+  `public/landschaft/live.js`). Passt eine Anpassung nicht mehr, schlägt der Test fehl.
+  Die übrigen Programme (Inform, DocuWare …) zeigen weiterhin Beispieldaten.
+- In der Einzel-HTML-Version gibt es die 3D-Seite nicht (braucht den Server).
+
 ### 13.2 Kundenportal auf Ihrer Website (fertig eingebaut)
 
 | Variante | So geht's |

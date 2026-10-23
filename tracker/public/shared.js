@@ -94,6 +94,8 @@ const URGENCY = [
   { id: "MEDIUM", name: "Normal" },
   { id: "LOW", name: "Nicht dringend" },
 ];
+// Standorte (Systemlandschaft/3D-Übersicht): Teams werden einem Standort zugeordnet, ihre Vorgänge erscheinen dort
+const SITES = [{ id: "hq", name: "Chemnitz" }, { id: "ws", name: "Siebenlehn" }, { id: "sw", name: "Zwenkau" }];
 const PALETTE = ["#2a78d6", "#8f5bd6", "#16946a", "#d0352c", "#c97b00", "#0e8a9c", "#c2477e", "#5b6b8a"];
 const ROLES = { ADMIN: "Administrator", MANAGEMENT: "Geschäftsführung", COORDINATOR: "Servicekoordinator", MEMBER: "Mitarbeiter", AGENT: "Service-Techniker", VIEWER: "Nur lesen" };
 const ROLE_INFO = {
@@ -297,7 +299,7 @@ function seed() {
   // Teams: wer gehört zusammen und stimmt sich ab (eine Person kann in mehreren Teams sein)
   const teams = [
     { id: "tGF", name: "Geschäftsführung", color: "#8f5bd6", leadId: "u2", memberIds: ["u1", "u2"], desc: "Strategie, Freigaben, Personal und Finanzen" },
-    { id: "tSVC", name: "Service & Technik", color: "#d0352c", leadId: "u5", memberIds: ["u5", "u6"], desc: "Störungen, Wartungen und Einsätze beim Kunden" },
+    { id: "tSVC", name: "Service & Technik", color: "#d0352c", site: "hq", leadId: "u5", memberIds: ["u5", "u6"], desc: "Störungen, Wartungen und Einsätze beim Kunden" },
     { id: "tBUE", name: "Büro & Vertrieb", color: "#16946a", leadId: "u3", memberIds: ["u3", "u1"], desc: "Angebote, Auftragsannahme, Rechnungen und Kundenkontakt" },
     { id: "tDIG", name: "Digitalisierung", color: "#2a78d6", leadId: "u4", memberIds: ["u4", "u2", "u3"], desc: "Kundenportal, Software und IT" },
   ];
@@ -416,7 +418,7 @@ function seed() {
   return { users, teams, customers, absences, projects, sprints, issues, filters: [], notifications: [] };
 }
 
-return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES, ROLE_INFO,
+return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES, ROLE_INFO, SITES,
   FULL_ACCESS, userScope, accessContext, canSeeIssue, accessSig, canEdit,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur,
   workflowFor, statusInfo, slaCompute, applyTransition, newIssue, KEYED, diffEntity, applyPatch, seed,

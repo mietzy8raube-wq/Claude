@@ -4,12 +4,13 @@
    als Patches synchronisiert und per Server-Sent Events live verteilt.
    Fachlogik (Workflows, SLA, Patch-Verfahren) steckt in shared.js.
    ====================================================================== */
-const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES, ROLE_INFO, FULL_ACCESS, userScope, accessContext, canEdit,
+const { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL, PRIOS, SLA, REQUEST_TYPES, URGENCY, PALETTE, ROLES, ROLE_INFO, SITES, FULL_ACCESS, userScope, accessContext, canEdit,
   pad, dayKey, today, parseDay, addDays, daysBetween, uid, hashColor, fmtDur, statusInfo, slaCompute, applyTransition, newIssue, diffEntity, applyPatch,
   nextMaintenance, customerSnapshot, customerAddress, maintenanceIssueData } = TrackerShared;
 
 /* ---------- Symbole ---------- */
 const ICONS = {
+  layers: '<path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>',
   users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
   building: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
@@ -1409,7 +1410,8 @@ function teamForm(t) {
     <form id="team-form" data-id="${isNew ? "" : t.id}"><div class="modal-b">
       <div class="grid g2" style="gap:12px"><label class="f"><span>Name <span class="req">*</span></span><input type="text" name="name" value="${esc(t.name)}" required maxlength="80" ${dis} placeholder="z. B. Service &amp; Technik"></label>
         <label class="f">Farbe<select name="color" ${dis}>${PALETTE.map((c) => `<option value="${c}" ${c === t.color ? "selected" : ""} style="color:${c}">● ${c}</option>`).join("")}</select></label></div>
-      <label class="f">Teamleitung<select name="leadId" ${dis}>${userOpts(t.leadId, "–")}</select></label>
+      <div class="grid g2" style="gap:12px"><label class="f">Teamleitung<select name="leadId" ${dis}>${userOpts(t.leadId, "–")}</select></label>
+        <label class="f">Standort<select name="site" ${dis} title="Wo das Team in der Systemlandschaft erscheint">${SITES.map((x) => `<option value="${x.id}" ${(t.site || "hq") === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select></label></div>
       <label class="f">Aufgabe des Teams<input type="text" name="desc" value="${esc(t.desc || "")}" maxlength="200" placeholder="z. B. Störungen, Wartungen und Einsätze beim Kunden"></label>
       <div class="f"><span class="small b" style="color:var(--fg-2)">Mitglieder</span><div class="tmembers">${activeUsers().map((u) => `<label class="row nowrap small"><input type="checkbox" name="m" value="${u.id}" ${t.memberIds.includes(u.id) ? "checked" : ""}> ${avatar(u.id)} ${esc(u.name)} <span class="muted">· ${esc(ROLES[u.role] || u.role)}</span></label>`).join("")}</div></div>
       ${admin ? "" : '<p class="small muted" style="margin:0">Als Teamleitung können Sie Mitglieder und Aufgabe ändern; Name, Farbe und Leitung ändern Administratoren.</p>'}
@@ -2022,7 +2024,7 @@ function drawerHtml({ docked: dock = false } = {}) {
   const projects = db.projects.map((p) => `<details class="dr-proj" ${parts[0] === "p" && parts[1] === p.key ? "open" : ""}><summary><span class="pavatar sm" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><span class="trunc">${esc(p.name)}</span><span class="dr-badge">${projIssues(p).filter((i) => !isDone(i) && i.type !== "EPIC").length}</span></summary>
       ${projectViews(p).map(([v, l, ic]) => it(`#/p/${p.key}/${v}`, l, ic, { kw: `${p.key} ${p.name}` })).join("")}</details>`).join("");
   const b = ui.brand || {}; const AUSWERTEN = sec(me().role === "MANAGEMENT" ? "Überblick &amp; Auswertungen" : "Suchen &amp; Auswerten", it("#/filters?state=open", "Suche", "search", { kw: "finden text" }) + DEFAULT_FILTERS.slice(0, 3).map((f) => it(`#/filters?filter=${f.id}`, f.name, "filter")).join("")
-        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" })
+        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" }) + (window.GFT_STANDALONE || !location.protocol.startsWith("http") ? "" : it("/landschaft", "Systemlandschaft (3D)", "layers", { kw: "3d digitale welt standorte programme landschaft karte", ext: true }))
         + it("", "Excel-Auswertung", "chart", { act: "export-all-xlsx", kw: "export xlsx bericht quartal" }));
   return `<div class="dr-head">${b.logo ? `<img class="brand-logo" src="${esc(b.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<div class="trunc" style="flex:1"><div class="b trunc">${esc(b.appName || "GF Tracker")}</div><div class="small muted trunc">${esc(me().name)} · ${esc(ROLES[me().role] || "")}</div></div>${dock ? `<button class="btn subtle icon" data-act="menu" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen">«</button>` : `<button class="btn subtle icon" data-act="drawer-close" aria-label="Menü schließen">${icon("x")}</button>`}</div>
     <div class="dr-search">${icon("search")}<input type="search" id="drawer-q" placeholder="Funktion finden … (z. B. Import, Kunden, Board)" aria-label="Menü durchsuchen" autocomplete="off"></div>
@@ -2886,8 +2888,8 @@ async function handleSubmit(e, f) {
     case "team-form": {
       const members = fd.getAll("m"); const t = team(f.dataset.id);
       const fix = (x) => { if (x.leadId && !x.memberIds.includes(x.leadId)) x.memberIds.unshift(x.leadId); return x; };
-      if (t) { if (me().role === "ADMIN") Object.assign(t, { name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null }); t.memberIds = members; t.desc = String(fd.get("desc") || ""); fix(t); }
-      else db.teams.push(fix({ id: uid(), name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null, memberIds: members, desc: String(fd.get("desc") || "") }));
+      if (t) { if (me().role === "ADMIN") Object.assign(t, { name: String(fd.get("name")).trim(), color: fd.get("color"), leadId: fd.get("leadId") || null, site: fd.get("site") || null }); t.memberIds = members; t.desc = String(fd.get("desc") || ""); fix(t); }
+      else db.teams.push(fix({ id: uid(), name: String(fd.get("name")).trim(), color: fd.get("color"), site: fd.get("site") || null, leadId: fd.get("leadId") || null, memberIds: members, desc: String(fd.get("desc") || "") }));
       save(); closeModal(); render(); toast(t ? `Team „${t.name}“ gespeichert` : "Team angelegt"); break; }
     case "rule-form": {
       const k = f.dataset.kind; const r = { id: f.dataset.id || uid(), kind: k, name: String(fd.get("name") || "").trim(), projectId: fd.get("projectId") || null, enabled: ui.auto.rules.find((x) => x.id === f.dataset.id)?.enabled ?? true };

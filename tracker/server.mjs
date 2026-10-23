@@ -18,6 +18,7 @@ import { Accounts } from "./lib/accounts.mjs";
 import { createOps, AUDIT_ACTIONS } from "./lib/ops.mjs";
 import { createAutomation, RULE_KINDS, TRIGGERS } from "./lib/automation.mjs";
 import * as ICS from "./lib/ics.mjs";
+import { landscapeAssets, landscapeData } from "./lib/landscape.mjs";
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(ROOT, "public");
@@ -275,6 +276,18 @@ function sendSnapshot(res) {
   res.end(gz ? snap.gz : snap.json);
 }
 
+/** Daten für die Systemlandschaft (3D), je Revision und Sichtbereich zwischengespeichert. */
+const landscapeCache = new Map();
+function landscapeFor(user, ctx) {
+  const k = `${user?.id || "-"}:${S.accessSig(ctx)}`; const rev = store.rev(); const hit = landscapeCache.get(k);
+  if (hit && hit.rev === rev && Date.now() - hit.t < 60e3) return hit.data;
+  const cutoff = archiveCutoff();
+  const data = landscapeData({ S, issues: store.all("issues").filter((i) => !isArchived(i, cutoff) && (!ctx || S.canSeeIssue(ctx, i))), projects: store.all("projects"), teams: store.all("teams"),
+    users: store.all("users"), appUrl: CFG.appUrl, company: brand().appName === "GF Tracker" ? CFG.company : brand().appName, user });
+  if (landscapeCache.size > 500) landscapeCache.clear();
+  landscapeCache.set(k, { rev, t: Date.now(), data }); return data;
+}
+
 /* ---------- Live-Aktualisierung (Server-Sent Events) ---------- */
 const clients = new Set();
 function broadcast() { const rev = store.rev(); for (const c of clients) c.res.write(`event: rev\ndata: ${rev}\n\n`); }
@@ -368,6 +381,7 @@ function sanitize(type, obj, cur) {
     obj.name = String(obj.name || "").trim().slice(0, 80); if (!obj.name) throw new HttpError(400, "Teamname fehlt.");
     obj.memberIds = [...new Set((Array.isArray(obj.memberIds) ? obj.memberIds : []).filter((x) => typeof x === "string" && ID_RE.test(x)))];
     if (obj.leadId && !obj.memberIds.includes(obj.leadId)) obj.memberIds.unshift(obj.leadId);
+    if (obj.site && !S.SITES.some((x) => x.id === obj.site)) obj.site = null; // Standort in der Systemlandschaft
   }
   return obj;
 }
@@ -531,7 +545,7 @@ const eventHandlers = [];
 const onEvent = (fn) => eventHandlers.push(fn);
 function emit(type, issue, extra = {}) { for (const fn of eventHandlers) { try { fn(type, issue, extra); } catch (e) { log("Ereignis-Fehler:", e.message); } } }
 /* ---------- Schnittstellen: REST-API und Webhooks ---------- */
-const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification, findCustomerByEmail, addAttachment });
+const apiV1 = createApiV1({ store, S, HttpError, readJson, cfg: CFG, issueKey, projectById, userById, publicUser, broadcast, issueEffects, customerMails, flushMailQueue, emit: (...a) => emit(...a), ilog, createNotification, findCustomerByEmail, addAttachment, landscape: (key) => landscapeFor(key.user || null, key.ctx || null) });
 const automation = createAutomation({ store, S, projectById, userById, issueKey, createNotification, log });
 function automationJob() {
   if (automation.job().length) broadcast();
@@ -885,6 +899,7 @@ async function handleApi(req, res, url, session) {
   if (p === "/api/me/sessions/others" && m === "DELETE") { store.db.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?").run(user.id, session.tokenHash); return { ok: true }; }
   pm = p.match(/^\/api\/me\/sessions\/([a-f0-9]{16})$/);
   if (pm && m === "DELETE") { if (!sessions.revoke(user.id, pm[1])) throw new HttpError(404, "Sitzung nicht gefunden."); return { ok: true }; }
+  if (p === "/api/landscape" && m === "GET") return landscapeFor(user, accessFor(user));
   if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "base") { const ctx = accessFor(user); return ctx ? { __scoped: ctx } : { __snapshot: true }; }
   if (p === "/api/state" && m === "GET" && url.searchParams.get("part") === "notifications")
     return { notifications: store.all("notifications").filter((n) => n.userId === user.id).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 300) };
@@ -1099,6 +1114,11 @@ const server = http.createServer(async (req, res) => {
       const mf = JSON.parse(fs.readFileSync(path.join(PUBLIC, "manifest.webmanifest"), "utf8")); const b = brand();
       Object.assign(mf, { name: b.appName === "GF Tracker" ? `GF Tracker${CFG.company !== "GF Tracker" ? ` – ${CFG.company}` : ""}` : b.appName, short_name: b.appName, theme_color: b.color });
       return send(res, 200, JSON.stringify(mf), { "Content-Type": "application/manifest+json", "Cache-Control": "no-cache" });
+    }
+    if (url.pathname === "/landschaft" || url.pathname === "/landschaft/world.js") { // Systemlandschaft (3D) mit Live-Daten
+      if (!session || !userById(session.userId)?.active) return url.pathname.endsWith(".js") ? send(res, 401, "", {}) : send(res, 302, "", { Location: "/login?next=/landschaft" });
+      const a = landscapeAssets(ROOT); const js = url.pathname.endsWith(".js");
+      return send(res, 200, js ? a.js : a.html, { "Content-Type": js ? MIME[".js"] : MIME[".html"], "Cache-Control": "no-cache" });
     }
     if (url.pathname === "/login") return serveFile(req, res, "login.html");
     // Microsoft Teams: Reiter, Konfiguration, Anmelde-Popup und die App selbst – dürfen in Teams eingebettet werden

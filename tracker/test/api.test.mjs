@@ -453,3 +453,25 @@ test("Sicherung: Export und Import", async () => {
   const im2 = await anna.req("/api/admin/import", { method: "POST", body: withFiles }); assert.equal(im2.data.files, 1, "nur gültige Datei-IDs");
   const f = await fetch(`${BASE}/api/files/safile1`, { headers: { cookie: anna.cookie } }); assert.equal(f.status, 200); assert.equal(await f.text(), "aus der HTML-Datei");
 });
+
+test("Systemlandschaft: 3D-Seite nur angemeldet, Live-Daten je Standort im Sichtbereich, Standort am Team", async () => {
+  const r = await new Client().req("/landschaft"); assert.equal(r.status, 302);
+  const page = await anna.req("/landschaft"); assert.equal(page.status, 200);
+  assert.match(page.data, /\/landschaft\/world\.js/); assert.doesNotMatch(page.data, /cdn\.jsdelivr|fonts\.googleapis/, "keine fremden Quellen");
+  const js = await anna.req("/landschaft/world.js"); assert.match(js.data, /window\.DW = /); assert.match(js.data, /id: 'tracker'/);
+  assert.equal((await new Client().req("/landschaft/world.js")).status, 401);
+  assert.equal((await fetch(`${BASE}/vendor/three/three.min.js`)).status, 200);
+  const sum = (d) => Object.values(d.sites).reduce((a, s) => a + s.open, 0);
+  let d = (await anna.req("/api/landscape")).data;
+  assert.ok(d.totals.open > 0 && sum(d) === d.totals.open, "alle offenen Vorgänge einem Standort zugeordnet");
+  assert.ok(d.sites.hq.top.length > 0 && d.sites.hq.top[0].url.includes("issue="), "Vorgänge mit Verweis");
+  assert.ok(Array.isArray(d.events) && d.events.length > 0);
+  // Team „Büro & Vertrieb“ nach Zwenkau → erscheint dort; ungültiger Standort wird verworfen
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "teams", id: "tBUE", op: "patch", patch: { set: { site: "sw" } } }] } });
+  d = (await anna.req("/api/landscape")).data; assert.ok(d.sites.sw.teams.includes("Büro & Vertrieb")); assert.equal(sum(d), d.totals.open);
+  await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "teams", id: "tBUE", op: "patch", patch: { set: { site: "mond" } } }] } });
+  assert.equal((await anna.req("/api/state")).data.teams.find((t) => t.id === "tBUE").site, null);
+  // Sichtbereich: Service-Techniker sieht nur seine Zahlen
+  const sarah = new Client(); await sarah.login("sarah.becker@druckluft-chemnitz.de");
+  const ds = (await sarah.req("/api/landscape")).data; assert.ok(ds.totals.open < d.totals.open, "weniger Vorgänge im eigenen Bereich");
+});

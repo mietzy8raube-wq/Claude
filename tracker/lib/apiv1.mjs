@@ -206,6 +206,7 @@ export function createApiV1(ctx) {
     pm = p.match(/^\/api\/v1\/customers\/([^/]+)$/);
     if (pm && m === "GET") { const c = findCustomer(decodeURIComponent(pm[1])); if (!c) throw new HttpError(404, "Kunde nicht gefunden."); return { ...customerDto(c), openIssues: store.all("issues").filter((i) => i.customerId === c.id && S.canSeeIssue(key.ctx, i) && S.statusInfo(projectById(i.projectId), i.status).cat !== "done").map(issueDto) }; }
     if (pm && m === "PUT") { write(); const r = upsertCustomer(decodeURIComponent(pm[1]), await readJson(req, 2e6)); broadcast(); ilog("api", "info", `${key.name}: Kunde ${r.customer.no || r.customer.name} ${r.created ? "angelegt" : "aktualisiert"}`); return { __status: r.created ? 201 : 200, body: { created: r.created, customer: customerDto(r.customer) } }; }
+    if (p === "/api/v1/landscape" && m === "GET") return ctx.landscape(key); // Zusammenfassung für die Systemlandschaft (3D) bzw. die GF-Suite
     if (p === "/api/v1/projects" && m === "GET") return { items: store.all("projects").map((x) => ({ key: x.key, name: x.name, type: x.type, statuses: S.workflowFor(x).map((s) => ({ id: s.id, name: s.name, category: s.cat })), issueTypes: S.PROJECT_TYPES[x.type].types })) };
     if (p === "/api/v1/users" && m === "GET") return { items: store.all("users").filter((u) => u.active).map((u) => ({ name: u.name, email: u.email, role: u.role, teams: store.all("teams").filter((t) => t.memberIds.includes(u.id)).map((t) => t.name) })) };
     if (p === "/api/v1/teams" && m === "GET") return { items: store.all("teams").map((t) => ({ name: t.name, lead: person(t.leadId), members: t.memberIds.map(person).filter(Boolean) })) };
@@ -228,6 +229,7 @@ export function createApiV1(ctx) {
         "/api/v1/customers": { get: { summary: "Kunden", parameters: ["q", "updatedSince", "limit", "offset"].map((n) => ({ name: n, in: "query", schema: { type: "string" } })), responses: ok("Liste") }, post: { summary: "Kunde anlegen/aktualisieren", responses: ok("Kunde") } },
         "/api/v1/customers/{ref}": { get: { summary: "Kunde mit offenen Vorgängen", parameters: [{ name: "ref", in: "path", required: true, schema: { type: "string" } }], responses: ok("Kunde") },
           put: { summary: "Kunde anlegen oder aktualisieren (Kontakte nach E-Mail/Name, Anlagen nach Seriennummer zusammengeführt)", parameters: [{ name: "ref", in: "path", required: true, schema: { type: "string" } }], responses: ok("Kunde") } },
+        "/api/v1/landscape": { get: { summary: "Zusammenfassung je Standort (offene Vorgänge, SLA, Servicestände, Ereignisse) für die Systemlandschaft", responses: ok("Zusammenfassung") } },
         "/api/v1/projects": { get: { summary: "Projekte mit Status und Typen", responses: ok("Liste") } }, "/api/v1/users": { get: { summary: "Aktive Personen", responses: ok("Liste") } }, "/api/v1/teams": { get: { summary: "Teams", responses: ok("Liste") } },
       } };
   }

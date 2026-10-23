@@ -82,4 +82,5 @@ Unter **Einstellungen → Integrationen** (Administratoren): Microsoft 365 (E-Ma
 Service-Postfach → Vorgänge, Outlook-Kalender, Anmeldung mit Microsoft), Factorial
 (Mitarbeiter, Abwesenheiten), REST-API mit API-Schlüsseln (`/api/v1`, Beschreibung unter
 `/api/v1/openapi.json`), Webhooks (JSON oder Microsoft-Teams-Karte) und der
-Import-Assistent für Excel/CSV. Details: [ARCHITEKTUR.md, Abschnitt 13](ARCHITEKTUR.md).
+Import-Assistent für Excel/CSV. Die **Systemlandschaft (3D)** aus der GF-Suite läuft unter
+`/landschaft` mit Live-Daten aus dem Tracker (Standort je Team). Details: [ARCHITEKTUR.md, Abschnitt 13](ARCHITEKTUR.md).

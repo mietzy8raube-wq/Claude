@@ -6,6 +6,7 @@ WORKDIR /app
 COPY package.json server.mjs ./
 COPY lib ./lib
 COPY public ./public
+COPY landscape ./landscape
 RUN mkdir -p /data && chown node:node /data
 USER node
 VOLUME /data
