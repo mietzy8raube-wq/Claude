@@ -24,7 +24,8 @@ function patch(name, src, rules) {
 const app = patch("app.js", read("public/app.js"), [
   ['const LOGIN_URL = TEAMS ? "/teams/tab" : "/login";', 'const LOGIN_URL = "?login";'],
   ['href="/portal"', 'href="?portal"', 3],
-  ["/portal?p=${p.key}", "?portal&p=${p.key}", 2],
+  ["/portal?p=${p.key}", "?portal&p=${p.key}", 3],
+  ['it("/portal", "Kundenportal"', 'it("?portal", "Kundenportal"'],
   ["${esc(location.origin)}/portal?embed=1", "${esc(GFTLocal.BASE)}?portal&embed=1"],
   ["${esc(location.origin)}/portal", "${esc(GFTLocal.BASE)}?portal", 2],
   ['location.href = authUrl("/api/admin/export")', 'api("/api/admin/export").then((r) => toast(`Sicherung heruntergeladen${r.files ? ` (inkl. ${r.files} Anhänge)` : ""}.`)).catch((err) => toast(err.message))'],
@@ -99,7 +100,7 @@ ${read("public/app.css")}
 </head>
 <body>
 <template id="app-body"><header class="topnav" id="topnav"></header>
-<div class="layout"><aside class="psidebar" id="psidebar" hidden></aside><main class="content" id="view"><p class="muted">Lade Daten…</p></main></div>
+<div class="layout"><aside class="sidenav" id="sidenav" aria-label="Hauptnavigation" hidden></aside><aside class="psidebar" id="psidebar" hidden></aside><main class="content" id="view"><p class="muted">Lade Daten…</p></main></div>
 <div class="overlay" id="overlay"></div>
 <div class="modal" id="modal" role="dialog" aria-modal="true"></div>
 <div class="pop" id="notifs"></div>

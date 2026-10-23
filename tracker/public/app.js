@@ -669,8 +669,8 @@ function renderTop() {
     <span class="navbtns"><button class="btn subtle icon" id="nav-back" data-act="nav-back" title="Zurück (Alt+←)" aria-label="Zurück">‹</button><button class="btn subtle icon" id="nav-fwd" data-act="nav-fwd" title="Vor (Alt+→)" aria-label="Vor">›</button></span>
     <a class="logo" href="#/your-work">${ui.brand?.logo ? `<img class="brand-logo" src="${esc(ui.brand.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<span class="trunc">${esc(ui.brand?.appName || "GF Tracker")}</span></a>
     ${link("your-work", "Mein Tag", "your-work")}${link("projects", "Projekte", r === "p" ? "p" : "projects")}${link("teams", "Teams", "teams")}${link("customers", "Kunden", "customers")}${link("filters", "Suche", "filters")}${link("dashboard", "Dashboard", "dashboard")}<a class="navlink nav-portal" href="/portal" target="_blank" rel="noopener">Service-Portal ↗</a>
-    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Neuer Vorgang</span></button>
     <a class="btn subtle icon show-m" href="#/filters?state=open" data-act="m-search" aria-label="Suchen">${icon("search")}</a><div class="search gs-wrap">${icon("search")}<input type="search" id="gsearch" placeholder="Suchen: Text, Nummer, Kunde …" aria-label="Suchen" autocomplete="off"><div id="gsugg" class="gsugg" hidden></div></div>
+    <button class="btn primary" data-act="create" style="margin-left:6px">${icon("plus")}<span class="hide-m">Neuer Vorgang</span></button>
     <button class="btn subtle icon bell" data-act="notifs" aria-label="Benachrichtigungen">${icon("bell")}${unread ? `<span class="n">${unread > 99 ? "99+" : unread}</span>` : ""}</button>
     <button class="btn subtle icon hide-m" data-act="theme" aria-label="Hell/Dunkel">${icon("sun")}</button>
     <span id="sync-badge" class="chip gray" hidden></span>
@@ -685,6 +685,9 @@ const projectViews = (p) => [...(p.type === "software" ? [["board", "Board", "bo
     : [["queue", "Warteschlangen", "queue"], ["dispatch", "Einsatzplanung", "timeline"], ["board", "Board", "board"], ["list", "Liste", "list"], ["reports", "Berichte", "chart"]]), ["settings", "Projekteinstellungen", "gear"]];
 function projectNav(p, view) {
   const items = projectViews(p);
+  if (docked()) // Seitenleiste ist da: Projektansichten als Reiter oben statt zweiter Leiste
+    return `<div class="proj-head"><span class="pavatar" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><div class="trunc"><div class="b trunc">${esc(p.name)}</div><div class="small muted">${PROJECT_TYPES[p.type].label}${p.type === "service" ? ` · <a href="/portal?p=${p.key}" target="_blank" rel="noopener">Kundenportal ↗</a>` : ""}</div></div></div>
+      <nav class="project-tabs show">${items.map(([v, l, ic]) => `<a class="ptab ${view === v ? "on" : ""}" href="#/p/${p.key}/${v}">${icon(ic)}${l}</a>`).join("")}</nav>`;
   $("#psidebar").hidden = false;
   $("#psidebar").innerHTML = `<div class="phead"><span class="pavatar" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><div class="trunc"><div class="b trunc">${esc(p.name)}</div><div class="small muted">${PROJECT_TYPES[p.type].label}</div></div></div>
     <div class="label">Planung</div>${items.map(([v, l, ic]) => `<a href="#/p/${p.key}/${v}" class="${view === v ? "on" : ""}">${icon(ic)}${l}</a>`).join("")}
@@ -692,7 +695,7 @@ function projectNav(p, view) {
   return `<div class="project-tabs">${items.map(([v, l]) => `<a class="toggle ${view === v ? "on" : ""}" href="#/p/${p.key}/${v}">${l}</a>`).join("")}</div>`;
 }
 function render() {
-  renderTop();
+  renderTop(); renderSidenav();
   const { parts, params } = route(); $("#psidebar").hidden = true;
   if (params.has("q")) ui.queue = params.get("q"); if (params.has("tab")) ui.yourWork = params.get("tab"); ui.backlogEpic = params.get("epic") || "";
   let html;
@@ -1971,7 +1974,17 @@ function openModal(html, wide = false, kind = "form") {
   setTimeout(() => { if (!m.contains(document.activeElement)) m.focus({ preventScroll: true }); }, 40);
 }
 /* ---------- Hauptmenü (☰): alle Bereiche und Funktionen auf einen Blick ---------- */
-function drawerHtml() {
+// Breite Bildschirme: dauerhaft sichtbare Seitenleiste (☰ klappt sie ein/aus); schmal: ausklappbares Menü
+const dockMQ = matchMedia("(min-width: 1180px)");
+const docked = () => dockMQ.matches && localState.sidenav !== false;
+function renderSidenav() {
+  const el = $("#sidenav"); if (!el) return;
+  const on = docked(); document.body.classList.toggle("has-sidenav", on); el.hidden = !on; if (!on) return;
+  const a = document.activeElement; if (a && a.id === "drawer-q" && el.contains(a) && a.value) return; // Suche im Menü nicht beim Tippen überschreiben
+  el.innerHTML = drawerHtml({ docked: true });
+}
+dockMQ.addEventListener?.("change", () => { closeDrawer(); render(); });
+function drawerHtml({ docked: dock = false } = {}) {
   const { parts, params } = route(); const cur = `#/${parts.join("/")}`; const admin = me().role === "ADMIN"; const meId = db.currentUserId;
   const mineOpen = db.issues.filter((i) => i.assigneeId === meId && !isDone(i)).length; const unassigned = db.issues.filter((i) => !i.assigneeId && !isDone(i) && i.type !== "EPIC").length;
   const overdue = db.issues.filter((i) => isOverdue(i) && (i.assigneeId === meId || i.reporterId === meId)).length;
@@ -1984,7 +1997,7 @@ function drawerHtml() {
   const projects = db.projects.map((p) => `<details class="dr-proj" ${parts[0] === "p" && parts[1] === p.key ? "open" : ""}><summary><span class="pavatar sm" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><span class="trunc">${esc(p.name)}</span><span class="dr-badge">${projIssues(p).filter((i) => !isDone(i) && i.type !== "EPIC").length}</span></summary>
       ${projectViews(p).map(([v, l, ic]) => it(`#/p/${p.key}/${v}`, l, ic, { kw: `${p.key} ${p.name}` })).join("")}</details>`).join("");
   const b = ui.brand || {};
-  return `<div class="dr-head">${b.logo ? `<img class="brand-logo" src="${esc(b.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<div class="trunc" style="flex:1"><div class="b trunc">${esc(b.appName || "GF Tracker")}</div><div class="small muted trunc">${esc(me().name)} · ${esc(ROLES[me().role] || "")}</div></div><button class="btn subtle icon" data-act="drawer-close" aria-label="Menü schließen">${icon("x")}</button></div>
+  return `<div class="dr-head">${b.logo ? `<img class="brand-logo" src="${esc(b.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<div class="trunc" style="flex:1"><div class="b trunc">${esc(b.appName || "GF Tracker")}</div><div class="small muted trunc">${esc(me().name)} · ${esc(ROLES[me().role] || "")}</div></div>${dock ? `<button class="btn subtle icon" data-act="menu" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen">«</button>` : `<button class="btn subtle icon" data-act="drawer-close" aria-label="Menü schließen">${icon("x")}</button>`}</div>
     <div class="dr-search">${icon("search")}<input type="search" id="drawer-q" placeholder="Funktion finden … (z. B. Import, Kunden, Board)" aria-label="Menü durchsuchen" autocomplete="off"></div>
     <nav class="dr-body">
       ${sec("Arbeiten", it("#/your-work", "Mein Tag", "home", { badge: mineOpen, kw: "start übersicht aufgaben" }) + it("#/your-work?tab=watching", "Beobachtet", "eye") + it("#/your-work?tab=recent", "Zuletzt angesehen", "clock")
@@ -2023,7 +2036,7 @@ function applyBrand(b = ui.brand) {
   ui.brand = b || ui.brand || { appName: "GF Tracker", color: "#2436e8", logo: null }; const c = ui.brand.color; const st = document.documentElement.style;
   const dark = (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
   if (!c || c === "#2436e8") { for (const k of ["--primary", "--primary-hover", "--primary-soft", "--sel", "--primary-fg"]) st.removeProperty(k); }
-  else if (dark) { let x = c; for (let k = 0; k < 10 && lum(x) < 0.3; k++) x = mixHex(x, "#ffffff", 0.2); st.setProperty("--primary", x); st.setProperty("--primary-hover", mixHex(x, "#ffffff", 0.2)); st.setProperty("--primary-soft", mixHex(x, "#1d2125", 0.8)); st.setProperty("--sel", mixHex(x, "#1d2125", 0.8)); st.setProperty("--primary-fg", "#1d2125"); }
+  else if (dark) { let x = c; for (let k = 0; k < 10 && lum(x) < 0.3; k++) x = mixHex(x, "#ffffff", 0.2); st.setProperty("--primary", x); st.setProperty("--primary-hover", mixHex(x, "#ffffff", 0.2)); st.setProperty("--primary-soft", mixHex(x, "#2a2b2f", 0.8)); st.setProperty("--sel", mixHex(x, "#2a2b2f", 0.78)); st.setProperty("--primary-fg", "#1e1f22"); }
   else { st.setProperty("--primary", c); st.setProperty("--primary-hover", mixHex(c, "#000000", 0.15)); st.setProperty("--primary-soft", mixHex(c, "#ffffff", 0.9)); st.setProperty("--sel", mixHex(c, "#ffffff", 0.9)); st.setProperty("--primary-fg", lum(c) > 0.5 ? "#172b4d" : "#ffffff"); }
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", c);
 }
@@ -2555,7 +2568,7 @@ document.addEventListener("click", (e) => {
     case "close": if (el.tagName === "A") closeModal({ fromNav: true }); else dismissModal(); break; // Link: Navigation übernimmt den Verlauf
     case "reload": location.reload(); break;
     case "goto": e.preventDefault(); go(el.dataset.href); break;
-    case "menu": openDrawer(); break;
+    case "menu": if (dockMQ.matches) { localState.sidenav = !docked(); saveLocal(); render(); } else openDrawer(); break;
     case "drawer-close": closeDrawer(); break;
     case "cf-file-del": createFiles.splice(Number(el.dataset.v), 1); renderCreateFiles(); break;
     case "shortcuts": openModal(`<div class="modal-h"><h2>Tastenkürzel</h2><button class="btn subtle icon" data-act="close" aria-label="Schließen">${icon("x")}</button></div>
@@ -2735,7 +2748,7 @@ document.addEventListener("input", (e) => {
   if (e.target.id === "ss-text") { clearTimeout(ssTimer); ssTimer = setTimeout(() => { // Ergebnisse beim Tippen, ohne für jeden Buchstaben einen Verlaufsschritt
     const { params } = route(); const v = $("#ss-text").value; if (v.trim()) params.set("text", v); else params.delete("text"); params.delete("issue");
     history.replaceState(history.state, "", `#/filters?${params}`); lastBase = baseHash(); const pos = $("#ss-text").selectionStart; render(); const inp = $("#ss-text"); inp.focus(); inp.setSelectionRange(pos, pos); }, 250); }
-  if (e.target.id === "drawer-q") { const q = norm(e.target.value.trim()); const d = $("#drawer");
+  if (e.target.id === "drawer-q") { const q = norm(e.target.value.trim()); const d = e.target.closest(".drawer, .sidenav");
     d.querySelectorAll(".dr-item[data-kw]").forEach((a) => { a.hidden = !!q && !a.dataset.kw.includes(q); });
     d.querySelectorAll(".dr-proj, .dr-sec").forEach((x) => { const any = [...x.querySelectorAll(".dr-item[data-kw]")].some((a) => !a.hidden); x.hidden = !!q && !any; if (q && any) x.open = true; }); }
   if (e.target.id === "gsearch") { clearTimeout(gsTimer); gsTimer = setTimeout(() => showSuggestions(e.target.value), 120); }
