@@ -5,7 +5,7 @@
 // Browser aus den Beispieldaten berechnet – oder aus einer Tracker-Sicherung (JSON), die man lädt.
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { buildLandscape } from "../lib/landscape.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -18,7 +18,9 @@ const lib = read("lib/landscape.mjs");
 const browserLib = `const DEFAULT_SITE = "hq";\n${lib.slice(lib.indexOf("export function landscapeData")).replace(/^export /, "")}`;
 if (!/function landscapeData/.test(browserLib) || /\bfs\.|\bpath\./.test(browserLib)) throw new Error("landscapeData nicht sauber herauslösbar – lib/landscape.mjs prüfen.");
 
-const statik = `${read("public/shared.js")}
+/** Einzeldatei-HTML der Systemlandschaft. embedded: läuft als Fenster der Tracker-HTML und liest deren Daten live mit. */
+export function buildLandscapeHtml({ embedded = false } = {}) {
+const statik = `${embedded ? "window.GFT_EMBED = true;\n" : ""}${read("public/shared.js")}
 ${browserLib}
 window.GFT_STATIC = { compute(db) {
   const S = TrackerShared; const d = db || S.seed();
@@ -39,6 +41,12 @@ swap('<script src="/landschaft/world.js"></script>', inline(js));
 swap('<script src="/landschaft/level.js"></script>', inline(read("public/landschaft/level.js")));
 swap('<link rel="icon" href="/icons/icon-64.png">', `<link rel="icon" href="data:image/png;base64,${fs.readFileSync(path.join(ROOT, "public/icons/icon-64.png")).toString("base64")}">`);
 html = html.replace("<head>", "<head><!-- three.js: MIT-Lizenz, Copyright 2010-2022 Three.js Authors -->");
-fs.mkdirSync(path.dirname(OUT), { recursive: true });
-fs.writeFileSync(OUT, html);
-console.log(`Geschrieben: ${path.relative(process.cwd(), OUT)} (${Math.round(html.length / 1024)} KB)`);
+return html;
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const html = buildLandscapeHtml();
+  fs.mkdirSync(path.dirname(OUT), { recursive: true });
+  fs.writeFileSync(OUT, html);
+  console.log(`Geschrieben: ${path.relative(process.cwd(), OUT)} (${Math.round(html.length / 1024)} KB)`);
+}

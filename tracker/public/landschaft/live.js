@@ -24,15 +24,27 @@
   // Einzeldatei (systemlandschaft.html): kein Server – Zahlen werden im Browser aus Beispieldaten
   // oder aus einer geladenen Tracker-Sicherung (JSON) berechnet
   const STATIC = window.GFT_STATIC || null, TRACKER = "gf-suite-tracker.html"; let fileDb = null, fileName = "";
+  // Als Fenster der Tracker-HTML geöffnet: Daten kommen laufend aus dem Tracker-Fenster (window.opener)
+  const EMBED = !!window.GFT_EMBED; let dbSig = "";
+  const trackerDb = () => { try { return window.opener && !window.opener.closed && window.opener.gftLandscapeDb ? window.opener.gftLandscapeDb() : null; } catch { return null; } };
+  function dbSignature(d) { // ändert sich bei jeder Änderung an Vorgängen, Projekten, Teams oder Sprints
+    let n = 0, m = ""; for (const i of d.issues) { n++; if (i.updatedAt > m) m = i.updatedAt; }
+    return [n, m, d.projects.length, d.sprints.length, JSON.stringify(d.teams.map((t) => [t.id, t.site, t.name, t.memberIds.length])), JSON.stringify(d.projects.map((p) => [p.id, p.name, p.teamId, p.color])), JSON.stringify(d.sprints.map((x) => [x.id, x.state]))].join("|");
+  }
   const badge = () => document.getElementById("dataBadge");
   function setBadge() {
     const b = badge(); if (!b) return;
-    b.classList.toggle("live", status === "live" || status === "file"); b.classList.toggle("err", status === "error" || status === "login");
-    b.textContent = status === "live" ? "Live · GF Tracker" : status === "demo" ? "Beispieldaten · GF Tracker" : status === "file" ? `Sicherung · ${fileName}` : status === "login" ? "Nicht angemeldet" : status === "error" ? "Verbindung unterbrochen" : "Verbinde …";
+    b.classList.toggle("live", status === "live" || status === "file"); b.classList.toggle("err", status === "error" || status === "login" || status === "closed");
+    b.textContent = status === "live" ? "Live · GF Tracker" : status === "closed" ? "Tracker-Fenster geschlossen" : status === "demo" ? "Beispieldaten · GF Tracker" : status === "file" ? `Sicherung · ${fileName}` : status === "login" ? "Nicht angemeldet" : status === "error" ? "Verbindung unterbrochen" : "Verbinde …";
     b.title = data ? `Tracker-Daten vom ${new Date(data.at).toLocaleString("de-DE")} · übrige Programme: Beispieldaten` : "Datenquellen anzeigen";
   }
 
   async function load() {
+    if (EMBED) {
+      const d = trackerDb(); if (!d) { if (status !== "closed") { status = "closed"; setBadge(); } return; }
+      const sg = dbSignature(d); if (sg === dbSig && data) { if (status !== "live") { status = "live"; setBadge(); } return; }
+      dbSig = sg; data = STATIC.compute(d); status = "live"; sig = String(Math.random()); apply(); return;
+    }
     if (STATIC) { data = STATIC.compute(fileDb); status = fileDb ? "file" : "demo"; sig = String(Math.random()); apply(); return; }
     try {
       const r = await fetch("/api/landscape", { credentials: "same-origin", headers: { "X-GFT": "1" } });
@@ -114,7 +126,7 @@
     W.applyVisibility();
   }
 
-  window.GFTLive = { get data() { return data; }, get label() { return status === "demo" ? "Beispieldaten" : status === "file" ? "Aus Sicherung" : "Live · GF Tracker"; } };
+  window.GFTLive = { get data() { return data; }, get label() { return EMBED ? "Live · GF Tracker" : status === "demo" ? "Beispieldaten" : status === "file" ? "Aus Sicherung" : "Live · GF Tracker"; } };
   function fileButton(top) {
     const b = document.createElement("button"); b.type = "button"; b.className = "gft-back"; b.innerHTML = "⤒<span> Daten laden</span>";
     b.title = "Sicherung aus dem GF Tracker laden (Einstellungen → Sicherung herunterladen, JSON) – bleibt auf diesem Gerät";
@@ -140,8 +152,16 @@
     },
     ready() {
       const top = document.getElementById("top");
-      if (top && !document.querySelector(".gft-back")) { const a = document.createElement("a"); a.className = "gft-back"; a.href = STATIC ? TRACKER : "/"; a.innerHTML = "←<span> GF Tracker</span>"; a.title = "Zurück zum Tracker"; top.insertBefore(a, top.firstChild); }
+      if (top && !document.querySelector(".gft-back")) { const a = document.createElement("a"); a.className = "gft-back"; a.href = STATIC ? TRACKER : "/"; if (EMBED) a.addEventListener("click", (e) => { if (window.opener && !window.opener.closed) { e.preventDefault(); window.opener.focus(); } }); a.innerHTML = "←<span> GF Tracker</span>"; a.title = "Zurück zum Tracker"; top.insertBefore(a, top.firstChild); }
       setBadge(); load().then(() => { const m = location.hash.match(/^#level=([\w-]+)/); if (m && window.GFTLevel) window.GFTLevel.open(m[1]); });
+      if (EMBED) { // jede Änderung im Tracker-Fenster erscheint hier nach spätestens einer Sekunde
+        setInterval(load, 1000);
+        document.addEventListener("click", (e) => { // Verweise auf Vorgänge/Projekte im Tracker-Fenster öffnen
+          const a = e.target.closest && e.target.closest("a[href]"); if (!a) return; const h = a.getAttribute("href"); const k = h.indexOf("#/");
+          if (k < 0 || !window.opener || window.opener.closed) return; e.preventDefault(); window.opener.location.hash = h.slice(k + 1); window.opener.focus();
+        }, true);
+        return;
+      }
       if (STATIC) { fileButton(top); return; }
       try { const es = new EventSource("/api/events"); es.addEventListener("rev", soon); es.onerror = () => {}; } catch { /* ohne Live-Kanal reicht das Nachladen */ }
       setInterval(load, 60e3);

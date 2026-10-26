@@ -743,7 +743,13 @@ Nur mit Anmeldung; gezeigt wird der eigene Sichtbereich.
   `public/vendor/three`, keine fremden Server, Einhängepunkte für
   `public/landschaft/live.js`). Passt eine Anpassung nicht mehr, schlägt der Test fehl.
   Die übrigen Programme (Inform, DocuWare …) zeigen weiterhin Beispieldaten.
-- In der Einzel-HTML-Version gibt es die 3D-Seite nicht (braucht den Server).
+- **Immer aktuell:** Auf dem Server meldet der Live-Kanal jede Änderung; die Landschaft lädt
+  dann neu (Standorte, Fahnen, Listen, offene Detailfelder, Meldungen und ein offenes Level).
+- **Einzel-HTML-Version:** `gf-suite-tracker.html` enthält die Systemlandschaft. Menü →
+  *Systemlandschaft (3D)* öffnet sie als eigenes Fenster, das die Daten des Tracker-Fensters
+  jede Sekunde mitliest – jede Änderung im Tracker erscheint dort sofort. Klick auf einen
+  Vorgang öffnet ihn im Tracker-Fenster. Die separate Datei `systemlandschaft.html` zeigt
+  Beispieldaten oder eine geladene Sicherung.
 
 ### 13.2 Kundenportal auf Ihrer Website (fertig eingebaut)
 

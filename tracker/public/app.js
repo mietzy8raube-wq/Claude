@@ -2024,7 +2024,8 @@ function drawerHtml({ docked: dock = false } = {}) {
   const projects = db.projects.map((p) => `<details class="dr-proj" ${parts[0] === "p" && parts[1] === p.key ? "open" : ""}><summary><span class="pavatar sm" style="background:${p.color}">${esc(p.key.slice(0, 3))}</span><span class="trunc">${esc(p.name)}</span><span class="dr-badge">${projIssues(p).filter((i) => !isDone(i) && i.type !== "EPIC").length}</span></summary>
       ${projectViews(p).map(([v, l, ic]) => it(`#/p/${p.key}/${v}`, l, ic, { kw: `${p.key} ${p.name}` })).join("")}</details>`).join("");
   const b = ui.brand || {}; const AUSWERTEN = sec(me().role === "MANAGEMENT" ? "Überblick &amp; Auswertungen" : "Suchen &amp; Auswerten", it("#/filters?state=open", "Suche", "search", { kw: "finden text" }) + DEFAULT_FILTERS.slice(0, 3).map((f) => it(`#/filters?filter=${f.id}`, f.name, "filter")).join("")
-        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" }) + it(window.GFT_STANDALONE || !location.protocol.startsWith("http") ? "systemlandschaft.html" : "/landschaft", "Systemlandschaft (3D)", "layers", { kw: "3d digitale welt standorte programme landschaft karte level prozesse", ext: true })
+        + db.filters.map((f) => it(`#/filters?filter=${f.id}`, f.name, "star", { kw: "gespeichert filter" })).join("") + it("#/dashboard", "Dashboard", "chart", { kw: "kennzahlen quartal auswertung" }) + (window.GFT_LANDSCAPE ? it("", "Systemlandschaft (3D)", "layers", { act: "open-landscape", kw: "3d digitale welt standorte programme landschaft karte level prozesse" })
+          : it(location.protocol.startsWith("http") ? "/landschaft" : "systemlandschaft.html", "Systemlandschaft (3D)", "layers", { kw: "3d digitale welt standorte programme landschaft karte level prozesse", ext: true }))
         + it("", "Excel-Auswertung", "chart", { act: "export-all-xlsx", kw: "export xlsx bericht quartal" }));
   return `<div class="dr-head">${b.logo ? `<img class="brand-logo" src="${esc(b.logo)}" alt="">` : `<img class="app-icon" src="/icons/icon-64.png" alt="">`}<div class="trunc" style="flex:1"><div class="b trunc">${esc(b.appName || "GF Tracker")}</div><div class="small muted trunc">${esc(me().name)} · ${esc(ROLES[me().role] || "")}</div></div>${dock ? `<button class="btn subtle icon" data-act="menu" title="Seitenleiste einklappen" aria-label="Seitenleiste einklappen">«</button>` : `<button class="btn subtle icon" data-act="drawer-close" aria-label="Menü schließen">${icon("x")}</button>`}</div>
     <div class="dr-search">${icon("search")}<input type="search" id="drawer-q" placeholder="Funktion finden … (z. B. Import, Kunden, Board)" aria-label="Menü durchsuchen" autocomplete="off"></div>
@@ -2693,6 +2694,11 @@ document.addEventListener("click", (e) => {
       if (!ui.archiveLoaded) { ensureArchive().then(() => el.click()); break; }
       exportXlsx(db.issues.filter((i) => activeIn(i, per)), `auswertung-gesamt-${per.label.toLowerCase().replace(/\s+/g, "-")}-${today()}.xlsx`, `Alle Projekte · ${per.label}`, { period: per, scope: db.issues }); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
+    case "open-landscape": { // HTML-Version: Systemlandschaft als eigenes Fenster, liest die Daten dieses Fensters live mit
+      window.gftLandscapeDb = () => db;
+      const w = window.open("", "gft-landschaft"); if (!w) { toast("Bitte Pop-ups für diese Datei erlauben."); break; }
+      if (!w.GFT_EMBED) { w.document.open(); w.document.write(window.GFT_LANDSCAPE); w.document.close(); }
+      w.focus(); break; }
     case "export-json": location.href = authUrl("/api/admin/export"); break;
     case "import-json": $("#json-file").click(); break;
     case "logout": api("/api/logout", { method: "POST" }).finally(() => { if (TEAMS) { try { localStorage.removeItem("gft-teams-token"); } catch {} } location.href = LOGIN_URL; }); break;

@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildLandscapeHtml } from "./build-landscape-standalone.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (f) => fs.readFileSync(path.join(ROOT, f), "utf8");
@@ -124,6 +125,7 @@ ${read("public/qr.js")}
 <script>
 ${read("standalone/backend.js")}
 </script>
+<script>window.GFT_LANDSCAPE = ${JSON.stringify(buildLandscapeHtml({ embedded: true })).replace(/</g, "\\u003c")};</script>
 <script>${loader}</script>
 </body>
 </html>
