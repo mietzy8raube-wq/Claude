@@ -1,7 +1,7 @@
 <title>Digitale Welt Druckluft-Technik</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <style>
 /* Layout: Blockwelt (Würfel-Landschaft) mit Bedienfeldern im Inventar-Stil; davor: Architekturmodell auf einem hellen Kartentisch, Bedienfelder schweben darüber
    (links Übersicht, rechts Details, unten Ereignisse). Bewusst eine helle Gestaltung. */
@@ -389,6 +389,164 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
   .clock { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .dot.bad, .live i, #events li { animation: none; } }
+
+/* ════════ Widget-Stil: Glasflächen, Systemschrift, runde Karten (wie bei Apple) ════════ */
+:root {
+  --font-head: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-data: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-title: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", system-ui, sans-serif;
+  --table: #f1f1ee;
+  --ink: #1d1d1f; --ink-2: #48484a; --ink-3: #8e8e93;
+  --line: rgba(60,60,67,.12);
+  --paper-2: rgba(118,118,128,.1);
+  --petrol: #007aff; --petrol-soft: rgba(0,122,255,.1);
+  --ok: #34c759; --warn: #ff9500; --bad: #ff3b30; --plan: #af52de;
+  --glass: rgba(250,250,252,.7);
+  --glass-edge: rgba(255,255,255,.75);
+  --shadow: 0 0 0 .5px rgba(0,0,0,.05), 0 10px 36px rgba(0,0,0,.1);
+}
+body { font-size: 13px; -webkit-font-smoothing: antialiased; letter-spacing: -.003em; }
+#vignette { background: radial-gradient(ellipse at 50% 45%, rgba(255,255,255,0) 60%, rgba(214,214,208,.35) 100%); }
+.hud { background: var(--glass); -webkit-backdrop-filter: saturate(180%) blur(28px); backdrop-filter: saturate(180%) blur(28px); border: .5px solid var(--glass-edge); border-radius: 22px; box-shadow: var(--shadow); }
+#top { border-radius: 20px; padding: 7px 10px 7px 12px; }
+.mark { border-radius: 9px; background: linear-gradient(160deg, #3d9bff, #0066d6); }
+.brand-txt b { font: 600 16px var(--font-title); letter-spacing: -.015em; }
+.kpis, .seg { background: rgba(118,118,128,.12); border-radius: 10px; padding: 2px; }
+.kpi { border-radius: 8px; }
+.kpi strong { font: 600 15px/1.2 var(--font-data); letter-spacing: -.01em; }
+.seg button { border-radius: 8px; font: 500 12px var(--font-body); padding: 6px 11px; }
+.seg button[aria-pressed="true"], .seg button[aria-pressed="true"].plan { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 0 0 .5px rgba(0,0,0,.04); }
+.simclock .clock { font: 600 16px var(--font-data) !important; letter-spacing: -.01em; }
+.databadge { background: rgba(255,149,0,.14); color: #a05a00; }
+.wgtoggle { display: flex; align-items: center; gap: 6px; border: 0; background: rgba(118,118,128,.12); color: var(--ink-2); border-radius: 10px; padding: 6px 10px; font: 500 12px var(--font-body); cursor: pointer; white-space: nowrap; }
+.wgtoggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+.wgtoggle[aria-pressed="true"] { background: var(--petrol); color: #fff; }
+.wgtoggle:focus-visible { outline: 2px solid var(--petrol); outline-offset: 2px; }
+#toolbar { border-radius: 26px; padding: 6px; gap: 2px; }
+#toolbar button { border-radius: 16px; font: 500 10.5px var(--font-body); color: var(--ink-2); }
+#toolbar button:hover { background: rgba(118,118,128,.12); }
+#toolbar button.on { background: var(--petrol); color: #fff; box-shadow: 0 6px 16px rgba(0,122,255,.35); }
+#detail { border-radius: 24px; }
+#detail h2 { font: 700 22px/1.2 var(--font-title); letter-spacing: -.02em; }
+#detail .eyebrow { color: var(--petrol); font: 600 11px var(--font-body); letter-spacing: .04em; }
+.links button, ol.steps > li > button, .links .trow { background: rgba(255,255,255,.6); border-radius: 12px; }
+.note { background: rgba(255,255,255,.55); border-radius: 12px; }
+#minimap { border-radius: 22px; }
+#mm { border-radius: 14px; background: #ecece7; }
+.lbl.loc { background: rgba(255,255,255,.86); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); border-radius: 12px; font: 600 13px var(--font-title); letter-spacing: -.01em; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+.lbl.sys, .lbl.proj, .lbl.van, .lbl.agent, .lbl.person { font-family: var(--font-body); }
+#tip { background: rgba(29,29,31,.9); border-radius: 9px; }
+#feed { display: none !important; }
+
+/* Widget-Leiste */
+#widgets { position: fixed; left: 16px; top: 84px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); width: 296px; overflow-y: auto; overflow-x: hidden; display: flex; flex-direction: column; gap: 12px; padding: 2px 6px 16px 2px; scrollbar-width: none; z-index: 2; }
+#widgets::-webkit-scrollbar { display: none; }
+#widgets { -webkit-mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(180deg, #000 calc(100% - 28px), transparent); }
+body.panel-open #widgets, body.wg-off #widgets { display: none; }
+.wg { position: relative; flex: none; background: rgba(250,250,252,.68); -webkit-backdrop-filter: saturate(180%) blur(30px); backdrop-filter: saturate(180%) blur(30px); border: .5px solid var(--glass-edge); border-radius: 24px; padding: 12px 16px 14px; box-shadow: var(--shadow); animation: wgin .35s cubic-bezier(.2,.8,.2,1); }
+@keyframes wgin { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+.wg h3 { margin: 0 26px 8px; font: 600 13px var(--font-title); text-align: center; color: var(--ink-2); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wmenu { position: absolute; top: 8px; right: 10px; width: 26px; height: 22px; border: 0; border-radius: 11px; background: none; color: var(--ink-3); font: 700 14px/1 var(--font-body); cursor: pointer; letter-spacing: .05em; }
+.wmenu:hover, .wmenu[aria-expanded="true"] { background: rgba(118,118,128,.14); color: var(--ink); }
+.wmenu:focus-visible { outline: 2px solid var(--petrol); }
+.wpop { position: absolute; top: 32px; right: 10px; z-index: 3; min-width: 150px; background: rgba(250,250,252,.92); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.18), 0 0 0 .5px rgba(0,0,0,.08); padding: 4px; display: flex; flex-direction: column; }
+.wpop button { border: 0; background: none; text-align: left; font: 400 13px var(--font-body); color: var(--ink); padding: 6px 10px; border-radius: 8px; cursor: pointer; }
+.wpop button:hover, .wpop button:focus-visible { background: var(--petrol); color: #fff; outline: none; }
+.wpop button.del { color: var(--bad); }
+.wpop button.del:hover { color: #fff; background: var(--bad); }
+.wbig { display: block; width: 100%; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; color: var(--ink); font: 700 40px/1.05 var(--font-title); letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.wbig small { font: 600 18px var(--font-title); color: var(--ink-3); letter-spacing: -.01em; margin-left: 2px; }
+.wbig:focus-visible { outline: 2px solid var(--petrol); border-radius: 8px; }
+.wsub { display: flex; align-items: center; gap: 6px; margin-top: 4px; font: 500 12px var(--font-body); color: var(--ink-2); }
+.wsub i { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none; }
+.wsub i.warn { background: var(--warn); } .wsub i.bad { background: var(--bad); } .wsub i.plan { background: var(--plan); }
+.wstand { margin-top: 2px; font: 400 11px var(--font-body); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.wrow { display: flex; align-items: center; gap: 14px; }
+.wrow .wtxt { min-width: 0; flex: 1; }
+.wbars { display: block; width: 100%; height: 46px; margin-top: 8px; }
+.wring { width: 76px; height: 76px; flex: none; }
+/* Uhr */
+.wclock { display: flex; align-items: center; gap: 16px; }
+.wclock svg { width: 104px; height: 104px; flex: none; filter: drop-shadow(0 4px 10px rgba(0,0,0,.12)); }
+.wclock .wdate { display: flex; flex-direction: column; gap: 2px; }
+.wclock .wdate b { font: 600 15px var(--font-title); letter-spacing: -.01em; }
+.wclock .wdate span { font-size: 12px; color: var(--ink-3); }
+/* Notiz */
+.wg.note-wg { background: linear-gradient(180deg, #ffe680, #ffd84a); border-color: rgba(255,255,255,.5); }
+.wg.note-wg h3 { color: #6b4e00; text-align: left; margin-left: 0; }
+.wg.note-wg .wmenu { color: #8a6a00; }
+.wg.note-wg textarea { width: 100%; box-sizing: border-box; min-height: 64px; resize: vertical; border: 0; background: transparent; font: 400 13.5px/1.45 var(--font-body); color: #4a3700; padding: 0; outline: none; }
+.wg.note-wg textarea::placeholder { color: #8a6a00; opacity: .8; }
+/* Listen */
+.wlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.wlist button { width: 100%; display: grid; grid-template-columns: 10px 1fr; gap: 8px; align-items: start; text-align: left; border: 0; background: rgba(255,255,255,.55); border-radius: 12px; padding: 7px 10px; cursor: pointer; font: 500 12.5px/1.35 var(--font-body); color: var(--ink); }
+.wlist button:hover { background: rgba(255,255,255,.9); }
+.wlist button:focus-visible { outline: 2px solid var(--petrol); }
+.wlist .dot { margin-top: 4px; }
+.wlist small { display: block; color: var(--ink-3); font-size: 11px; font-weight: 400; }
+.wfoot { margin-top: 8px; font: 400 11px var(--font-body); color: var(--ink-3); text-align: center; }
+.wg #events { gap: 6px !important; }
+.wg #events li { background: rgba(255,255,255,.55) !important; box-shadow: none !important; border-radius: 12px !important; padding: 6px 10px !important; grid-template-columns: 40px 10px 1fr !important; font-size: 12px; }
+.wadd { flex: none; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1.5px dashed rgba(60,60,67,.22); background: rgba(250,250,252,.45); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px); border-radius: 22px; padding: 14px; font: 600 13px var(--font-body); color: var(--petrol); cursor: pointer; }
+.wadd:hover { background: rgba(250,250,252,.8); border-color: var(--petrol); }
+.wadd:focus-visible { outline: 2px solid var(--petrol); }
+/* Assistent */
+#wizard { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(30,30,32,.22); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: fadein .2s; padding: 16px; }
+@keyframes fadein { from { opacity: 0; } }
+.wzsheet { width: min(600px, 100%); max-height: min(640px, 100%); display: flex; flex-direction: column; background: rgba(250,250,252,.9); -webkit-backdrop-filter: saturate(180%) blur(30px); backdrop-filter: saturate(180%) blur(30px); border-radius: 26px; box-shadow: 0 30px 80px rgba(0,0,0,.25), 0 0 0 .5px rgba(0,0,0,.08); overflow: hidden; animation: sheetin .3s cubic-bezier(.2,.8,.2,1); }
+@keyframes sheetin { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+.wzhead { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 6px 22px; }
+.wzhead b { font: 700 17px var(--font-title); letter-spacing: -.015em; }
+.wzx { width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(118,118,128,.14); color: var(--ink-2); font-size: 18px; cursor: pointer; }
+.wzsteps { list-style: none; margin: 8px 18px 0; padding: 4px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; background: rgba(118,118,128,.1); border-radius: 14px; }
+.wzsteps li { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; min-width: 0; }
+.wzsteps li i { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--font-body); font-style: normal; background: rgba(118,118,128,.18); color: var(--ink-2); }
+.wzsteps li span { display: flex; flex-direction: column; min-width: 0; font: 600 12px var(--font-body); }
+.wzsteps li small { font: 400 10.5px var(--font-body); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wzsteps li.on { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+.wzsteps li.on i { background: var(--petrol); color: #fff; }
+.wzsteps li.done i { background: var(--ok); color: #fff; }
+.wzbody { padding: 14px 22px 8px; overflow-y: auto; min-height: 0; flex: 1; }
+.wzeyebrow { font: 600 11px var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 2px; }
+.wzq { font: 700 20px var(--font-title); letter-spacing: -.02em; margin: 0 0 2px; }
+.wzhint { color: var(--ink-3); margin: 0 0 12px; }
+.wzsearch { width: 100%; box-sizing: border-box; border: 0; background: rgba(118,118,128,.12); border-radius: 10px; padding: 9px 12px; font: 400 14px var(--font-body); color: var(--ink); margin-bottom: 10px; }
+.wzsearch:focus { outline: 2px solid var(--petrol); }
+.wzlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.wzgrp { font: 600 11px var(--font-body); color: var(--ink-3); letter-spacing: .04em; text-transform: uppercase; padding: 10px 6px 4px; }
+.wzopt { width: 100%; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: center; text-align: left; border: 0; background: none; border-radius: 12px; padding: 7px 8px; cursor: pointer; font: 500 13.5px var(--font-body); color: var(--ink); }
+.wzopt small { display: block; font: 400 11.5px var(--font-body); color: var(--ink-3); }
+.wzopt:hover { background: rgba(118,118,128,.1); }
+.wzopt[aria-pressed="true"] { background: var(--petrol-soft); box-shadow: inset 0 0 0 1.5px var(--petrol); }
+.wzopt:focus-visible { outline: 2px solid var(--petrol); }
+.wzico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: #fff; }
+.wzico svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.wzcards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.wzcard { border: 0; background: rgba(255,255,255,.7); border-radius: 16px; padding: 10px; cursor: pointer; text-align: center; font: 600 12.5px var(--font-body); color: var(--ink); box-shadow: 0 0 0 .5px rgba(0,0,0,.08); }
+.wzcard svg { display: block; width: 100%; height: 64px; margin-bottom: 6px; }
+.wzcard[aria-pressed="true"] { box-shadow: inset 0 0 0 2px var(--petrol); background: #fff; }
+.wzcard:focus-visible { outline: 2px solid var(--petrol); }
+.wzfield { display: flex; flex-direction: column; gap: 6px; font: 600 12px var(--font-body); color: var(--ink-2); margin-bottom: 14px; }
+.wzfield input { border: 0; background: rgba(118,118,128,.12); border-radius: 10px; padding: 9px 12px; font: 400 14px var(--font-body); color: var(--ink); }
+.wzfield input:focus { outline: 2px solid var(--petrol); }
+.wzprev { display: flex; justify-content: center; padding: 8px 0 4px; }
+.wzprev .wg { width: 280px; animation: none; }
+.wzfoot { display: flex; align-items: center; gap: 8px; padding: 12px 18px 16px; border-top: .5px solid var(--line); }
+.wzfoot span { flex: 1; }
+.wzbtn { border: 0; border-radius: 10px; padding: 8px 16px; font: 600 13px var(--font-body); cursor: pointer; background: rgba(118,118,128,.14); color: var(--ink); }
+.wzbtn.pri { background: var(--petrol); color: #fff; }
+.wzbtn:disabled { opacity: .4; cursor: default; }
+.wzbtn:focus-visible { outline: 2px solid var(--petrol); outline-offset: 2px; }
+@media (max-width: 860px) {
+  #widgets { left: 12px; right: 12px; width: auto; top: 76px; bottom: calc(92px + env(safe-area-inset-bottom, 0px)); z-index: 6; }
+  body:not(.wg-on) #widgets { display: none; }
+  .wgtoggle span { display: none; }
+  .wzsteps li span { display: none; }
+  .wzsteps { grid-template-columns: repeat(4, auto); justify-content: center; }
+  .wzcards { grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) { .wg, .wzsheet, #wizard { animation: none; } }
 </style>
 
 <div id="stage" aria-label="3D-Modell der Standorte, Mitarbeitenden, Software und Prozesse"></div>
@@ -408,6 +566,7 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
     <button type="button" id="modeNow" aria-pressed="true">Heute</button>
     <button type="button" id="modePlan" class="plan" aria-pressed="false">Mit Geplantem</button>
   </div>
+  <button type="button" id="wgToggle" class="wgtoggle" aria-pressed="true" aria-controls="widgets" title="Widgets ein- oder ausblenden"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span>Widgets</span></button>
   <div class="simclock"><span class="clock" id="clock">Mo 08:00</span><span class="dayphase" id="dayphase">Arbeitstag</span></div>
   <div class="seg speed" role="group" aria-label="Simulationstempo">
     <button type="button" data-sp="0" aria-pressed="false" title="Pause (Leertaste)">❚❚</button>
@@ -520,6 +679,16 @@ dl.facts, dl.facts dt, dl.facts dd { border-color: var(--line); }
   <span class="mmhint">Klick: hinfliegen · WASD · Q/E drehen</span>
 </div>
 <div id="pops" aria-hidden="true"></div>
+
+<aside id="widgets" aria-label="Widgets"></aside>
+<div id="wizard" hidden>
+  <div class="wzsheet" role="dialog" aria-modal="true" aria-labelledby="wzTitle">
+    <div class="wzhead"><b id="wzTitle">Widget hinzufügen</b><button type="button" class="wzx" id="wzClose" aria-label="Schließen">×</button></div>
+    <ol class="wzsteps" id="wzSteps"></ol>
+    <div class="wzbody" id="wzBody"></div>
+    <div class="wzfoot"><button type="button" class="wzbtn" id="wzBack">Zurück</button><span></span><button type="button" class="wzbtn pri" id="wzNext">Weiter</button></div>
+  </div>
+</div>
 
 <section id="feed" class="hud" aria-label="Live-Ereignisse">
   <p class="h"><span>Meldungen</span><span>simuliert</span></p>
@@ -839,7 +1008,7 @@ const GROUP_N = Object.fromEntries(GROUPS.map(g => [g.id, g.n]));
 
 const STATUS_TXT = { ok: 'in Nutzung', warn: 'prüfen', bad: 'Störung', plan: 'geplant', check: 'zu prüfen' };
 const LINK_TXT = { ok: 'bestätigt', check: 'Datenfluss zu prüfen', plan: 'geplant' };
-const C = { ok: 0x16a34a, warn: 0xd97706, bad: 0xdc2626, plan: 0x7c3aed, petrol: 0x2563eb, check: 0x94a3b8 };
+const C = { ok: 0x34c759, warn: 0xff9500, bad: 0xff3b30, plan: 0xaf52de, petrol: 0x007aff, check: 0xa1a1a6 };
 const CLOUD_Y = 17, SYS_Y = 9;
 
 /* Lage aus echten Koordinaten: Chemnitz im Ursprung, Norden = hinten, 1 Karten-Einheit = 2 km */
@@ -963,10 +1132,10 @@ function canvasTex(w, h, draw) {
 }
 scene.background = canvasTex(4, 256, (g, w, h) => {
   const gr = g.createLinearGradient(0, 0, 0, h);
-  gr.addColorStop(0, '#cfe3fb'); gr.addColorStop(0.55, '#e6f0fb'); gr.addColorStop(1, '#eef2f6');
+  gr.addColorStop(0, '#e9edf2'); gr.addColorStop(0.55, '#f3f4f5'); gr.addColorStop(1, '#f1f1ee');
   g.fillStyle = gr; g.fillRect(0, 0, w, h);
 });
-scene.fog = new THREE.Fog(0xe9f0f6, 110, 210);
+scene.fog = new THREE.Fog(0xeff0ef, 120, 230);
 // weicher Kontaktschatten (Umgebungsverdeckung) als Textur
 const AO_TEX = canvasTex(128, 128, (g, w, h) => {
   const gr = g.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2);
@@ -992,8 +1161,8 @@ controls.minDistance = 7;
 controls.maxDistance = 140;
 controls.update();
 
-scene.add(new THREE.HemisphereLight(0xeef4ff, 0x7f9a6a, 0.62));
-const sun = new THREE.DirectionalLight(0xfff1dc, 0.9);
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd8d5cc, 0.82));
+const sun = new THREE.DirectionalLight(0xffffff, 0.75);
 sun.shadow.radius = 4;
 sun.position.set(-35, 60, 28);
 sun.castShadow = true;
@@ -1035,8 +1204,8 @@ const TEX_SRC = {
   crate: pix((g, px, r) => { fill(px, r, [190, 150, 96], 18); g.fillStyle = '#7d5a35'; g.fillRect(0, 0, 16, 2); g.fillRect(0, 14, 16, 2); g.fillRect(0, 0, 2, 16); g.fillRect(14, 0, 2, 16); for (let i = 2; i < 14; i++) g.fillRect(i, i, 1, 1); }),
   wool: pix((g, px, r) => fill(px, r, [235, 235, 235], 12)),
 };
-const FLAT = { grassTop: 0x8cc96f, grassSide: 0x7dbb62, dirt: 0x9e7b5a, path: 0xe4e0d6, sand: 0xeee2c2, stone: 0xc9ced6, bricks: 0xf7f8fa, stoneBricks: 0xdfe3e9,
-  planks: 0xe3cfb0, darkPlanks: 0x64748b, log: 0x8b6b4a, leaves: 0x4caf6a, glass: 0xa5d4ee, iron: 0xf1f3f6, ore: 0x3b82f6, gold: 0xfbbf24, crate: 0xe0b77e, wool: 0xffffff };
+const FLAT = { grassTop: 0xeef0ea, grassSide: 0xe6e8e1, dirt: 0xdedad2, path: 0xf4f3ef, sand: 0xf0e9d6, stone: 0xe4e3df, bricks: 0xffffff, stoneBricks: 0xf0f0ed,
+  planks: 0xece3d4, darkPlanks: 0x8e8e93, log: 0x9c8a74, leaves: 0x5cb85c, glass: 0xcfe0ea, iron: 0xf7f7f5, ore: 0x007aff, gold: 0xffcc00, crate: 0xe9d6b6, wool: 0xffffff };
 function blockTex() { return null; }   // modern: keine Texturen, nur flache Farben
 function blockTexOld(name, rep = 1) {
   const t = new THREE.CanvasTexture(TEX_SRC[name]);
@@ -1076,8 +1245,8 @@ const VOX = {
   sand: blockMat('sand'),
 };
 /* Geländeplatte im Sim-Stil: Grasdecke mit abgerundeter Kante, Erdsockel, gepflasterter Hof und Gehweg-Ring */
-const PLATE_M = { grass: new THREE.MeshLambertMaterial({ color: 0x6fb64f }), soil: new THREE.MeshLambertMaterial({ color: 0xa88762 }), pave: new THREE.MeshLambertMaterial({ color: 0xe6e1d6 }),
-  curb: new THREE.MeshLambertMaterial({ color: 0xf5f3ee }), sand: new THREE.MeshLambertMaterial({ color: 0xe9d9ae }) };
+const PLATE_M = { grass: new THREE.MeshLambertMaterial({ color: 0xf4f4f0 }), soil: new THREE.MeshLambertMaterial({ color: 0xe4e1da }), pave: new THREE.MeshLambertMaterial({ color: 0xffffff }),
+  curb: new THREE.MeshLambertMaterial({ color: 0xe9e8e3 }), sand: new THREE.MeshLambertMaterial({ color: 0xefe6cf }) };
 function sitePlate(R, opts = {}) {
   const g = new THREE.Group(), top = PLATE_M[opts.top || 'grass'];
   const soil = new THREE.Mesh(new THREE.CylinderGeometry(R - 0.05, R - 0.35, B * 0.85, 72), PLATE_M.soil); soil.position.y = B * 0.42; soil.castShadow = true; soil.receiveShadow = true;
@@ -1134,7 +1303,7 @@ function signMesh(w, h, title, sub, accent, fadeList) {
   return new THREE.Mesh(new THREE.PlaneGeometry(w, h), m);
 }
 const groundTex = blockTex('grassTop', 300 / B);
-const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ color: 0xbfe0a4 }));
+const ground = new THREE.Mesh(new THREE.CircleGeometry(150, 96), new THREE.MeshLambertMaterial({ color: 0xe6e8e2 }));
 ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true;
 
 scene.add(ground);
@@ -1154,6 +1323,7 @@ scene.add(cloudGroup);
 
 /* ════════════════ Helfer ════════════════ */
 const pickables = [];
+const mapPins = [];
 const labels = [];
 const objects = {};
 const labelRoot = document.getElementById('labels');
@@ -1191,10 +1361,10 @@ function polyCentroid(poly) { let x = 0, z = 0; poly.forEach(p => { x += p[0]; z
 
 /* Fassaden: Fensterbänder, Tore, Dachaufbauten — gehören zur Außenansicht und blenden mit dem Dach aus */
 function addFacade(loc, b, rec) {
-  const glass = new THREE.MeshLambertMaterial({ color: 0x93c5fd, transparent: true, opacity: 1 });
-  const trim = new THREE.MeshLambertMaterial({ color: 0x94a3b8, transparent: true, opacity: 1 });
-  const roofM = new THREE.MeshLambertMaterial({ color: 0x6b7280, transparent: true, opacity: 1 });
-  const roofTop = new THREE.MeshLambertMaterial({ color: 0x9aa3ae, transparent: true, opacity: 1 });
+  const glass = new THREE.MeshLambertMaterial({ color: 0xcfdde6, transparent: true, opacity: 1 });
+  const trim = new THREE.MeshLambertMaterial({ color: 0xe2e2de, transparent: true, opacity: 1 });
+  const roofM = new THREE.MeshLambertMaterial({ color: 0xebebe8, transparent: true, opacity: 1 });
+  const roofTop = new THREE.MeshLambertMaterial({ color: 0xf7f7f4, transparent: true, opacity: 1 });
   rec.fade.push(glass, trim, roofM, roofTop);
   const office = /Büro/.test(b.name);
   const c = rec.center;
@@ -1275,8 +1445,8 @@ function yardR(loc) { return Math.min(3.2, (loc.r || SITE_R) * 0.45); }
 function insideBuildings(loc, x, z, margin) {
   return loc.buildings.some(b => { const xs = b.poly.map(q => q[0]), zs = b.poly.map(q => q[1]); return x > Math.min(...xs) - margin && x < Math.max(...xs) + margin && z > Math.min(...zs) - margin && z < Math.max(...zs) + margin; });
 }
-const TREE2 = { trunk: new THREE.CylinderGeometry(0.05, 0.08, 0.7, 10), crown: new THREE.IcosahedronGeometry(1, 2), bark: new THREE.MeshLambertMaterial({ color: 0x8a6a4a }),
-  leaf: [0x3f9a45, 0x4fa84c, 0x2f8a40, 0x5fb457].map(c => new THREE.MeshLambertMaterial({ color: c })) };
+const TREE2 = { trunk: new THREE.CylinderGeometry(0.05, 0.08, 0.7, 10), crown: new THREE.IcosahedronGeometry(1, 2), bark: new THREE.MeshLambertMaterial({ color: 0xa08c76 }),
+  leaf: [0x5cb85c, 0x6cc24a, 0x4caf50, 0x7ccf5a].map(c => new THREE.MeshLambertMaterial({ color: c })) };
 function addTrees(loc, g, seed) {
   const r = rng(seed);
   let placed = 0;
@@ -1473,12 +1643,12 @@ LOCATIONS.forEach((loc, li) => {
   loc.buildings.forEach(b => {
     const shape = new THREE.Shape(b.poly.map(p => new THREE.Vector2(p[0], -p[1])));
     // Massivkörper (Ansicht von außen) — blendet beim Heranzoomen aus
-    const solidMat = plan ? ghostMat() : new THREE.MeshLambertMaterial({ color: /Büro/.test(b.name) ? 0xf8fafc : 0xdfe4ea, transparent: true, opacity: 1 });
+    const solidMat = plan ? ghostMat() : new THREE.MeshLambertMaterial({ color: /Büro/.test(b.name) ? 0xffffff : 0xf2f2ef, transparent: true, opacity: 1 });
     const solid = new THREE.Mesh(new THREE.ExtrudeGeometry(shape, { depth: b.h, bevelEnabled: false }), solidMat);
     solid.rotation.x = -Math.PI / 2; solid.position.y = PLATE_Y;
     solid.castShadow = !plan; solid.receiveShadow = true;
     g.add(tag(solid, loc.id));
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(solid.geometry), new THREE.LineBasicMaterial({ color: plan ? C.plan : 0x8d9ea4, transparent: true, opacity: 1 }));
+    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(solid.geometry), new THREE.LineBasicMaterial({ color: plan ? C.plan : 0xc9cccd, transparent: true, opacity: 1 }));
     edges.rotation.copy(solid.rotation); edges.position.copy(solid.position);
     edges.material.visible = false;
     g.add(edges);
@@ -1586,9 +1756,23 @@ LOCATIONS.forEach((loc, li) => {
   }
   const pin = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(loc.x, PLATE_Y, loc.z - (plan ? 0 : RR - 0.6)), new THREE.Vector3(loc.x, 4.0, loc.z - (plan ? 0 : RR - 0.6))]), new THREE.LineBasicMaterial({ color: plan ? C.plan : 0x5f747b }));
   scene.add(pin);
+  if (!plan) addMapPin(loc, loc.bau ? 0xff9500 : 0x34c759, new THREE.Vector3(loc.x, 0, loc.z - (RR - 0.6)));
   if (loc.bau) { const bp = PROJECTS.find(p => p.id === loc.project); addLabel(bp.id, 'loc bau', `<span class="dot ${bp.status}"></span>${loc.name}<small>${bp.phases[bp.phase]} · ${bp.progress} %</small>`, new THREE.Vector3(loc.x, 4.2, loc.z - RR + 0.6), 'loc'); return; }
   addLabel(loc.id, 'loc' + (plan ? ' plan' : ''), `<span class="dot ${plan ? 'plan' : 'ok'}"></span>${loc.name}${plan ? '' : `<small>${loc.headLabel}</small>`}`, new THREE.Vector3(loc.x, 4.2, loc.z - (plan ? 0 : RR - 0.6)), plan ? 'plan' : 'loc');
 });
+/* Kartennadel wie in Karten-Apps: flache Nadel, dreht sich zur Kamera und schwebt leicht */
+function addMapPin(loc, color, at) {
+  const g = new THREE.Group(), m = new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.18 });
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.46, 28, 18), m); head.scale.z = 0.55; head.position.y = 1.02;
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.95, 28, 1, true), m); tip.rotation.x = Math.PI; tip.scale.z = 0.55; tip.position.y = 0.5;
+  const eye = new THREE.Mesh(new THREE.CircleGeometry(0.19, 24), new THREE.MeshBasicMaterial({ color: 0xffffff })); eye.position.set(0, 1.04, 0.26);
+  const eyeB = eye.clone(); eyeB.position.z = -0.26; eyeB.rotation.y = Math.PI;
+  [head, tip].forEach(x => { x.castShadow = true; tag(x, loc.id); });
+  g.add(head, tip, eye, eyeB);
+  g.position.set(at.x, 2.4, at.z);
+  scene.add(g);
+  mapPins.push({ g, base: 2.4, ph: loc.x * 0.37 });
+}
 HIGHWAYS.forEach(hw => {
   const curve = new THREE.CatmullRomCurve3(hw.xz.map(p => new THREE.Vector3(p.x, 0, p.z)), false, 'centripetal');
   const N = 160, wdt = 0.55, pos = [], idx = [];
@@ -1600,7 +1784,7 @@ HIGHWAYS.forEach(hw => {
   }
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); geom.setIndex(idx); geom.computeVertexNormals();
-  const road = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ color: 0x8d8d8d, side: THREE.DoubleSide }));
+  const road = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ color: 0xd9d7d1, side: THREE.DoubleSide }));
   road.receiveShadow = true;
   scene.add(road);
   const mid = curve.getPointAt(hw.t);
@@ -1622,7 +1806,7 @@ CUSTOMERS.forEach(c => {
   pad.children.forEach(m => tag(m, c.id));
   g.add(pad);
   const Y = PLATE_Y;
-  const hallM = mat(0xe5e7eb), roofM = mat(0x9ca3af), glassM = mat(0x93c5fd), whiteM = mat(0xf8fafc);
+  const hallM = mat(0xf4f4f1), roofM = mat(0xe6e6e2), glassM = mat(0xcfdde6), whiteM = mat(0xffffff);
   const hall = box(2.5, 1.0, 1.5, hallM); hall.position.set(-0.4, Y + 0.5, -0.65); g.add(tag(hall, c.id));
   for (let i = 0; i < 3; i++) {   // Sheddach: Glasband + schräge Dachfläche
     const gx = -1.55 + i * 0.83;
@@ -2686,6 +2870,7 @@ renderer.domElement.addEventListener('pointerup', ev => {
   select(id, !!id);
 });
 window.addEventListener('keydown', e => {
+  if (typing()) return;
   if (e.key === 'Escape') select(null);
   if (e.key === 'Home') { select(null); flyTo(HOME_TGT, HOME_CAM); }
 });
@@ -2773,13 +2958,13 @@ const MM = (() => { const xs = [], zs = []; [...LOCATIONS, ...CUSTOMERS].forEach
 function mmXY(x, z) { const W = mmCanvas.width, H = mmCanvas.height, s = Math.min(W / (MM.x1 - MM.x0), H / (MM.z1 - MM.z0)); const ox = (W - s * (MM.x1 - MM.x0)) / 2, oz = (H - s * (MM.z1 - MM.z0)) / 2; return [ox + (x - MM.x0) * s, oz + (z - MM.z0) * s, s]; }
 function drawMinimap() {
   const g = mmCtx, W = mmCanvas.width, H = mmCanvas.height;
-  g.clearRect(0, 0, W, H); g.fillStyle = '#e7efe1'; g.fillRect(0, 0, W, H);
-  g.strokeStyle = '#c9d2c2'; g.lineWidth = 3;
+  g.clearRect(0, 0, W, H); g.fillStyle = '#efefeb'; g.fillRect(0, 0, W, H);
+  g.strokeStyle = '#d6d6d0'; g.lineWidth = 3;
   HIGHWAYS.forEach(hw => { g.beginPath(); hw.xz.forEach((p, i) => { const [x, y] = mmXY(p.x, p.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.stroke(); });
   VANS.forEach(v => { if (!objects[v.id].road.visible) return; g.strokeStyle = '#' + v.color.toString(16).padStart(6, '0') + '55'; g.lineWidth = 2; g.setLineDash([5, 4]); g.beginPath(); objects[v.id].curve.getPoints(80).forEach((p, i) => { const [x, y] = mmXY(p.x, p.z); i ? g.lineTo(x, y) : g.moveTo(x, y); }); g.closePath(); g.stroke(); g.setLineDash([]); });
   CUSTOMERS.forEach(c => { const [x, y, s] = mmXY(c.x, c.z); g.fillStyle = '#94a3b8'; g.beginPath(); g.arc(x, y, 2.6 * s, 0, 7); g.fill(); });
-  LOCATIONS.forEach(l => { const [x, y, s] = mmXY(l.x, l.z); g.fillStyle = l.bau ? '#f59e0b' : (l.company === 'dtl' ? '#0d9488' : '#2563eb'); g.beginPath(); g.arc(x, y, Math.max(5, (l.r || SITE_R) * s), 0, 7); g.fill();
-    if (!l.bau) { g.fillStyle = '#111827'; g.font = '600 20px "Plus Jakarta Sans", sans-serif'; g.textAlign = 'center'; g.fillText(l.name, x, y - (l.r || SITE_R) * s - 6); } });
+  LOCATIONS.forEach(l => { const [x, y, s] = mmXY(l.x, l.z); g.fillStyle = l.bau ? '#ff9500' : '#34c759'; g.beginPath(); g.arc(x, y, Math.max(5, (l.r || SITE_R) * s), 0, 7); g.fill();
+    if (!l.bau) { g.fillStyle = '#111827'; g.font = '600 20px -apple-system, "Inter", sans-serif'; g.textAlign = 'center'; g.fillText(l.name, x, y - (l.r || SITE_R) * s - 6); } });
   AGENTS.forEach(a => { const p = objects[a.id].group.position; const [x, y] = mmXY(p.x, p.z); g.fillStyle = '#' + a.color.toString(16).padStart(6, '0'); g.save(); g.translate(x, y); g.rotate(Math.PI / 4); g.fillRect(-4, -4, 8, 8); g.restore(); });
   VANS.forEach(v => { const p = objects[v.id].group.position; const [x, y] = mmXY(p.x, p.z); g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 7, 0, 7); g.fill(); g.fillStyle = '#' + v.color.toString(16).padStart(6, '0'); g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); });
   // Blickfeld der Kamera
@@ -2849,8 +3034,8 @@ function advanceClock(sdt) {
   if (dayphase.textContent !== ph) dayphase.textContent = ph;
   // Licht: morgens und abends wärmer und tiefer
   const k = Math.sin(Math.PI * (h - 6) / 13);
-  sun.intensity = 0.6 + 0.35 * k;
-  sun.color.setHSL(0.09, 0.9 - 0.75 * k, 0.6 + 0.3 * k);
+  sun.intensity = 0.5 + 0.3 * k;
+  sun.color.setHSL(0.1, 0.45 - 0.42 * k, 0.75 + 0.25 * k);
   sun.position.set(-60 * Math.cos(Math.PI * (h - 6) / 13), 25 + 40 * k, 28);
 }
 function pulseMesh() {
@@ -2975,7 +3160,7 @@ function tick() {
       r.edges.material.opacity = op;
       r.edges.visible = op > 0.03;
     });
-    l.rim.material.color.setHex(selected === l.id ? 0xc27c00 : 0x2563eb);
+    l.rim.material.color.setHex(selected === l.id ? 0x007aff : 0x9cc8ff);
   });
 
   const showBar = objects.hq.cut > 0.5;
@@ -3064,6 +3249,7 @@ function tick() {
     const lz = document.getElementById('liveZone'); if (lz && o.loc) lz.textContent = o.mode === 'walk' ? (o.inside && o.loc.bld[o.bY] && o.loc.bld[o.bY].data.floorNames ? `unterwegs · ${o.loc.bld[o.bY].data.floorNames[Math.round(o.lp.f)]}` : 'unterwegs') : zoneName(o.loc, p.routine[o.step].z);
   }
 
+  mapPins.forEach(p => { p.g.position.y = p.base + (reduceMotion ? 0 : Math.sin(t * 1.6 + p.ph) * 0.12); p.g.rotation.y = Math.atan2(camera.position.x - p.g.position.x, camera.position.z - p.g.position.z); });
   updateMarker(t);
   updatePops(dt);
   if ((++mmFrame) % 4 === 0 && !document.getElementById('minimap').hidden) drawMinimap();
@@ -3079,6 +3265,280 @@ window.addEventListener('resize', () => {
   updateViewOffset();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
+
+/* ════════════════ Widgets: Uhr, Kennzahlen, Aufträge, Meldungen, Notiz ════════════════
+   Eigene Zusammenstellung je Browser (localStorage). Kennzahlen kommen aus demselben Datenstand wie die 3D-Welt;
+   bei echter Anbindung liefern die Quellen die Zahlen, die Widgets bleiben gleich. */
+const WG_KEY = 'dw-widgets-v1';
+const wgRoot = document.getElementById('widgets');
+const toolIcon = t => { const b = document.querySelector(`#toolbar [data-tool="${t}"] svg`); return b ? b.outerHTML : ''; };
+const ICON = { team: ['team', '#34c759'], proc: ['proc', '#ff9500'], fleet: ['fleet', '#007aff'], proj: ['proj', '#af52de'], data: ['data', '#5ac8fa'], ai: ['ai', '#5856d6'], loc: ['loc', '#ff2d55'] };
+const siteOk = loc => p => loc === 'all' || p === loc;
+const METRICS = [
+  { id: 'online', icon: 'team', name: 'Mitarbeitende online', sub: 'verfügbar oder im Termin', loc: true, go: 'hq',
+    val: l => PEOPLE.filter(p => ['online', 'meet'].includes(p.presence) && siteOk(l)(p.at)).length, max: l => PEOPLE.filter(p => siteOk(l)(p.at)).length },
+  { id: 'meet', icon: 'team', name: 'Mitarbeitende im Termin', sub: 'laut Kalender', loc: true, go: 'hq',
+    val: l => PEOPLE.filter(p => p.presence === 'meet' && siteOk(l)(p.at)).length, max: l => PEOPLE.filter(p => siteOk(l)(p.at)).length },
+  { id: 'wip', icon: 'proc', name: 'Offene Vorgänge', sub: 'in allen Prozessschritten', go: 'wartung',
+    val: () => PROCESSES.reduce((a, pr) => a + pr.steps.reduce((b, st) => b + (st.wip || 0), 0), 0) },
+  { id: 'hand', icon: 'proc', name: 'Offene Übergaben', sub: 'Schritte mit Rückstand', go: 'wartung', tone: v => v ? 'warn' : 'ok',
+    val: () => PROCESSES.reduce((a, pr) => a + pr.steps.filter(st => st.open).length, 0) },
+  { id: 'hot', icon: 'proc', name: 'Stau in Prozessen', sub: 'kritische Schritte', go: 'wartung', tone: v => v ? 'bad' : 'ok',
+    val: () => PROCESSES.reduce((a, pr) => a + pr.steps.filter(st => st.state === 'hot').length, 0) },
+  { id: 'drive', icon: 'fleet', name: 'Fahrzeuge unterwegs', sub: 'auf dem Weg', loc: true, go: 'fleet',
+    val: l => VANS.filter(v => siteOk(l)(v.home) && vanStatus(v).kind === 'drive').length, max: l => VANS.filter(v => siteOk(l)(v.home)).length },
+  { id: 'atcust', icon: 'fleet', name: 'Fahrzeuge beim Kunden', sub: 'Einsatz vor Ort', loc: true, go: 'fleet',
+    val: l => VANS.filter(v => siteOk(l)(v.home) && vanStatus(v).kind === 'stop' && byId[vanStatus(v).at].type === 'cust').length, max: l => VANS.filter(v => siteOk(l)(v.home)).length },
+  { id: 'proj', icon: 'proj', name: 'Vorhaben aktiv', sub: 'Projekte und Bauvorhaben', loc: true, go: 'roadmap',
+    val: l => PROJECTS.filter(p => ['ok', 'warn', 'bad'].includes(p.status) && siteOk(l)(p.at)).length },
+  { id: 'late', icon: 'proj', name: 'Vorhaben mit Verzug', sub: 'gelb oder rot', loc: true, go: 'roadmap', tone: v => v ? 'warn' : 'ok',
+    val: l => PROJECTS.filter(p => ['warn', 'bad'].includes(p.status) && siteOk(l)(p.at)).length },
+  { id: 'bau', icon: 'proj', name: 'Bauvorhaben', sub: 'laufend und geplant', go: 'roadmap',
+    val: () => PROJECTS.filter(p => p.kind === 'bau' && p.status !== 'done').length },
+  { id: 'conn', icon: 'data', name: 'Programme angebunden', sub: 'live oder über die GF-Suite', go: 'sources',
+    val: () => SYSTEMS.filter(x => !x.plan && SOURCES[x.id] && ['live', 'gf'].includes(SOURCES[x.id].conn)).length, max: () => SYSTEMS.filter(x => !x.plan).length },
+  { id: 'syserr', icon: 'data', name: 'Programme mit Störung', sub: 'Störung oder Verzögerung', go: 'sources', tone: v => v ? 'bad' : 'ok',
+    val: () => SYSTEMS.filter(x => !x.plan && ['bad', 'warn'].includes(x.status)).length },
+  { id: 'agents', icon: 'ai', name: 'KI-Agenten', sub: 'im Register', go: 'aiws', val: () => AGENTS.length },
+  { id: 'approve', icon: 'ai', name: 'Freigaben offen', sub: 'warten auf einen Menschen', go: 'aiws', tone: v => v ? 'warn' : 'ok',
+    val: () => AGENTS.reduce((n, a) => n + a.approvals.length, 0) },
+  { id: 'done', icon: 'ai', name: 'Erledigte Agenten-Aufgaben', sub: 'seit Arbeitsbeginn', go: 'aiws', val: () => AGENTS.reduce((n, a) => n + a.done, 0) },
+];
+const MET = Object.fromEntries(METRICS.map(m => [m.id, m]));
+const OTHER = [
+  { kind: 'clock', icon: 'loc', name: 'Uhr', sub: 'Uhrzeit und Tag der Simulation' },
+  { kind: 'orders', icon: 'proc', name: 'Aufträge im Blick', sub: 'offene Übergaben mit Zuständigkeit' },
+  { kind: 'events', icon: 'data', name: 'Meldungen', sub: 'neueste Ereignisse' },
+  { kind: 'note', icon: 'proj', name: 'Notiz', sub: 'eigener Text, bleibt im Browser' },
+];
+const DISPLAYS = { num: 'Zahl', bars: 'Verlauf', ring: 'Anteil' };
+const SITES = () => [{ id: 'all', name: 'Alle Standorte' }].concat(LOCATIONS.filter(l => !l.plan && !l.bau).map(l => ({ id: l.id, name: l.name })));
+const DEFAULT_WG = [
+  { kind: 'clock' },
+  { kind: 'kpi', metric: 'online', disp: 'ring', loc: 'all', title: 'Team online' },
+  { kind: 'orders', title: 'Aufträge im Blick' },
+  { kind: 'kpi', metric: 'wip', disp: 'bars', loc: 'all', title: 'Offene Vorgänge' },
+  { kind: 'events', title: 'Meldungen' },
+  { kind: 'note', title: 'Meine Notiz', text: '' },
+];
+let widgets;
+try { widgets = JSON.parse(localStorage.getItem(WG_KEY)); } catch (e) { widgets = null; }
+if (!Array.isArray(widgets)) widgets = DEFAULT_WG.map(w => Object.assign({}, w));
+widgets = widgets.filter(w => w.kind !== 'kpi' || MET[w.metric]);
+widgets.forEach((w, i) => { w.uid = w.uid || 'w' + Date.now().toString(36) + i; });
+function saveWidgets() { try { localStorage.setItem(WG_KEY, JSON.stringify(widgets.map(({ hist, ...w }) => w))); } catch (e) { /* privater Modus: nur für diese Sitzung */ } }
+const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+function metricVal(w) { const m = MET[w.metric]; return { v: m.val(w.loc || 'all'), max: m.max ? m.max(w.loc || 'all') : null }; }
+function siteName(id) { return (SITES().find(x => x.id === id) || { name: 'Alle Standorte' }).name; }
+function simDate() {
+  const d = new Date(); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow + simDay);
+  return d.toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'long' });
+}
+function clockSvg(id) {
+  const ticks = Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6, r1 = i % 3 ? 41 : 38; return `<line x1="${50 + Math.sin(a) * r1}" y1="${50 - Math.cos(a) * r1}" x2="${50 + Math.sin(a) * 45}" y2="${50 - Math.cos(a) * 45}" stroke="#1d1d1f" stroke-width="${i % 3 ? 1.2 : 2.4}" stroke-linecap="round"/>`; }).join('');
+  const nums = [12, 3, 6, 9].map((n, i) => { const a = i * Math.PI / 2; return `<text x="${50 + Math.sin(a) * 30}" y="${50 - Math.cos(a) * 30 + 4}" text-anchor="middle" font-size="11" font-weight="600" fill="#1d1d1f" font-family="-apple-system,Inter,sans-serif">${n}</text>`; }).join('');
+  return `<svg viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="49" fill="#fff"/><circle cx="50" cy="50" r="48.5" fill="none" stroke="rgba(0,0,0,.08)"/>${ticks}${nums}
+    <line id="${id}h" x1="50" y1="50" x2="50" y2="27" stroke="#1d1d1f" stroke-width="3.6" stroke-linecap="round"/>
+    <line id="${id}m" x1="50" y1="50" x2="50" y2="14" stroke="#1d1d1f" stroke-width="2.4" stroke-linecap="round"/>
+    <line id="${id}s" x1="50" y1="58" x2="50" y2="10" stroke="#ff3b30" stroke-width="1.2" stroke-linecap="round"/>
+    <circle cx="50" cy="50" r="3" fill="#ff3b30"/><circle cx="50" cy="50" r="1.2" fill="#fff"/></svg>`;
+}
+function ringSvg(v, max, tone) {
+  const f = max ? Math.max(0, Math.min(1, v / max)) : 0, C2 = 2 * Math.PI * 32, col = { ok: '#34c759', warn: '#ff9500', bad: '#ff3b30' }[tone] || '#007aff';
+  return `<svg class="wring" viewBox="0 0 76 76" aria-hidden="true"><circle cx="38" cy="38" r="32" fill="none" stroke="rgba(118,118,128,.16)" stroke-width="9"/>
+    <circle cx="38" cy="38" r="32" fill="none" stroke="${col}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${(f * C2).toFixed(1)} ${C2.toFixed(1)}" transform="rotate(-90 38 38)"/>
+    <text x="38" y="43" text-anchor="middle" font-size="15" font-weight="700" fill="#1d1d1f" font-family="-apple-system,Inter,sans-serif">${Math.round(f * 100)}%</text></svg>`;
+}
+function barsSvg(hist, tone) {
+  const h = hist.length ? hist : [0], mx = Math.max(1, ...h), n = 16, data = h.slice(-n), bw = 100 / n, col = { warn: '#ff9500', bad: '#ff3b30' }[tone] || '#007aff';
+  return `<svg class="wbars" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">${data.map((v, i) => { const hh = Math.max(2, v / mx * 36); return `<rect x="${(n - data.length + i) * bw + bw * 0.18}" y="${40 - hh}" width="${bw * 0.64}" height="${hh}" rx="1.4" fill="${col}" opacity="${i === data.length - 1 ? 1 : 0.35 + 0.5 * i / data.length}"/>`; }).join('')}</svg>`;
+}
+function ordersHtml() {
+  const items = [];
+  PROCESSES.forEach(pr => pr.steps.forEach(st => { if (st.open) items.push({ st, pr }); }));
+  items.sort((a, b) => (b.st.state === 'hot') - (a.st.state === 'hot') || (b.st.wip || 0) - (a.st.wip || 0));
+  const src = SOURCES.inform && ['live', 'gf'].includes(SOURCES.inform.conn);
+  return `<ul class="wlist">${items.slice(0, 3).map(({ st, pr }) => `<li><button type="button" data-go="${st.id}"><span class="dot ${st.state === 'hot' ? 'bad' : st.state === 'slow' ? 'warn' : 'ok'}"></span><span>${esc(st.open)}<small>${esc(pr.name)} · ${esc(st.n)} · ${esc(GROUP_N[st.who] || '')}</small></span></button></li>`).join('') || '<li class="wfoot">Keine offenen Übergaben.</li>'}</ul>
+    <p class="wfoot">${src ? 'Live aus Inform' : 'Beispieldaten · Inform noch nicht verbunden'}</p>`;
+}
+function wgBody(w, preview) {
+  const id = preview ? 'pv' : w.uid;
+  if (w.kind === 'clock') return `<div class="wclock">${clockSvg('ck' + id)}<div class="wdate"><b data-f="date">${simDate()}</b><span data-f="phase">${dayphase.textContent}</span><span data-f="time">${simClockStr()}</span></div></div>`;
+  if (w.kind === 'note') return `<textarea aria-label="Notiz" placeholder="Hier klicken und losschreiben" ${preview ? 'disabled' : ''}>${esc(w.text || '')}</textarea>`;
+  if (w.kind === 'orders') return `<div data-f="orders">${ordersHtml()}</div>`;
+  if (w.kind === 'events') return preview ? `<ul class="wlist"><li class="wfoot">Neueste Ereignisse erscheinen hier.</li></ul>` : `<div data-f="events"></div>`;
+  const m = MET[w.metric], { v, max } = metricVal(w), tone = m.tone ? m.tone(v) : 'ok';
+  const big = `<button type="button" class="wbig" data-f="big" data-go="${m.go}">${v}${max != null && w.disp !== 'ring' ? `<small>/${max}</small>` : ''}</button>`;
+  const sub = `<div class="wsub"><i class="${tone}" data-f="tone"></i><span>${esc(m.sub)}${w.loc && w.loc !== 'all' ? ' · ' + esc(siteName(w.loc)) : ''}</span></div><div class="wstand" data-f="stand">Stand ${simClockStr()}</div>`;
+  if (w.disp === 'ring') return `<div class="wrow"><span data-f="ring">${ringSvg(v, max || v || 1, tone)}</span><div class="wtxt">${big}${sub}</div></div>`;
+  if (w.disp === 'bars') return `${big}${sub}<span data-f="bars">${barsSvg(w.hist || [v], tone)}</span>`;
+  return big + sub;
+}
+function wgTitle(w) { return w.title || (w.kind === 'kpi' ? MET[w.metric].name : (OTHER.find(o => o.kind === w.kind) || {}).name) || 'Widget'; }
+function wgHtml(w, preview) {
+  return `<h3>${esc(wgTitle(w))}</h3>${preview ? '' : `<button type="button" class="wmenu" aria-haspopup="true" aria-expanded="false" aria-label="Widget-Menü">···</button>`}${wgBody(w, preview)}`;
+}
+function renderWidgets() {
+  // Meldungsliste zurückparken, bevor neu gezeichnet wird
+  document.getElementById('feed').appendChild(eventsEl);
+  wgRoot.innerHTML = '';
+  widgets.forEach((w, i) => {
+    const el = document.createElement('section');
+    el.className = 'wg' + (w.kind === 'note' ? ' note-wg' : '');
+    el.dataset.uid = w.uid;
+    el.setAttribute('aria-label', wgTitle(w));
+    el.innerHTML = wgHtml(w);
+    wgRoot.appendChild(el);
+    if (w.kind === 'events') el.querySelector('[data-f="events"]').appendChild(eventsEl);
+    const ta = el.querySelector('textarea');
+    if (ta) ta.addEventListener('input', () => { w.text = ta.value; saveWidgets(); });
+    el.querySelector('.wmenu').addEventListener('click', e => { e.stopPropagation(); openWgMenu(el, w, i); });
+  });
+  const add = document.createElement('button');
+  add.type = 'button'; add.className = 'wadd'; add.innerHTML = '<span aria-hidden="true">＋</span> Widget hinzufügen';
+  add.addEventListener('click', () => openWizard());
+  wgRoot.appendChild(add);
+}
+wgRoot.addEventListener('click', e => {
+  const b = e.target.closest('[data-go]'); if (!b) return;
+  const go = b.dataset.go;
+  if (go === 'roadmap' || go === 'sources' || go === 'fleet' || go === 'aiws') select(go, go === 'aiws');
+  else select(go, true);
+});
+function closeWgMenus() { wgRoot.querySelectorAll('.wpop').forEach(p => p.remove()); wgRoot.querySelectorAll('.wmenu').forEach(b => b.setAttribute('aria-expanded', 'false')); }
+function openWgMenu(el, w, i) {
+  const btn = el.querySelector('.wmenu'), was = btn.getAttribute('aria-expanded') === 'true';
+  closeWgMenus(); if (was) return;
+  btn.setAttribute('aria-expanded', 'true');
+  const pop = document.createElement('div'); pop.className = 'wpop'; pop.setAttribute('role', 'menu');
+  const acts = [];
+  if (w.kind === 'kpi') acts.push(['Bearbeiten …', () => openWizard(w)]);
+  if (i > 0) acts.push(['Nach oben', () => { widgets.splice(i - 1, 0, widgets.splice(i, 1)[0]); }]);
+  if (i < widgets.length - 1) acts.push(['Nach unten', () => { widgets.splice(i + 1, 0, widgets.splice(i, 1)[0]); }]);
+  acts.push(['Entfernen', () => { widgets.splice(i, 1); }, 'del']);
+  acts.forEach(([t, fn, cls]) => { const b = document.createElement('button'); b.type = 'button'; b.setAttribute('role', 'menuitem'); b.textContent = t; if (cls) b.className = cls;
+    b.addEventListener('click', e => { e.stopPropagation(); closeWgMenus(); fn(); saveWidgets(); renderWidgets(); }); pop.appendChild(b); });
+  el.appendChild(pop); pop.querySelector('button').focus();
+}
+document.addEventListener('click', e => { if (!e.target.closest('.wpop')) closeWgMenus(); });
+
+// Laufend aktualisieren: Uhrzeiger, Kennzahlen, Verlauf alle 15 Simulationsminuten
+let wgSample = -1;
+function updateWidgets() {
+  const sample = Math.floor(simMin / 15) !== wgSample;
+  if (sample) wgSample = Math.floor(simMin / 15);
+  widgets.forEach(w => {
+    const el = wgRoot.querySelector(`[data-uid="${w.uid}"]`); if (!el) return;
+    if (w.kind === 'clock') {
+      const h = simMin / 60, m = simMin % 60, s = (simMin % 1) * 60, set = (k, deg) => { const ln = el.querySelector(`#ck${w.uid}${k}`); if (ln) ln.setAttribute('transform', `rotate(${deg.toFixed(2)} 50 50)`); };
+      set('h', (h % 12) * 30); set('m', m * 6); set('s', s * 6);
+      const f = k => el.querySelector(`[data-f="${k}"]`);
+      if (f('time').textContent !== simClockStr()) f('time').textContent = simClockStr();
+      if (f('phase').textContent !== dayphase.textContent) f('phase').textContent = dayphase.textContent;
+      const d = simDate(); if (f('date').textContent !== d) f('date').textContent = d;
+    } else if (w.kind === 'kpi') {
+      const m = MET[w.metric], { v, max } = metricVal(w), tone = m.tone ? m.tone(v) : 'ok';
+      if (sample) { w.hist = (w.hist || []).concat(v).slice(-16); }
+      const big = el.querySelector('[data-f="big"]'), txt = `${v}${max != null && w.disp !== 'ring' ? `<small>/${max}</small>` : ''}`;
+      if (big.innerHTML !== txt) big.innerHTML = txt;
+      el.querySelector('[data-f="tone"]').className = tone;
+      el.querySelector('[data-f="stand"]').textContent = `Stand ${simClockStr()}`;
+      const r = el.querySelector('[data-f="ring"]'); if (r) { const hh = ringSvg(v, max || v || 1, tone); if (r.dataset.h !== hh) { r.innerHTML = hh; r.dataset.h = hh; } }
+      const b = el.querySelector('[data-f="bars"]'); if (b && sample) b.innerHTML = barsSvg(w.hist, tone);
+    } else if (w.kind === 'orders' && sample) {
+      el.querySelector('[data-f="orders"]').innerHTML = ordersHtml();
+    }
+  });
+}
+renderWidgets();
+setInterval(updateWidgets, 250);
+
+// Ein- und Ausblenden (schmale Bildschirme: standardmäßig aus)
+const wgToggle = document.getElementById('wgToggle');
+const wgNarrow = () => window.matchMedia('(max-width: 860px)').matches;
+function syncWgToggle() { wgToggle.setAttribute('aria-pressed', String(wgNarrow() ? document.body.classList.contains('wg-on') : !document.body.classList.contains('wg-off'))); }
+wgToggle.addEventListener('click', () => { document.body.classList.toggle(wgNarrow() ? 'wg-on' : 'wg-off'); syncWgToggle(); });
+window.addEventListener('resize', syncWgToggle);
+syncWgToggle();
+
+/* ── Assistent „Widget hinzufügen“ in vier Schritten ── */
+const wz = document.getElementById('wizard'), wzBody = document.getElementById('wzBody'), wzSteps = document.getElementById('wzSteps');
+const wzBack = document.getElementById('wzBack'), wzNext = document.getElementById('wzNext');
+const WZ_STEPS = [['Kennzahl', 'Was zeigen?'], ['Darstellung', 'Wie aussehen?'], ['Bereich', 'Welcher Standort?'], ['Titel', 'Name, Vorschau']];
+let wzs = null, wzEdit = null, wzQuery = '', wzReturn = null;
+function icoHtml(k) { const [t, c] = ICON[k]; return `<span class="wzico" style="background:${c}">${toolIcon(t)}</span>`; }
+function openWizard(edit) {
+  wzReturn = document.activeElement;
+  wzEdit = edit || null;
+  wzs = edit ? Object.assign({}, edit, { step: 1 }) : { step: 1, kind: null, metric: null, disp: 'num', loc: 'all', title: '' };
+  wzQuery = '';
+  document.getElementById('wzTitle').textContent = edit ? 'Widget bearbeiten' : 'Widget hinzufügen';
+  wz.hidden = false; renderWizard();
+}
+function closeWizard() { wz.hidden = true; wzs = null; if (wzReturn && wzReturn.focus) wzReturn.focus(); }
+function wzMaxStep() { return wzs.kind && wzs.kind !== 'kpi' ? 4 : wzs.metric ? 4 : 1; }
+function renderWizard() {
+  const st = wzs.step, other = wzs.kind && wzs.kind !== 'kpi';
+  wzSteps.innerHTML = WZ_STEPS.map(([a, b], i) => `<li class="${i + 1 === st ? 'on' : i + 1 < st && !(other && i > 0) ? 'done' : ''}"><i>${i + 1}</i><span>${a}<small>${b}</small></span></li>`).join('');
+  let h = `<p class="wzeyebrow">Schritt ${st} von 4</p>`;
+  if (st === 1) {
+    h += `<p class="wzq">Kennzahl</p><p class="wzhint">Was soll das Widget zeigen?</p>
+      <input type="search" class="wzsearch" id="wzSearch" placeholder="Kennzahl oder Widget suchen …" value="${esc(wzQuery)}" aria-label="Suchen">
+      <ul class="wzlist" id="wzList"></ul>`;
+  } else if (st === 2) {
+    const prev = { num: `<svg viewBox="0 0 90 60"><text x="12" y="40" font-size="30" font-weight="700" fill="#1d1d1f" font-family="-apple-system,Inter,sans-serif">26</text><rect x="12" y="47" width="40" height="4" rx="2" fill="rgba(118,118,128,.3)"/></svg>`,
+      bars: `<svg viewBox="0 0 90 60">${[14, 22, 18, 30, 26, 38, 34, 46].map((v, i) => `<rect x="${8 + i * 10}" y="${54 - v}" width="6" height="${v}" rx="2" fill="#007aff" opacity="${0.35 + i * 0.09}"/>`).join('')}</svg>`,
+      ring: `<svg viewBox="0 0 90 60"><circle cx="45" cy="30" r="22" fill="none" stroke="rgba(118,118,128,.18)" stroke-width="7"/><circle cx="45" cy="30" r="22" fill="none" stroke="#34c759" stroke-width="7" stroke-linecap="round" stroke-dasharray="96 139" transform="rotate(-90 45 30)"/></svg>` };
+    h += `<p class="wzq">Darstellung</p><p class="wzhint">Wie soll „${esc(MET[wzs.metric].name)}“ aussehen?</p>
+      <div class="wzcards">${Object.entries(DISPLAYS).map(([k, n]) => `<button type="button" class="wzcard" data-disp="${k}" aria-pressed="${wzs.disp === k}">${prev[k]}${n}</button>`).join('')}</div>
+      ${wzs.disp === 'ring' && !MET[wzs.metric].max ? '<p class="wzhint" style="margin-top:10px">Diese Kennzahl hat keine Gesamtmenge; der Ring zeigt dann immer voll.</p>' : ''}`;
+  } else if (st === 3) {
+    h += `<p class="wzq">Bereich</p>`;
+    if (MET[wzs.metric].loc) h += `<p class="wzhint">Für welchen Standort?</p><ul class="wzlist">${SITES().map(x => `<li><button type="button" class="wzopt" data-loc="${x.id}" aria-pressed="${wzs.loc === x.id}">${icoHtml('loc')}<span>${esc(x.name)}<small>${x.id === 'all' ? 'Chemnitz, Siebenlehn, Zwenkau' : LOCATIONS.find(l => l.id === x.id).headLabel || ''}</small></span></button></li>`).join('')}</ul>`;
+    else { wzs.loc = 'all'; h += `<p class="wzhint">„${esc(MET[wzs.metric].name)}“ gilt für das ganze Unternehmen. Weiter mit dem Titel.</p>`; }
+  } else {
+    h += `<p class="wzq">Titel</p><p class="wzhint">So erscheint das Widget in der Leiste.</p>
+      <label class="wzfield">Titel<input id="wzName" type="text" maxlength="40" value="${esc(wzs.title || wgTitle(wzs))}"></label>
+      <div class="wzprev" id="wzPrev"></div>`;
+  }
+  wzBody.innerHTML = h;
+  wzBack.disabled = st === 1;
+  wzNext.textContent = st === 4 ? (wzEdit ? 'Speichern' : 'Hinzufügen') : 'Weiter';
+  wzNext.disabled = st === 1 && !wzs.kind;
+  if (st === 1) { renderWzList(); const q = document.getElementById('wzSearch'); q.addEventListener('input', () => { wzQuery = q.value; renderWzList(); }); q.focus(); }
+  wzBody.querySelectorAll('[data-disp]').forEach(b => b.addEventListener('click', () => { wzs.disp = b.dataset.disp; renderWizard(); }));
+  wzBody.querySelectorAll('[data-loc]').forEach(b => b.addEventListener('click', () => { wzs.loc = b.dataset.loc; renderWizard(); }));
+  if (st === 4) {
+    const inp = document.getElementById('wzName'), pv = document.getElementById('wzPrev');
+    const draw = () => { wzs.title = inp.value.trim(); pv.innerHTML = `<section class="wg${wzs.kind === 'note' ? ' note-wg' : ''}">${wgHtml(Object.assign({}, wzs, { hist: wzEdit && wzEdit.hist }), true)}</section>`; };
+    inp.addEventListener('input', draw); draw(); inp.focus(); inp.select();
+  }
+}
+function renderWzList() {
+  const q = wzQuery.trim().toLowerCase(), hit = o => !q || (o.name + ' ' + o.sub).toLowerCase().includes(q);
+  const list = document.getElementById('wzList');
+  const mets = METRICS.filter(hit), oth = wzEdit ? [] : OTHER.filter(hit);
+  list.innerHTML = (mets.length ? `<li class="wzgrp">Kennzahlen</li>` : '') + mets.map(m => `<li><button type="button" class="wzopt" data-met="${m.id}" aria-pressed="${wzs.kind === 'kpi' && wzs.metric === m.id}">${icoHtml(m.icon)}<span>${esc(m.name)}<small>${esc(m.sub)}</small></span></button></li>`).join('')
+    + (oth.length ? `<li class="wzgrp">Weitere Widgets</li>` : '') + oth.map(o => `<li><button type="button" class="wzopt" data-kind="${o.kind}" aria-pressed="${wzs.kind === o.kind}">${icoHtml(o.icon)}<span>${esc(o.name)}<small>${esc(o.sub)}</small></span></button></li>`).join('')
+    || '<li class="wzhint">Nichts gefunden.</li>';
+  list.querySelectorAll('[data-met]').forEach(b => b.addEventListener('click', () => { if (wzs.metric !== b.dataset.met) wzs.title = ''; wzs.kind = 'kpi'; wzs.metric = b.dataset.met; wzs.step = 2; renderWizard(); }));
+  list.querySelectorAll('[data-kind]').forEach(b => b.addEventListener('click', () => { wzs.kind = b.dataset.kind; wzs.metric = null; wzs.title = ''; wzs.step = 4; renderWizard(); }));
+}
+wzBack.addEventListener('click', () => { wzs.step = wzs.kind !== 'kpi' ? 1 : Math.max(1, wzs.step - 1); renderWizard(); });
+wzNext.addEventListener('click', () => {
+  if (wzs.step < 4) { wzs.step = Math.min(wzMaxStep(), wzs.step + 1); renderWizard(); return; }
+  const { step, ...w } = wzs;
+  if (!w.title) delete w.title;
+  if (w.kind === 'note' && w.text == null) w.text = '';
+  if (wzEdit) { const i = widgets.indexOf(wzEdit); if (wzEdit.metric !== w.metric || wzEdit.loc !== w.loc) w.hist = []; widgets[i] = w; }
+  else { w.uid = 'w' + Date.now().toString(36); widgets.push(w); }
+  saveWidgets(); closeWizard(); renderWidgets(); updateWidgets();
+  const el = wgRoot.querySelector(`[data-uid="${w.uid}"]`); if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+});
+document.getElementById('wzClose').addEventListener('click', closeWizard);
+wz.addEventListener('click', e => { if (e.target === wz) closeWizard(); });
+wz.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); closeWizard(); } });
+window.DWWidgets = { METRICS, widgets: () => widgets, render: renderWidgets };
 
 if (location.protocol === 'file:') window.__dw = { LOCATIONS, PEOPLE, buildPath, zonePoint, spotsFor, objects, labels };
 applyVisibility();
