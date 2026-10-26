@@ -83,4 +83,6 @@ Service-Postfach → Vorgänge, Outlook-Kalender, Anmeldung mit Microsoft), Fact
 (Mitarbeiter, Abwesenheiten), REST-API mit API-Schlüsseln (`/api/v1`, Beschreibung unter
 `/api/v1/openapi.json`), Webhooks (JSON oder Microsoft-Teams-Karte) und der
 Import-Assistent für Excel/CSV. Die **Systemlandschaft (3D)** aus der GF-Suite läuft unter
-`/landschaft` mit Live-Daten aus dem Tracker (Standort je Team). Details: [ARCHITEKTUR.md, Abschnitt 13](ARCHITEKTUR.md).
+`/landschaft` mit Live-Daten aus dem Tracker (Standort je Team). Als Einzeldatei: `standalone/systemlandschaft.html`
+(neben `gf-suite-tracker.html` ablegen; Beispieldaten oder „Daten laden“ mit einer Tracker-Sicherung;
+bauen mit `node scripts/build-landscape-standalone.mjs`). Details: [ARCHITEKTUR.md, Abschnitt 13](ARCHITEKTUR.md).

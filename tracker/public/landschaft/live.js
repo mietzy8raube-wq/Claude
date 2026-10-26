@@ -21,15 +21,19 @@
     .gft-play:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(47,107,255,.42)}@media (max-width:860px){.gft-back span{display:none}.gft-back{padding:7px 9px}#top .brand-txt b{font-size:14px!important}}`;
   document.head.appendChild(style);
 
+  // Einzeldatei (systemlandschaft.html): kein Server – Zahlen werden im Browser aus Beispieldaten
+  // oder aus einer geladenen Tracker-Sicherung (JSON) berechnet
+  const STATIC = window.GFT_STATIC || null, TRACKER = "gf-suite-tracker.html"; let fileDb = null, fileName = "";
   const badge = () => document.getElementById("dataBadge");
   function setBadge() {
     const b = badge(); if (!b) return;
-    b.classList.toggle("live", status === "live"); b.classList.toggle("err", status === "error" || status === "login");
-    b.textContent = status === "live" ? "Live · GF Tracker" : status === "login" ? "Nicht angemeldet" : status === "error" ? "Verbindung unterbrochen" : "Verbinde …";
+    b.classList.toggle("live", status === "live" || status === "file"); b.classList.toggle("err", status === "error" || status === "login");
+    b.textContent = status === "live" ? "Live · GF Tracker" : status === "demo" ? "Beispieldaten · GF Tracker" : status === "file" ? `Sicherung · ${fileName}` : status === "login" ? "Nicht angemeldet" : status === "error" ? "Verbindung unterbrochen" : "Verbinde …";
     b.title = data ? `Tracker-Daten vom ${new Date(data.at).toLocaleString("de-DE")} · übrige Programme: Beispieldaten` : "Datenquellen anzeigen";
   }
 
   async function load() {
+    if (STATIC) { data = STATIC.compute(fileDb); status = fileDb ? "file" : "demo"; sig = String(Math.random()); apply(); return; }
     try {
       const r = await fetch("/api/landscape", { credentials: "same-origin", headers: { "X-GFT": "1" } });
       if (r.status === 401) { status = "login"; setBadge(); return; }
@@ -62,18 +66,32 @@
 
   const issueRows = (list) => list.map((i) => `<li><a class="trow" href="${esc(rel(i.url))}" target="_blank" rel="noopener"><span class="dot ${i.sla ? "bad" : i.overdue ? "warn" : "ok"}"></span><span>${esc(i.key)} · ${esc(i.summary)}<small>${esc(i.status)} · ${PRIO[i.prio] || esc(i.prio)}${i.assignee ? ` · ${esc(i.assignee)}` : " · nicht zugewiesen"}${i.sla ? " · SLA verletzt" : i.overdue ? " · überfällig" : ""}</small></span></a></li>`).join("");
   const facts = (s) => `<dl class="facts"><dt>Offen</dt><dd>${s.open}</dd><dt>SLA verletzt</dt><dd>${s.sla}</dd><dt>Überfällig</dt><dd>${s.overdue}</dd><dt>Hohe Priorität</dt><dd>${s.high}</dd><dt>Nicht zugewiesen</dt><dd>${s.unassigned}</dd><dt>Termine heute</dt><dd>${s.today}</dd></dl>`;
-  const appLink = (h) => `/${h}`; // Seite läuft im Tracker selbst: relative Verweise
+  const appLink = (h) => (STATIC ? `${TRACKER}${h}` : `/${h}`); // Seite läuft im Tracker selbst: relative Verweise
   const rel = (u) => (data && u.startsWith(data.appUrl) ? u.slice(data.appUrl.length) || "/" : u);
   const teamLinks = (teams) => teams.map((t) => `<li><a class="trow" href="${esc(appLink(`#/filters?jql=${encodeURIComponent(`team = "${t}" AND statusCategory != Done ORDER BY priority DESC`)}`))}" target="_blank" rel="noopener"><span class="dot ok"></span><span>Team ${esc(t)}<small>offene Vorgänge im Tracker</small></span></a></li>`).join("");
 
-  window.GFTLive = { get data() { return data; } };
+  window.GFTLive = { get data() { return data; }, get label() { return status === "demo" ? "Beispieldaten" : status === "file" ? "Aus Sicherung" : "Live · GF Tracker"; } };
+  function fileButton(top) {
+    const b = document.createElement("button"); b.type = "button"; b.className = "gft-back"; b.innerHTML = "⤒<span> Daten laden</span>";
+    b.title = "Sicherung aus dem GF Tracker laden (Einstellungen → Sicherung herunterladen, JSON) – bleibt auf diesem Gerät";
+    const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json,application/json"; inp.hidden = true;
+    inp.addEventListener("change", async () => {
+      const f = inp.files[0]; if (!f) return;
+      try { const j = JSON.parse(await f.text()); const d = j.data && j.data.issues ? j.data : j; if (!Array.isArray(d.issues) || !Array.isArray(d.projects)) throw new Error();
+        fileDb = d; fileName = f.name.replace(/\.json$/i, "").slice(0, 28); seen.clear(); await load(); }
+      catch { alert("Diese Datei ist keine Sicherung aus dem GF Tracker (JSON mit Vorgängen und Projekten)."); }
+      inp.value = "";
+    });
+    b.addEventListener("click", () => inp.click()); top.insertBefore(inp, top.children[1]); top.insertBefore(b, top.children[1]);
+  }
   const levelBtn = (pid, label) => `<button type="button" class="gft-play" data-level="${esc(pid)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>${label}</button>`;
   const wireLevel = (el) => el.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => window.GFTLevel && window.GFTLevel.open(b.dataset.level)));
   window.DWHooks = {
     ready() {
       const top = document.getElementById("top");
-      if (top && !document.querySelector(".gft-back")) { const a = document.createElement("a"); a.className = "gft-back"; a.href = "/"; a.innerHTML = "←<span> GF Tracker</span>"; a.title = "Zurück zum Tracker"; top.insertBefore(a, top.firstChild); }
+      if (top && !document.querySelector(".gft-back")) { const a = document.createElement("a"); a.className = "gft-back"; a.href = STATIC ? TRACKER : "/"; a.innerHTML = "←<span> GF Tracker</span>"; a.title = "Zurück zum Tracker"; top.insertBefore(a, top.firstChild); }
       setBadge(); load().then(() => { const m = location.hash.match(/^#level=([\w-]+)/); if (m && window.GFTLevel) window.GFTLevel.open(m[1]); });
+      if (STATIC) { fileButton(top); return; }
       try { const es = new EventSource("/api/events"); es.addEventListener("rev", soon); es.onerror = () => {}; } catch { /* ohne Live-Kanal reicht das Nachladen */ }
       setInterval(load, 60e3);
     },
@@ -93,13 +111,13 @@
       if (!data) { if (entry.type === "loc" || id === "tracker") body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h">GF Tracker</p><p class="hint">${status === "login" ? 'Nicht angemeldet. <a href="/login?next=/landschaft">Anmelden</a>' : "Daten werden geladen …"}</p></section>`); return; }
       if (entry.type === "loc" && data.sites[id]) {
         const s = data.sites[id];
-        body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h"><span>GF Tracker · live</span><a href="${esc(appLink("#/your-work"))}" target="_blank" rel="noopener">Tracker öffnen ↗</a></p>
+        body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h"><span>GF Tracker · ${STATIC ? esc(window.GFTLive.label) : "live"}</span><a href="${esc(appLink("#/your-work"))}" target="_blank" rel="noopener">Tracker öffnen ↗</a></p>
           ${facts(s)}${s.top.length ? `<p class="h">Wichtigste offene Vorgänge</p><ul class="links" style="margin-bottom:12px">${issueRows(s.top)}</ul>` : '<p class="hint">Keine offenen Vorgänge an diesem Standort.</p>'}
           ${s.teams.length ? `<p class="h">Teams an diesem Standort</p><ul class="links">${teamLinks(s.teams)}</ul>` : '<p class="hint">Noch kein Team zugeordnet (im Tracker unter Teams → Standort).</p>'}</section>`);
       } else if (id === "tracker") {
         const t = data.totals; const pill = body.querySelector(".pill.demo"); if (pill) pill.textContent = "Eigenentwicklung · im Einsatz";
         body.querySelectorAll("dl.facts dt").forEach((dt) => { if (dt.textContent === "Zugang") dt.nextElementSibling.innerHTML = '<a href="/" target="_blank" rel="noopener">Tracker öffnen ↗</a>'; });
-        body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h"><span>Live${data.user ? ` · Sicht: ${esc(data.user.name)}` : ""}</span><a href="${esc(appLink("#/dashboard"))}" target="_blank" rel="noopener">Dashboard ↗</a></p>${facts(t)}
+        body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h"><span>${STATIC ? esc(window.GFTLive.label) : "Live"}${data.user ? ` · Sicht: ${esc(data.user.name)}` : ""}</span><a href="${esc(appLink("#/dashboard"))}" target="_blank" rel="noopener">Dashboard ↗</a></p>${facts(t)}
           <p class="h">Je Standort</p><ul class="links" style="margin-bottom:12px">${Object.entries(data.sites).map(([sid, s]) => `<li><button type="button" data-gsite="${sid}"><span class="dot ${s.sla ? "bad" : s.overdue ? "warn" : "ok"}"></span><span>${esc(s.name)}<small>${s.open} offen${s.sla ? ` · ${s.sla} SLA verletzt` : ""}${s.today ? ` · ${s.today} Termine heute` : ""}</small></span></button></li>`).join("")}</ul>
           <p class="h">Service (Wartung & Reparatur)</p><ul class="links" style="margin-bottom:12px">${SVC_STEPS.map(([st, , what]) => { const v = data.service[st] || { n: 0, old: 0 }; return `<li class="trow"><span class="dot ${v.old >= 3 ? "bad" : v.old ? "warn" : "ok"}"></span><span>${v.n} ${esc(what)}<small>${v.old ? `${v.old} seit mehr als 2 Tagen` : "im Fluss"}</small></span></li>`; }).join("")}</ul>
           <p class="h">Projekte</p><ul class="links">${data.projects.map((p) => `<li><a class="trow" href="${esc(appLink(`#/p/${encodeURIComponent(p.key)}`))}" target="_blank" rel="noopener"><span class="dot ok"></span><span>${esc(p.name)} (${esc(p.key)})<small>${p.open} offen · ${p.pct} % erledigt</small></span></a></li>`).join("")}</ul>

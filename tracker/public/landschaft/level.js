@@ -313,14 +313,14 @@
   function hud(LD) {
     const P = window.DW.PROCESSES; const idx = P.indexOf(LD.proc);
     root.querySelector(".lv-head").innerHTML = `<button class="lv-back" data-x aria-label="Zurück zur Systemlandschaft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
-      <div style="min-width:0"><div class="lv-eyebrow">Level ${idx + 1} von ${P.length} · ${esc(LD.proc.area || "Prozess")} ${LD.isLive ? '<span class="tag live">Live<span class="nm"> · GF Tracker</span></span>' : '<span class="tag demo">Beispieldaten</span>'}</div>
+      <div style="min-width:0"><div class="lv-eyebrow">Level ${idx + 1} von ${P.length} · ${esc(LD.proc.area || "Prozess")} ${LD.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? `<span class="tag">${esc(window.GFTLive.label)}</span>` : '<span class="tag live">Live<span class="nm"> · GF Tracker</span></span>') : '<span class="tag demo">Beispieldaten</span>'}</div>
       <h1 class="lv-title">${esc(LD.proc.name)}</h1><div class="lv-sub">${esc(LD.proc.goal || "")}</div></div>`;
     root.querySelector(".lv-stats").innerHTML = `<div class="st"><div class="stars" aria-label="${LD.stars} von 3 Sternen">${[0, 1, 2].map((k) => STAR(k < LD.stars)).join("")}</div><span>${LD.stars} von 3 Sternen</span></div>
       <div class="st"><b>${LD.open}</b><span>im Prozess</span></div>
       <div class="st ${LD.stau ? (LD.stations.some((s) => s.state === "hot") ? "bad" : "warn") : ""}"><b>${LD.stau}</b><span>Stau-Stationen</span></div>
       ${LD.isLive ? `<div class="st"><b>${LD.done7}</b><span>erledigt · 7 Tage</span></div><div class="st ${LD.sla ? "bad" : ""}"><b>${LD.sla}</b><span>SLA verletzt</span></div>` : ""}`;
     root.querySelector(".lv-mission").innerHTML = `<h3>Missionen</h3>${LD.missions.map((m) => `<div class="ms ${m.done ? "done" : ""}"><i>${m.done ? "✓" : ""}</i><div><b>${esc(m.t)}</b><small>${esc(m.s)}</small><div class="bar"><i style="width:${Math.round(m.p * 100)}%"></i></div></div></div>`).join("")}`;
-    root.querySelector(".lv-levels").innerHTML = P.map((p, k) => { const L = k === idx ? LD : levelData(p); return `<button class="lc ${k === idx ? "on" : ""}" data-lv="${esc(p.id)}"><span class="n">${k + 1}</span><span><b>${esc(p.name)}</b><small>${"★".repeat(L.stars)}${"☆".repeat(3 - L.stars)} · ${L.isLive ? "live" : "Beispiel"}</small></span></button>`; }).join("");
+    root.querySelector(".lv-levels").innerHTML = P.map((p, k) => { const L = k === idx ? LD : levelData(p); return `<button class="lc ${k === idx ? "on" : ""}" data-lv="${esc(p.id)}"><span class="n">${k + 1}</span><span><b>${esc(p.name)}</b><small>${"★".repeat(L.stars)}${"☆".repeat(3 - L.stars)} · ${L.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? "Tracker-Daten" : "live") : "Beispiel"}</small></span></button>`; }).join("");
     root.querySelectorAll("[data-lv]").forEach((b) => b.addEventListener("click", () => open(b.dataset.lv)));
     root.querySelector("[data-x]").addEventListener("click", close);
     const on = root.querySelector(".lc.on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });
