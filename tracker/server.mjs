@@ -283,7 +283,7 @@ function landscapeFor(user, ctx) {
   if (hit && hit.rev === rev && Date.now() - hit.t < 60e3) return hit.data;
   const cutoff = archiveCutoff();
   const data = landscapeData({ S, issues: store.all("issues").filter((i) => !isArchived(i, cutoff) && (!ctx || S.canSeeIssue(ctx, i))), projects: store.all("projects"), teams: store.all("teams"),
-    users: store.all("users"), appUrl: CFG.appUrl, company: brand().appName === "GF Tracker" ? CFG.company : brand().appName, user });
+    sprints: store.all("sprints"), users: store.all("users"), appUrl: CFG.appUrl, company: brand().appName === "GF Tracker" ? CFG.company : brand().appName, user });
   if (landscapeCache.size > 500) landscapeCache.clear();
   landscapeCache.set(k, { rev, t: Date.now(), data }); return data;
 }

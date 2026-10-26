@@ -722,6 +722,15 @@ Nur mit Anmeldung; gezeigt wird der eigene Sichtbereich.
   Sterne (Wartung: SLA-Quote ≥ 95 %, kein Stau über 2 Tage, 5 Abschlüsse pro Woche).
   „Wartung & Reparatur“ ist live aus dem Tracker (Status → Station), die übrigen Prozesse
   zeigen Beispielmengen. Klick auf einen Spielstein öffnet den Vorgang; ← → wechselt das Level.
+- **Tracker-Projekte in der Welt:** Jedes Projekt erscheint als Fahne in Projektfarbe am
+  Standort seines Teams (Fortschrittsbalken, Würfel = offene Vorgänge, Ring rot/orange bei
+  SLA-Verletzung, Überfälligem oder Blockiertem), außerdem in der Liste *Vorhaben* und im
+  Standort-Feld. Klick zeigt Kennzahlen, aktuellen Sprint, Epics als Meilensteine und die
+  wichtigsten Vorgänge – und **„Als Level öffnen“**: Stationen sind die offenen Status des
+  Projekts (z. B. Zu erledigen → In Arbeit → Blockiert → In Prüfung), jeder Vorgang ein
+  Würfel. Missionen: Sprintziel (bzw. SLA oder „alles zugewiesen“), nichts überfällig, kein
+  Stau (Service: über 2 Tage, sonst über 7 Tage an einer Station). Die Level-Leiste enthält
+  Prozesse und Projekte; ← → blättert durch alle.
 - **Standort zuordnen:** *Teams → Team bearbeiten → Standort* (Chemnitz, Siebenlehn,
   Zwenkau). Vorgänge erscheinen beim Standort ihres Teams (sonst des Projekt-Teams),
   ohne Zuordnung in Chemnitz.

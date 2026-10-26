@@ -11,8 +11,9 @@
   // Servicestatus im Tracker → Station im Prozess „Wartung & Reparatur“
   const LIVE_PROC = "wartung";
   const STATUS_STEP = { OPEN: "Fälligkeit oder Störung", SCHEDULED: "Termin abstimmen", WAITING: "Termin abstimmen", PARTS: "Einsatz vorbereiten", WORKING: "Einsatz beim Kunden", RESOLVED: "Vollständigkeit prüfen" };
-  const TYPE_COL = { INCIDENT: 0xff5a5f, MAINT: 0x2f6bff, SERVICE: 0x14b8a6, SUBTASK: 0x8b5cf6, SAMPLE: 0x9aa8bd };
-  const TYPE_TXT = { INCIDENT: "Störung", MAINT: "Wartung", SERVICE: "Serviceanfrage", SUBTASK: "Teilaufgabe" };
+  const TYPE_COL = { INCIDENT: 0xff5a5f, MAINT: 0x2f6bff, SERVICE: 0x14b8a6, SUBTASK: 0x8b5cf6, STORY: 0x22c55e, TASK: 0x3d7bff, BUG: 0xff5a5f, SAMPLE: 0x9aa8bd };
+  const TYPE_TXT = { INCIDENT: "Störung", MAINT: "Wartung", SERVICE: "Serviceanfrage", SUBTASK: "Teilaufgabe", STORY: "Story", TASK: "Aufgabe", BUG: "Fehler" };
+  const CAT_TXT = { todo: "Noch nicht begonnen – hier warten Vorgänge darauf, dass jemand anfängt.", progress: "In Arbeit – hier wird gerade an den Vorgängen gearbeitet." };
   const PRIO_TXT = { HIGHEST: "Höchste", HIGH: "Hoch", MEDIUM: "Mittel", LOW: "Niedrig", LOWEST: "Niedrigste" };
   const OLD_H = 48; // ab 2 Tagen an einer Station zählt ein Vorgang als „wartet zu lange“
   const SLOT = 0.8, PER_LAYER = 9, MAX_LAYERS = 3;
@@ -91,10 +92,10 @@
   #lvl .tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--ink);color:var(--bg1);border-radius:12px;padding:8px 11px;font-size:12px;max-width:280px;box-shadow:var(--shadow);opacity:0;transition:opacity .12s}
   #lvl .tip.on{opacity:1} #lvl .tip b{display:block;font-size:12.5px} #lvl .tip span{opacity:.7}
   #lvl .pop{position:absolute;left:0;top:0;pointer-events:none;font:800 15px/1 inherit;color:var(--ok);text-shadow:0 2px 10px rgba(22,163,74,.35);white-space:nowrap}
-  #lvl .hint{position:absolute;left:20px;bottom:30px;font-size:11.5px;color:var(--ink3)}
+  #lvl .hint{position:absolute;right:22px;top:92px;font-size:11.5px;color:var(--ink3)}
   #lvl .toast{position:absolute;left:50%;top:22px;transform:translate(-50%,-20px);opacity:0;padding:10px 16px;border-radius:999px;background:var(--ink);color:var(--bg1);font-weight:600;font-size:13px;transition:all .4s cubic-bezier(.2,.8,.2,1);pointer-events:none}
   #lvl .toast.on{transform:translate(-50%,0);opacity:1}
-  @media (max-width:1280px){#lvl .hint{display:none}} @media (max-width:1100px){#lvl .lv-mission{display:none}}
+  @media (max-width:1280px){#lvl .hint{display:none}} #lvl .lv-panel.on~.hint{display:none} @media (max-width:1100px){#lvl .lv-mission{display:none}}
   @media (max-width:860px){#lvl .lv-stats{top:auto;bottom:92px;left:16px;right:16px;justify-content:space-between} #lvl .st{min-width:0;padding:4px 8px} #lvl .st b{font-size:17px}
     #lvl .lv-panel{left:16px;right:16px;width:auto;top:auto;bottom:170px;max-height:45%} #lvl .lv-title{font-size:18px} #lvl .lv-sub{display:none}
     #lvl .nm{display:none} #lvl .lbl{padding:4px 8px 4px 4px;gap:5px} #lvl .lbl.sel .nm{display:inline} #lvl .lv-head{padding:10px 14px 10px 10px}}
@@ -107,7 +108,15 @@
   const live = () => window.GFTLive && window.GFTLive.data;
 
   /* ───────────── Daten je Level ───────────── */
+  // Tracker-Projekte als zusätzliche Level: Stationen = offene Status des Projekts, Spielsteine = offene Vorgänge
+  function trackerProcs() {
+    const d = live(); if (!d || !d.projects) return [];
+    return d.projects.map((p) => ({ id: `t-${p.key}`, name: p.name, area: `GF Tracker · ${p.key}`, goal: p.desc || `Alle offenen Vorgänge im Projekt ${p.name}`, tracker: p,
+      steps: p.statuses.map((x, i) => ({ id: `t-${p.key}-${i + 1}`, n: x.name, statusId: x.id, txt: x.id === "BLOCKED" ? "Blockiert – hier hängt etwas fest und braucht Hilfe oder eine Entscheidung." : CAT_TXT[x.cat] || "", sys: "tracker" })) }));
+  }
+  const allLevels = () => [...window.DW.PROCESSES, ...trackerProcs()];
   function levelData(proc) {
+    if (proc.tracker) return trackerLevelData(proc);
     const d = live(); const isLive = proc.id === LIVE_PROC && d && d.flow;
     const stations = proc.steps.map((s, i) => ({ step: s, i, items: [], liveMapped: false }));
     if (isLive) {
@@ -142,6 +151,23 @@
       ];
     }
     return { proc, isLive, stations, open, stau, missions, stars: missions.filter((m) => m.done).length, done7: isLive ? d.flow.done7 : null, doneToday: isLive ? d.flow.doneToday : null, sla: isLive ? d.flow.sla : 0 };
+  }
+
+  function trackerLevelData(proc) {
+    const p = proc.tracker; const staleH = p.staleH || 168; const days = Math.round(staleH / 24);
+    const stations = proc.steps.map((s, i) => ({ step: s, i, items: p.items.filter((it) => it.status === s.statusId).map((it) => ({ ...it, id: it.key })) }));
+    for (const st of stations) {
+      st.old = st.items.filter((x) => x.ageH > staleH).length; st.sla = st.items.filter((x) => x.sla).length; st.dim = false;
+      st.state = st.old >= 3 ? "hot" : st.old || (st.step.statusId === "BLOCKED" && st.items.length) ? "warn" : "ok";
+    }
+    const open = stations.reduce((a, s) => a + s.items.length, 0); const stau = stations.filter((s) => s.state !== "ok").length;
+    const missions = [];
+    if (p.sprint) missions.push({ t: "Sprintziel erreichen", s: `${p.sprint.done} von ${p.sprint.total} erledigt · ${p.sprint.name}`, p: p.sprint.total ? p.sprint.done / p.sprint.total : 0, done: !!p.sprint.total && p.sprint.done === p.sprint.total });
+    else if (p.type === "service") { const q = p.open ? 1 - p.sla / p.open : 1; missions.push({ t: "SLA einhalten", s: `${Math.round(q * 100)} % im Soll · Ziel 95 %`, p: Math.min(1, q / 0.95), done: q >= 0.95 }); }
+    else missions.push({ t: "Alles zugewiesen", s: p.unassigned ? `${p.unassigned} Vorgänge ohne Verantwortliche` : "Jeder Vorgang hat eine verantwortliche Person", p: p.open ? 1 - p.unassigned / p.open : 1, done: !p.unassigned });
+    missions.push({ t: "Nichts überfällig", s: p.overdue ? `${p.overdue} Vorgänge über dem Fälligkeitstermin` : "Alle Termine im Plan", p: p.open ? Math.max(0, 1 - p.overdue / p.open) : 1, done: !p.overdue });
+    missions.push({ t: "Kein Stau", s: stau ? `${stau} Station${stau > 1 ? "en" : ""} mit Wartezeit über ${days} Tagen oder blockiert` : "Alle Stationen im Fluss", p: Math.max(0, 1 - stau / Math.max(1, stations.length)), done: !stau });
+    return { proc, isLive: true, tracker: true, stations, open, stau, missions, stars: missions.filter((m) => m.done).length, done7: p.done7, doneToday: null, sla: p.sla, staleH };
   }
 
   /* ───────────── Bühne ───────────── */
@@ -311,7 +337,7 @@
 
   /* ───────────── HUD ───────────── */
   function hud(LD) {
-    const P = window.DW.PROCESSES; const idx = P.indexOf(LD.proc);
+    const P = allLevels(); const idx = Math.max(0, P.findIndex((p) => p.id === LD.proc.id));
     root.querySelector(".lv-head").innerHTML = `<button class="lv-back" data-x aria-label="Zurück zur Systemlandschaft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div style="min-width:0"><div class="lv-eyebrow">Level ${idx + 1} von ${P.length} · ${esc(LD.proc.area || "Prozess")} ${LD.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? `<span class="tag">${esc(window.GFTLive.label)}</span>` : '<span class="tag live">Live<span class="nm"> · GF Tracker</span></span>') : '<span class="tag demo">Beispieldaten</span>'}</div>
       <h1 class="lv-title">${esc(LD.proc.name)}</h1><div class="lv-sub">${esc(LD.proc.goal || "")}</div></div>`;
@@ -320,7 +346,7 @@
       <div class="st ${LD.stau ? (LD.stations.some((s) => s.state === "hot") ? "bad" : "warn") : ""}"><b>${LD.stau}</b><span>Stau-Stationen</span></div>
       ${LD.isLive ? `<div class="st"><b>${LD.done7}</b><span>erledigt · 7 Tage</span></div><div class="st ${LD.sla ? "bad" : ""}"><b>${LD.sla}</b><span>SLA verletzt</span></div>` : ""}`;
     root.querySelector(".lv-mission").innerHTML = `<h3>Missionen</h3>${LD.missions.map((m) => `<div class="ms ${m.done ? "done" : ""}"><i>${m.done ? "✓" : ""}</i><div><b>${esc(m.t)}</b><small>${esc(m.s)}</small><div class="bar"><i style="width:${Math.round(m.p * 100)}%"></i></div></div></div>`).join("")}`;
-    root.querySelector(".lv-levels").innerHTML = P.map((p, k) => { const L = k === idx ? LD : levelData(p); return `<button class="lc ${k === idx ? "on" : ""}" data-lv="${esc(p.id)}"><span class="n">${k + 1}</span><span><b>${esc(p.name)}</b><small>${"★".repeat(L.stars)}${"☆".repeat(3 - L.stars)} · ${L.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? "Tracker-Daten" : "live") : "Beispiel"}</small></span></button>`; }).join("");
+    root.querySelector(".lv-levels").innerHTML = P.map((p, k) => { const L = k === idx ? LD : levelData(p); return `<button class="lc ${k === idx ? "on" : ""}" data-lv="${esc(p.id)}"><span class="n">${p.tracker ? esc(p.tracker.key.slice(0, 3)) : k + 1}</span><span><b>${esc(p.name)}</b><small>${"★".repeat(L.stars)}${"☆".repeat(3 - L.stars)} · ${p.tracker ? "Projekt · " : ""}${L.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? "Tracker-Daten" : "live") : "Beispiel"}</small></span></button>`; }).join("");
     root.querySelectorAll("[data-lv]").forEach((b) => b.addEventListener("click", () => open(b.dataset.lv)));
     root.querySelector("[data-x]").addEventListener("click", close);
     const on = root.querySelector(".lc.on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });
@@ -335,7 +361,7 @@
       el.addEventListener("click", () => selectStation(i)); root.appendChild(el); return el;
     });
     const g = document.createElement("div"); g.className = "lbl goal";
-    g.innerHTML = `<span class="no">✓</span><span class="nm">Abgeschlossen</span> <span class="ct">${LD.isLive ? `${LD.doneToday} heute` : ""}</span>`; root.appendChild(g); R.goalLbl = g;
+    g.innerHTML = `<span class="no">✓</span><span class="nm">Abgeschlossen</span> <span class="ct">${LD.isLive ? (LD.doneToday == null ? `${LD.done7} in 7 T` : `${LD.doneToday} heute`) : ""}</span>`; root.appendChild(g); R.goalLbl = g;
   }
 
   function panel(LD, i) {
@@ -345,11 +371,11 @@
     const list = st.items.slice(0, 30);
     p.querySelector(".lv-pbody").innerHTML = `<div class="lv-eyebrow">Station ${i + 1} von ${LD.stations.length}${st.state === "hot" ? ' <span class="tag" style="background:rgba(239,68,68,.12);color:#ef4444">Engpass</span>' : st.state === "warn" ? ' <span class="tag" style="background:rgba(245,158,11,.14);color:#b45309">verzögert</span>' : ""}</div>
       <h2>${esc(s.n)}</h2><p>${esc(s.txt || "")}</p>
-      <div class="facts"><div><b>${st.dim ? "–" : st.items.length}</b><span>Vorgänge</span></div><div class="${st.old ? (st.old >= 3 ? "bad" : "warn") : ""}"><b>${st.dim ? "–" : st.old}</b><span>über 2 Tage</span></div><div class="${st.sla ? "bad" : ""}"><b>${LD.isLive && !st.dim ? st.sla : "–"}</b><span>SLA verletzt</span></div></div>
-      <dl><dt>Zuständig</dt><dd>${esc(grp ? grp.n : s.who || "–")}</dd><dt>Programm</dt><dd>${esc(sys ? sys.name : "–")}</dd><dt>Übergibt</dt><dd>${esc(s.gives || "–")}</dd><dt>Übliche Dauer</dt><dd>${String(s.days ?? "–").replace(".", ",")} Tage</dd></dl>
+      <div class="facts"><div><b>${st.dim ? "–" : st.items.length}</b><span>Vorgänge</span></div><div class="${st.old ? (st.old >= 3 ? "bad" : "warn") : ""}"><b>${st.dim ? "–" : st.old}</b><span>über ${LD.staleH ? Math.round(LD.staleH / 24) : 2} Tage</span></div><div class="${st.sla ? "bad" : ""}"><b>${LD.isLive && !st.dim ? st.sla : "–"}</b><span>SLA verletzt</span></div></div>
+      ${LD.tracker ? `<dl><dt>Projekt</dt><dd>${esc(LD.proc.tracker.key)} · ${esc(LD.proc.tracker.name)}</dd><dt>Team</dt><dd>${esc(LD.proc.tracker.team || "–")}</dd><dt>Ø Liegezeit hier</dt><dd>${st.items.length ? age(Math.round(st.items.reduce((a, x) => a + x.ageH, 0) / st.items.length)) : "–"}</dd></dl>` : `<dl><dt>Zuständig</dt><dd>${esc(grp ? grp.n : s.who || "–")}</dd><dt>Programm</dt><dd>${esc(sys ? sys.name : "–")}</dd><dt>Übergibt</dt><dd>${esc(s.gives || "–")}</dd><dt>Übliche Dauer</dt><dd>${String(s.days ?? "–").replace(".", ",")} Tage</dd></dl>`}
       ${st.dim ? '<p class="note">Diese Station ist im GF Tracker kein eigener Status. Die Daten kommen mit der Anbindung von Service-App, Inform und DocuWare.</p>'
         : !LD.isLive ? `<p class="note">Beispieldaten aus der Systemlandschaft${s.open ? `: ${esc(s.open)}` : ""}. Echte Zahlen folgen mit der Anbindung der Programme.</p>`
-        : list.length ? `<h3 style="margin-top:4px">Vorgänge an dieser Station</h3>${list.map((it) => `<a class="it" href="${esc(rel(it.url))}" target="_blank" rel="noopener"><i style="background:#${tokenColor(it).toString(16).padStart(6, "0")}"></i><span style="min-width:0"><b>${esc(it.key)} · ${esc(it.summary)}</b><small>${esc(TYPE_TXT[it.type] || it.type)} · ${esc(it.statusName)}${it.assignee ? ` · ${esc(it.assignee)}` : " · nicht zugewiesen"}</small></span><em class="${it.sla ? "sla" : it.ageH > OLD_H ? "old" : ""}">${it.sla ? "SLA" : age(it.ageH)}</em></a>`).join("")}${st.items.length > 30 ? `<p class="note" style="margin-top:8px">… und ${st.items.length - 30} weitere</p>` : ""}`
+        : list.length ? `<h3 style="margin-top:4px">Vorgänge an dieser Station</h3>${list.map((it) => `<a class="it" href="${esc(rel(it.url))}" target="_blank" rel="noopener"><i style="background:#${tokenColor(it).toString(16).padStart(6, "0")}"></i><span style="min-width:0"><b>${esc(it.key)} · ${esc(it.summary)}</b><small>${esc(TYPE_TXT[it.type] || it.type)} · ${esc(it.statusName)}${it.assignee ? ` · ${esc(it.assignee)}` : " · nicht zugewiesen"}</small></span><em class="${it.sla ? "sla" : it.ageH > (LD.staleH || OLD_H) ? "old" : ""}">${it.sla ? "SLA" : age(it.ageH)}</em></a>`).join("")}${st.items.length > 30 ? `<p class="note" style="margin-top:8px">… und ${st.items.length - 30} weitere</p>` : ""}`
         : '<p class="note">Keine Vorgänge an dieser Station – alles im Fluss.</p>'}`;
     p.classList.add("on"); R.lbls.forEach((e, k) => e.classList.toggle("sel", k === i));
   }
@@ -436,7 +462,7 @@
     if (u.station != null) selectStation(u.station);
   }
   function onKey(ev) {
-    if (!R) return; const P = window.DW.PROCESSES; const idx = P.indexOf(R.LD.proc);
+    if (!R) return; const P = allLevels(); const idx = Math.max(0, P.findIndex((p) => p.id === R.LD.proc.id));
     if (ev.key === "Escape") { if (R.sel != null) selectStation(null); else close(); }
     if (ev.key === "ArrowRight") open(P[(idx + 1) % P.length].id);
     if (ev.key === "ArrowLeft") open(P[(idx - 1 + P.length) % P.length].id);
@@ -453,7 +479,7 @@
   }
 
   function open(id) {
-    const W = window.DW; if (!W) return; const proc = W.PROCESSES.find((p) => p.id === id) || W.PROCESSES[0];
+    const W = window.DW; if (!W) return; const proc = allLevels().find((p) => p.id === id) || W.PROCESSES[0];
     if (!root) {
       root = document.createElement("div"); root.id = "lvl"; root.setAttribute("role", "dialog"); root.setAttribute("aria-label", "Prozess-Level");
       root.innerHTML = `<div class="g lv-head"></div><div class="g lv-stats"></div><div class="g lv-mission"></div><div class="g lv-levels" role="tablist" aria-label="Level"></div>
@@ -479,7 +505,9 @@
   // Live-Aktualisierung: neue/weitergerückte/abgeschlossene Vorgänge laufen sichtbar über die Strecke
   function update() {
     if (!R || !R.LD.isLive && R.LD.proc.id !== LIVE_PROC) return;
-    const before = R.LD; const LD = levelData(before.proc); R.LD = LD;
+    const before = R.LD; const proc = allLevels().find((p) => p.id === before.proc.id) || before.proc;
+    if (proc.steps.length !== before.stations.length) return open(proc.id); // Ablauf des Projekts geändert: Bühne neu aufbauen
+    const LD = levelData(proc); R.LD = LD;
     // Beschriftungen und Anzeigen auffrischen, Szene bleibt stehen
     hud(LD); labels(R, LD); if (R.sel != null) panel(LD, R.sel);
     R.stObjs.forEach((o, i) => { const st = LD.stations[i]; o.st = st; const c = stateCol(st.state);

@@ -467,6 +467,9 @@ test("Systemlandschaft: 3D-Seite nur angemeldet, Live-Daten je Standort im Sicht
   assert.ok(d.sites.hq.top.length > 0 && d.sites.hq.top[0].url.includes("issue="), "Vorgänge mit Verweis");
   assert.ok(Array.isArray(d.events) && d.events.length > 0);
   assert.ok(d.flow && d.flow.items.length > 0 && d.flow.items.every((x) => x.key && x.status && typeof x.ageH === "number"), "Service-Vorgänge für die Prozess-Level");
+  const dig = d.projects.find((x) => x.key === "DIG");
+  assert.ok(dig && dig.statuses.length >= 3 && dig.items.length === dig.open && dig.epics.length > 0 && dig.sprint && dig.sprint.total > 0, "Projekt mit Stationen, Vorgängen, Epics und Sprint");
+  assert.ok(d.projects.every((x) => x.site && x.url.includes("#/p/")), "Projekte mit Standort und Verweis");
   assert.match(page.data, /\/landschaft\/level\.js/); assert.match(js.data, /window\.DWPaused/);
   // Team „Büro & Vertrieb“ nach Zwenkau → erscheint dort; ungültiger Standort wird verworfen
   await anna.req("/api/sync", { method: "POST", body: { ops: [{ type: "teams", id: "tBUE", op: "patch", patch: { set: { site: "sw" } } }] } });

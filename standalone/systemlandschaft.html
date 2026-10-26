@@ -2212,7 +2212,7 @@ return { TRANSITIONS, transitionsFor, TYPES, PROJECT_TYPES, WORKFLOWS, CAT_LABEL
 })();
 
 const DEFAULT_SITE = "hq";
-function landscapeData({ S, issues, projects, teams, users, appUrl, company, user, now = Date.now() }) {
+function landscapeData({ S, issues, projects, teams, users, sprints = [], appUrl, company, user, now = Date.now() }) {
   const P = new Map(projects.map((p) => [p.id, p])); const T = new Map(teams.map((t) => [t.id, t])); const U = new Map(users.map((u) => [u.id, u]));
   const key = (i) => `${P.get(i.projectId)?.key || "?"}-${i.no}`;
   const link = (i) => `${appUrl}/#/your-work?issue=${encodeURIComponent(key(i))}`;
@@ -2229,13 +2229,38 @@ function landscapeData({ S, issues, projects, teams, users, appUrl, company, use
   const flowItem = (i, p, sla) => flowItems.push({ key: key(i), summary: i.summary, status: i.status, statusName: S.statusInfo(p, i.status).name, type: i.type, prio: i.priority,
     assignee: U.get(i.assigneeId)?.name || null, sla: !!sla, ageH: Math.round((now - new Date(statusSince(i)).getTime()) / 36e5), url: link(i), site: siteOf(i) });
   const events = [];
+  // Projekte: Fahnen in der 3D-Welt und je ein Level (Stationen = Status des Projekts, Spielsteine = offene Vorgänge)
+  const siteOfTeam = (t) => (t?.site && known.has(t.site) ? t.site : DEFAULT_SITE);
+  const projOf = (p) => {
+    let ps = projStat.get(p.id); if (ps) return ps;
+    const t = T.get(p.teamId);
+    ps = { id: p.id, key: p.key, name: p.name, color: p.color || "#2f6bff", type: p.type, desc: p.desc || "", site: siteOfTeam(t), team: t?.name || null, lead: U.get(p.leadId)?.name || null,
+      open: 0, done: 0, overdue: 0, sla: 0, unassigned: 0, done7: 0, staleH: p.type === "service" ? 48 : 168, items: [], epics: [], sprint: null,
+      statuses: S.workflowFor(p).filter((x) => x.cat !== "done").map((x) => ({ id: x.id, name: x.name, cat: x.cat })), url: `${appUrl}/#/p/${encodeURIComponent(p.key)}` };
+    projStat.set(p.id, ps); return ps;
+  };
+  const epicCount = new Map(); const epics = [];
+  for (const i of issues) {
+    const p = P.get(i.projectId); if (!p) continue;
+    if (i.type === "EPIC") { epics.push(i); continue; }
+    if (i.epicId) { const c = epicCount.get(i.epicId) || { open: 0, done: 0 }; S.statusInfo(p, i.status).cat === "done" ? c.done++ : c.open++; epicCount.set(i.epicId, c); }
+  }
+  for (const e of epics) {
+    const p = P.get(e.projectId); const c = epicCount.get(e.id) || { open: 0, done: 0 }; const n = c.open + c.done;
+    projOf(p).epics.push({ key: key(e), summary: e.summary, due: e.dueDate || null, done: S.statusInfo(p, e.status).cat === "done", pct: n ? Math.round(c.done / n * 100) : 0, url: link(e) });
+  }
+  for (const sp of sprints) {
+    const p = P.get(sp.projectId); if (!p || sp.state !== "active") continue;
+    const list = issues.filter((i) => i.sprintId === sp.id && i.type !== "EPIC"); const dn = list.filter((i) => S.statusInfo(p, i.status).cat === "done").length;
+    projOf(p).sprint = { name: sp.name, goal: sp.goal || "", end: sp.end || null, total: list.length, done: dn };
+  }
   for (const i of issues) {
     const p = P.get(i.projectId); if (!p || i.type === "EPIC") continue;
     const cat = S.statusInfo(p, i.status).cat;
-    const ps = projStat.get(p.id) || { key: p.key, name: p.name, open: 0, done: 0 }; projStat.set(p.id, ps);
+    const ps = projOf(p);
     for (const h of i.history) if (h.field === "Status" || h.to === "erstellt") events.push({ at: h.at, i, h, p });
     if (cat === "done") {
-      ps.done++;
+      ps.done++; if (i.resolvedAt && now - new Date(i.resolvedAt).getTime() < 7 * 864e5) ps.done7++;
       if (p.type === "service") {
         const r = i.resolvedAt ? now - new Date(i.resolvedAt).getTime() : Infinity; if (r < 7 * 864e5) done7++; if (i.resolvedAt && i.resolvedAt.slice(0, 10) === ymd) doneToday++;
         if (i.status === "RESOLVED") { const s = (service.RESOLVED ||= { n: 0, old: 0 }); s.n++; if (now - new Date(statusSince(i)).getTime() > svcAge) s.old++; flowItem(i, p, false); }
@@ -2246,6 +2271,9 @@ function landscapeData({ S, issues, projects, teams, users, appUrl, company, use
     const st = sites[siteOf(i)];
     const overdue = !!i.dueDate && i.dueDate < ymd;
     const r = S.slaCompute(i, p, "resolve"), f = S.slaCompute(i, p, "first"); const sla = !!((r && !r.stopped && r.breached) || (f && !f.stopped && f.breached));
+    if (overdue) ps.overdue++; if (sla) ps.sla++; if (!i.assigneeId) ps.unassigned++;
+    ps.items.push({ key: key(i), summary: i.summary, status: i.status, statusName: S.statusInfo(p, i.status).name, type: i.type, prio: i.priority, assignee: U.get(i.assigneeId)?.name || null,
+      sla, overdue, ageH: Math.round((now - new Date(statusSince(i)).getTime()) / 36e5), url: link(i), site: siteOf(i) });
     const appt = !!i.appointmentAt && i.appointmentAt.slice(0, 10) === ymd; const high = i.priority === "HIGH" || i.priority === "HIGHEST";
     for (const x of [totals, st]) { x.open++; if (overdue) x.overdue++; if (sla) x.sla++; if (!i.assigneeId) x.unassigned++; if (appt) x.today++; if (high) x.high++; }
     st.top.push({ key: key(i), summary: i.summary, status: S.statusInfo(p, i.status).name, prio: i.priority, assignee: U.get(i.assigneeId)?.name || null, due: i.dueDate || null, sla, overdue, url: link(i),
@@ -2265,17 +2293,18 @@ function landscapeData({ S, issues, projects, teams, users, appUrl, company, use
     sites, totals, service, events: ev,
     flow: { items: flowItems.sort((a, b) => (b.sla - a.sla) || (b.ageH - a.ageH)).slice(0, 240), done7, doneToday,
       open: flowItems.filter((x) => x.status !== "RESOLVED").length, sla: flowItems.filter((x) => x.sla).length },
-    projects: [...projStat.values()].map((x) => ({ ...x, pct: x.open + x.done ? Math.round(x.done / (x.open + x.done) * 100) : 0 })),
+    projects: [...projStat.values()].map((x) => ({ ...x, pct: x.open + x.done ? Math.round(x.done / (x.open + x.done) * 100) : 0,
+      items: x.items.sort((a, b) => (b.sla - a.sla) || (b.overdue - a.overdue) || (b.ageH - a.ageH)).slice(0, 200), epics: x.epics.sort((a, b) => (a.due || "9").localeCompare(b.due || "9")) })),
     defaultSite: DEFAULT_SITE,
   };
 }
 
 window.GFT_STATIC = { compute(db) {
   const S = TrackerShared; const d = db || S.seed();
-  const out = landscapeData({ S, issues: d.issues || [], projects: d.projects || [], teams: d.teams || [], users: d.users || [], appUrl: "", company: "druckluft-technik Chemnitz", user: null });
+  const out = landscapeData({ S, issues: d.issues || [], projects: d.projects || [], teams: d.teams || [], sprints: d.sprints || [], users: d.users || [], appUrl: "", company: "druckluft-technik Chemnitz", user: null });
   // Verweise auf die Einzeldatei-Version des Trackers im selben Ordner
   const fix = (u) => (u || "").replace(/^\/#\//, "gf-suite-tracker.html#/");
-  Object.values(out.sites).forEach((s) => s.top.forEach((i) => (i.url = fix(i.url)))); out.events.forEach((e) => (e.url = fix(e.url))); out.flow.items.forEach((i) => (i.url = fix(i.url)));
+  Object.values(out.sites).forEach((s) => s.top.forEach((i) => (i.url = fix(i.url)))); out.events.forEach((e) => (e.url = fix(e.url))); out.flow.items.forEach((i) => (i.url = fix(i.url))); out.projects.forEach((p) => { p.url = fix(p.url); p.items.forEach((i) => (i.url = fix(i.url))); p.epics.forEach((e) => (e.url = fix(e.url))); });
   return out;
 } };
 </script>
@@ -2342,8 +2371,8 @@ window.GFT_STATIC = { compute(db) {
     const fresh = data.events.filter((e) => !seen.has(e.id)); const first = !seen.size;
     data.events.forEach((e) => seen.add(e.id));
     (first ? fresh.slice(0, 3) : fresh.slice(0, 5)).reverse().forEach((e) => W.pushEvent({ st: e.st, text: `GF Tracker: ${e.text}`, go: W.byId[e.site] ? e.site : "tracker" }));
-    setBadge(); W.renderKpis(); if (window.GFTLevel) window.GFTLevel.update();
-    const sel = W.selected; if (sel && W.byId[sel] && (W.byId[sel].type === "loc" || ["tracker", "sources"].includes(sel) || W.byId[sel].type === "step" || W.byId[sel].type === "proc")) W.renderDetail(sel);
+    syncFlags(); setBadge(); W.renderKpis(); if (window.GFTLevel) window.GFTLevel.update();
+    const sel = W.selected; if (sel && W.byId[sel] && (W.byId[sel].type === "loc" || W.byId[sel].type === "tproj" || ["tracker", "sources"].includes(sel) || W.byId[sel].type === "step" || W.byId[sel].type === "proc")) W.renderDetail(sel);
   }
 
   const issueRows = (list) => list.map((i) => `<li><a class="trow" href="${esc(rel(i.url))}" target="_blank" rel="noopener"><span class="dot ${i.sla ? "bad" : i.overdue ? "warn" : "ok"}"></span><span>${esc(i.key)} · ${esc(i.summary)}<small>${esc(i.status)} · ${PRIO[i.prio] || esc(i.prio)}${i.assignee ? ` · ${esc(i.assignee)}` : " · nicht zugewiesen"}${i.sla ? " · SLA verletzt" : i.overdue ? " · überfällig" : ""}</small></span></a></li>`).join("");
@@ -2351,6 +2380,50 @@ window.GFT_STATIC = { compute(db) {
   const appLink = (h) => (STATIC ? `${TRACKER}${h}` : `/${h}`); // Seite läuft im Tracker selbst: relative Verweise
   const rel = (u) => (data && u.startsWith(data.appUrl) ? u.slice(data.appUrl.length) || "/" : u);
   const teamLinks = (teams) => teams.map((t) => `<li><a class="trow" href="${esc(appLink(`#/filters?jql=${encodeURIComponent(`team = "${t}" AND statusCategory != Done ORDER BY priority DESC`)}`))}" target="_blank" rel="noopener"><span class="dot ok"></span><span>Team ${esc(t)}<small>offene Vorgänge im Tracker</small></span></a></li>`).join("");
+
+  /* ───── Tracker-Projekte als Fahnen in der 3D-Welt (am Standort des Projekt-Teams) ───── */
+  const TFLAG_ANG = [25, -5, 55, 155, 185, 125].map((x) => (x * Math.PI) / 180);
+  const tflags = new Map();
+  const projState = (p) => (p.sla || p.overdue > 2 ? "bad" : p.overdue || p.statusBlocked ? "warn" : "ok");
+  const flagLabel = (p) => `<span class="pb"><i style="width:${p.pct}%"></i></span>${esc(p.key)} · ${esc(p.name)}<b>${p.open} offen</b>`;
+  function makeFlag(W, id, p, loc, idx) {
+    const T3 = window.THREE; const RR = loc.r || 7.2; const a = TFLAG_ANG[idx % TFLAG_ANG.length]; const rr = RR - 0.55 - Math.floor(idx / TFLAG_ANG.length) * 0.9;
+    const x = loc.x + Math.cos(a) * rr, z = loc.z + Math.sin(a) * rr; const H = loc.id === "hq" ? 4.6 : 3.2;
+    const g = new T3.Group(); g.position.set(x, W.PLATE_Y, z);
+    const pole = new T3.Mesh(new T3.CylinderGeometry(0.04, 0.04, H, 10), W.M.steel); pole.position.y = H / 2; pole.castShadow = true;
+    const flagMat = W.mat(new T3.Color(p.color).getHex(), { roughness: 0.55 });
+    const flag = new T3.Mesh(new T3.BoxGeometry(1.05, 0.6, 0.05), flagMat); flag.position.set(0.55, H - 0.33, 0); flag.castShadow = true;
+    const track = new T3.Mesh(new T3.BoxGeometry(0.9, 0.09, 0.06), new T3.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4 })); track.position.set(0.55, H - 0.55, 0.005);
+    const fill = new T3.Mesh(new T3.BoxGeometry(0.9, 0.09, 0.07), new T3.MeshBasicMaterial({ color: 0xffffff }));
+    const foot = new T3.Mesh(new T3.CylinderGeometry(0.18, 0.22, 0.08, 16), W.M.steel); foot.position.y = 0.04;
+    const ring = new T3.Mesh(new T3.RingGeometry(0.32, 0.46, 32), new T3.MeshBasicMaterial({ color: W.C.ok, transparent: true, opacity: 0.85, side: T3.DoubleSide }));
+    ring.rotation.x = -Math.PI / 2; ring.position.y = 0.02;
+    // kleine Würfel am Fuß: offene Vorgänge (bis 9 sichtbar)
+    const cubes = new T3.Group(); const cg = new T3.BoxGeometry(0.16, 0.16, 0.16);
+    for (let k = 0; k < 9; k++) { const c = new T3.Mesh(cg, flagMat); c.position.set(-0.42 + (k % 3) * 0.19, 0.09 + Math.floor(k / 3) * 0.17, 0.32); c.castShadow = true; cubes.add(c); }
+    g.add(W.tag(pole, id), W.tag(flag, id), track, fill, foot, ring, cubes); W.scene.add(g);
+    W.objects[id] = { group: g, anchor: new T3.Vector3(x, W.PLATE_Y + H - 0.3, z), flag };
+    const label = W.addLabel(id, "proj tproj", flagLabel(p), new T3.Vector3(x, W.PLATE_Y + H + 0.35, z), "proj");
+    return { id, site: loc.id, idx, g, fill, ring, cubes, label, H };
+  }
+  function syncFlags() {
+    const W = window.DW; if (!W || !W.scene || !data || !data.projects) return;
+    const perSite = {}; const live = new Set();
+    for (const p of data.projects) {
+      const id = "tp-" + p.key; live.add(id); p.statusBlocked = p.items.some((i) => i.status === "BLOCKED");
+      const loc = W.LOCATIONS.find((l) => l.id === p.site) || W.LOCATIONS[0]; const idx = perSite[loc.id] || 0; perSite[loc.id] = idx + 1;
+      W.byId[id] = { type: "tproj", d: { name: p.name, at: loc.id, tracker: p } };
+      let f = tflags.get(id);
+      if (f && (f.site !== loc.id || f.idx !== idx)) { W.scene.remove(f.g); f.label.el.remove(); W.labels.splice(W.labels.indexOf(f.label), 1); f = null; }
+      if (!f) { f = makeFlag(W, id, p, loc, idx); tflags.set(id, f); }
+      const st = projState(p); const pct = Math.max(0.001, p.pct / 100);
+      f.fill.scale.x = pct; f.fill.position.set(0.1 + 0.45 * pct, f.H - 0.55, 0.01);
+      f.ring.material.color.setHex(W.C[st]); f.cubes.children.forEach((c, k) => (c.visible = k < p.open));
+      f.label.el.className = `lbl proj tproj ${st}`; f.label.el.innerHTML = flagLabel(p); f.label.el.style.borderLeftColor = p.color; f.label.el.hidden = false; f.g.visible = W.layerState.proj; f.gone = false;
+    }
+    for (const f of tflags.values()) if (!live.has(f.id)) { f.gone = true; f.g.visible = false; f.label.el.hidden = true; }
+    W.applyVisibility();
+  }
 
   window.GFTLive = { get data() { return data; }, get label() { return status === "demo" ? "Beispieldaten" : status === "file" ? "Aus Sicherung" : "Live · GF Tracker"; } };
   function fileButton(top) {
@@ -2369,6 +2442,13 @@ window.GFT_STATIC = { compute(db) {
   const levelBtn = (pid, label) => `<button type="button" class="gft-play" data-level="${esc(pid)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>${label}</button>`;
   const wireLevel = (el) => el.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => window.GFTLevel && window.GFTLevel.open(b.dataset.level)));
   window.DWHooks = {
+    visibility(layers) { for (const f of tflags.values()) f.g.visible = layers.proj && !f.gone; },
+    projList(el, filter) {
+      if (!el || !data || !data.projects || !data.projects.length || filter === "bau") return;
+      el.insertAdjacentHTML("beforeend", `<li class="grp">GF Tracker · ${STATIC ? esc(window.GFTLive.label) : "live"}</li>${data.projects.map((p) => { const st = projState(p);
+        return `<li><button type="button" data-tp="tp-${esc(p.key)}"><span class="dot ${st}"></span><span class="who">${esc(p.name)}<em>${esc(p.key)} · ${p.open} offen · ${p.pct} % erledigt</em></span><span class="prog"><span class="pb ${st}"><i style="width:${p.pct}%"></i></span></span></button></li>`; }).join("")}`);
+      el.querySelectorAll("[data-tp]").forEach((b) => b.addEventListener("click", () => window.DW.select(b.dataset.tp, true)));
+    },
     ready() {
       const top = document.getElementById("top");
       if (top && !document.querySelector(".gft-back")) { const a = document.createElement("a"); a.className = "gft-back"; a.href = STATIC ? TRACKER : "/"; a.innerHTML = "←<span> GF Tracker</span>"; a.title = "Zurück zum Tracker"; top.insertBefore(a, top.firstChild); }
@@ -2391,11 +2471,26 @@ window.GFT_STATIC = { compute(db) {
         if (h && pr) { h.insertAdjacentHTML("afterend", levelBtn(pr.id, pr.id === "wartung" ? "Als Level öffnen · live" : "Als Level öffnen")); wireLevel(body); }
       }
       if (!data) { if (entry.type === "loc" || id === "tracker") body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h">GF Tracker</p><p class="hint">${status === "login" ? 'Nicht angemeldet. <a href="/login?next=/landschaft">Anmelden</a>' : "Daten werden geladen …"}</p></section>`); return; }
+      if (entry.type === "tproj") {
+        const p = entry.d.tracker; const st = projState(p); const site = data.sites[p.site];
+        const ms = p.epics.length ? `<p class="h">Meilensteine (Epics)</p><ol class="ms">${p.epics.map((e, k) => `<li class="${e.done || e.pct === 100 ? "done" : k === p.epics.findIndex((x) => !x.done && x.pct < 100) ? "next" : ""}"><span><a href="${esc(rel(e.url))}" target="_blank" rel="noopener" style="color:inherit">${esc(e.summary)}</a> · ${e.pct} %${e.due ? ` · bis ${new Date(e.due).toLocaleDateString("de-DE")}` : ""}</span></li>`).join("")}</ol>` : "";
+        const sp = p.sprint ? `<p class="h">Aktueller Sprint</p><dl class="facts"><dt>${esc(p.sprint.name)}</dt><dd>${p.sprint.done} von ${p.sprint.total} erledigt</dd>${p.sprint.goal ? `<dt>Ziel</dt><dd>${esc(p.sprint.goal)}</dd>` : ""}${p.sprint.end ? `<dt>Ende</dt><dd>${new Date(p.sprint.end).toLocaleDateString("de-DE")}</dd>` : ""}</dl>` : "";
+        body.insertAdjacentHTML("beforeend", `<div class="eyebrow">Projekt im GF Tracker · ${esc(site ? site.name : "")}</div><h2>${esc(p.name)}</h2><p class="sub">${esc(p.desc || "")}</p>
+          ${levelBtn("t-" + p.key, STATIC ? "Als Level öffnen" : "Als Level öffnen · live")}
+          <div class="pills"><span class="pill ${st}">${st === "bad" ? "kritisch" : st === "warn" ? "Achtung" : "läuft"}</span><span class="pill ok">${STATIC ? esc(window.GFTLive.label) : "live aus dem Tracker"}</span></div>
+          <div class="bigbar ${st}"><i style="width:${p.pct}%"></i></div>
+          <dl class="facts"><dt>Offen</dt><dd>${p.open}</dd><dt>Erledigt</dt><dd>${p.done} (${p.pct} %)</dd><dt>Erledigt · 7 Tage</dt><dd>${p.done7}</dd><dt>Überfällig</dt><dd>${p.overdue}</dd><dt>SLA verletzt</dt><dd>${p.sla}</dd><dt>Nicht zugewiesen</dt><dd>${p.unassigned}</dd>${p.lead ? `<dt>Projektleitung</dt><dd>${esc(p.lead)}</dd>` : ""}${p.team ? `<dt>Team</dt><dd>${esc(p.team)}</dd>` : ""}</dl>
+          ${sp}${ms}${p.items.length ? `<p class="h">Wichtigste offene Vorgänge</p><ul class="links" style="margin-bottom:12px">${issueRows(p.items.slice(0, 8).map((i) => ({ ...i, status: i.statusName })))}</ul>` : ""}
+          <ul class="links"><li><a class="trow" href="${esc(rel(p.url))}" target="_blank" rel="noopener"><span class="dot ok"></span><span>Projekt im Tracker öffnen ↗<small>Board, Liste, Zeitleiste</small></span></a></li></ul>`);
+        wireLevel(body); return;
+      }
       if (entry.type === "loc" && data.sites[id]) {
         const s = data.sites[id];
         body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h"><span>GF Tracker · ${STATIC ? esc(window.GFTLive.label) : "live"}</span><a href="${esc(appLink("#/your-work"))}" target="_blank" rel="noopener">Tracker öffnen ↗</a></p>
           ${facts(s)}${s.top.length ? `<p class="h">Wichtigste offene Vorgänge</p><ul class="links" style="margin-bottom:12px">${issueRows(s.top)}</ul>` : '<p class="hint">Keine offenen Vorgänge an diesem Standort.</p>'}
+          ${data.projects && data.projects.some((p) => p.site === id) ? `<p class="h">Projekte an diesem Standort</p><ul class="links" style="margin-bottom:12px">${data.projects.filter((p) => p.site === id).map((p) => `<li><button type="button" data-tp="tp-${esc(p.key)}"><span class="dot ${projState(p)}"></span><span>${esc(p.name)} (${esc(p.key)})<small>${p.open} offen · ${p.pct} % erledigt${p.overdue ? ` · ${p.overdue} überfällig` : ""}</small></span></button></li>`).join("")}</ul>` : ""}
           ${s.teams.length ? `<p class="h">Teams an diesem Standort</p><ul class="links">${teamLinks(s.teams)}</ul>` : '<p class="hint">Noch kein Team zugeordnet (im Tracker unter Teams → Standort).</p>'}</section>`);
+        body.querySelectorAll("[data-tp]").forEach((b) => b.addEventListener("click", () => window.DW.select(b.dataset.tp, true)));
       } else if (id === "tracker") {
         const t = data.totals; const pill = body.querySelector(".pill.demo"); if (pill) pill.textContent = "Eigenentwicklung · im Einsatz";
         body.querySelectorAll("dl.facts dt").forEach((dt) => { if (dt.textContent === "Zugang") dt.nextElementSibling.innerHTML = '<a href="/" target="_blank" rel="noopener">Tracker öffnen ↗</a>'; });
@@ -4116,7 +4211,8 @@ const projlist = document.getElementById('projlist');
 let projFilter = 'all';
 function setProjFilter(f) { projFilter = f; document.querySelectorAll('[data-pf]').forEach(b => b.setAttribute('aria-pressed', b.dataset.pf === f)); renderProjList(); }
 document.querySelectorAll('[data-pf]').forEach(b => b.addEventListener('click', () => setProjFilter(b.dataset.pf)));
-function renderProjList() {
+function renderProjList() { renderProjList0(); if (window.DWHooks && window.DWHooks.projList) window.DWHooks.projList(document.getElementById('projlist'), projFilter); }
+function renderProjList0() {
   projlist.innerHTML = '';
   PROJ_ORDER.forEach(st => {
     const ps = PROJECTS.filter(pr => pr.status === st && (projFilter === 'all' || pr.kind === projFilter));
@@ -4504,7 +4600,7 @@ function applyVisibility() {
   VANS.forEach(v => { objects[v.id].group.visible = layerState.van; objects[v.id].road.visible = layerState.van; });
   PEOPLE.forEach(p => { const o = objects[p.id]; if (!o.inVan && !o.hidden) o.group.visible = layerState.people; });
   PROJECTS.forEach(pr => { if (objects[pr.id]) objects[pr.id].group.visible = layerState.proj && (!byId[pr.at].d.plan || showPlan); });
-  AGENTS.forEach(a => { objects[a.id].group.visible = layerState.agent; }); objects.aiws.group.visible = layerState.agent;
+  AGENTS.forEach(a => { objects[a.id].group.visible = layerState.agent; }); if (window.DWHooks && window.DWHooks.visibility) window.DWHooks.visibility(layerState, mode); objects.aiws.group.visible = layerState.agent;
   cloudGroup.visible = layerState.sys;
   labels.forEach(l => {
     const d = l.id ? byId[l.id].d : {};
@@ -4971,7 +5067,7 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-window.DW = { LOCATIONS, SYSTEMS, PROCESSES, GROUPS, byId, objects, select, pushEvent, popAt, renderKpis, renderDetail, renderLocList, get selected() { return selected; } };
+window.DW = { LOCATIONS, SYSTEMS, PROCESSES, GROUPS, scene, addLabel, tag, labels, layerState, applyVisibility, PLATE_Y, C, M, mat, byId, objects, select, pushEvent, popAt, renderKpis, renderDetail, renderLocList, get selected() { return selected; } };
 if (window.DWHooks && window.DWHooks.ready) window.DWHooks.ready();
 if (location.protocol === 'file:') window.__dw = { LOCATIONS, PEOPLE, buildPath, zonePoint, spotsFor, objects, labels };
 applyVisibility();
@@ -4994,8 +5090,9 @@ tick();
   // Servicestatus im Tracker → Station im Prozess „Wartung & Reparatur“
   const LIVE_PROC = "wartung";
   const STATUS_STEP = { OPEN: "Fälligkeit oder Störung", SCHEDULED: "Termin abstimmen", WAITING: "Termin abstimmen", PARTS: "Einsatz vorbereiten", WORKING: "Einsatz beim Kunden", RESOLVED: "Vollständigkeit prüfen" };
-  const TYPE_COL = { INCIDENT: 0xff5a5f, MAINT: 0x2f6bff, SERVICE: 0x14b8a6, SUBTASK: 0x8b5cf6, SAMPLE: 0x9aa8bd };
-  const TYPE_TXT = { INCIDENT: "Störung", MAINT: "Wartung", SERVICE: "Serviceanfrage", SUBTASK: "Teilaufgabe" };
+  const TYPE_COL = { INCIDENT: 0xff5a5f, MAINT: 0x2f6bff, SERVICE: 0x14b8a6, SUBTASK: 0x8b5cf6, STORY: 0x22c55e, TASK: 0x3d7bff, BUG: 0xff5a5f, SAMPLE: 0x9aa8bd };
+  const TYPE_TXT = { INCIDENT: "Störung", MAINT: "Wartung", SERVICE: "Serviceanfrage", SUBTASK: "Teilaufgabe", STORY: "Story", TASK: "Aufgabe", BUG: "Fehler" };
+  const CAT_TXT = { todo: "Noch nicht begonnen – hier warten Vorgänge darauf, dass jemand anfängt.", progress: "In Arbeit – hier wird gerade an den Vorgängen gearbeitet." };
   const PRIO_TXT = { HIGHEST: "Höchste", HIGH: "Hoch", MEDIUM: "Mittel", LOW: "Niedrig", LOWEST: "Niedrigste" };
   const OLD_H = 48; // ab 2 Tagen an einer Station zählt ein Vorgang als „wartet zu lange“
   const SLOT = 0.8, PER_LAYER = 9, MAX_LAYERS = 3;
@@ -5074,10 +5171,10 @@ tick();
   #lvl .tip{position:absolute;left:0;top:0;pointer-events:none;background:var(--ink);color:var(--bg1);border-radius:12px;padding:8px 11px;font-size:12px;max-width:280px;box-shadow:var(--shadow);opacity:0;transition:opacity .12s}
   #lvl .tip.on{opacity:1} #lvl .tip b{display:block;font-size:12.5px} #lvl .tip span{opacity:.7}
   #lvl .pop{position:absolute;left:0;top:0;pointer-events:none;font:800 15px/1 inherit;color:var(--ok);text-shadow:0 2px 10px rgba(22,163,74,.35);white-space:nowrap}
-  #lvl .hint{position:absolute;left:20px;bottom:30px;font-size:11.5px;color:var(--ink3)}
+  #lvl .hint{position:absolute;right:22px;top:92px;font-size:11.5px;color:var(--ink3)}
   #lvl .toast{position:absolute;left:50%;top:22px;transform:translate(-50%,-20px);opacity:0;padding:10px 16px;border-radius:999px;background:var(--ink);color:var(--bg1);font-weight:600;font-size:13px;transition:all .4s cubic-bezier(.2,.8,.2,1);pointer-events:none}
   #lvl .toast.on{transform:translate(-50%,0);opacity:1}
-  @media (max-width:1280px){#lvl .hint{display:none}} @media (max-width:1100px){#lvl .lv-mission{display:none}}
+  @media (max-width:1280px){#lvl .hint{display:none}} #lvl .lv-panel.on~.hint{display:none} @media (max-width:1100px){#lvl .lv-mission{display:none}}
   @media (max-width:860px){#lvl .lv-stats{top:auto;bottom:92px;left:16px;right:16px;justify-content:space-between} #lvl .st{min-width:0;padding:4px 8px} #lvl .st b{font-size:17px}
     #lvl .lv-panel{left:16px;right:16px;width:auto;top:auto;bottom:170px;max-height:45%} #lvl .lv-title{font-size:18px} #lvl .lv-sub{display:none}
     #lvl .nm{display:none} #lvl .lbl{padding:4px 8px 4px 4px;gap:5px} #lvl .lbl.sel .nm{display:inline} #lvl .lv-head{padding:10px 14px 10px 10px}}
@@ -5090,7 +5187,15 @@ tick();
   const live = () => window.GFTLive && window.GFTLive.data;
 
   /* ───────────── Daten je Level ───────────── */
+  // Tracker-Projekte als zusätzliche Level: Stationen = offene Status des Projekts, Spielsteine = offene Vorgänge
+  function trackerProcs() {
+    const d = live(); if (!d || !d.projects) return [];
+    return d.projects.map((p) => ({ id: `t-${p.key}`, name: p.name, area: `GF Tracker · ${p.key}`, goal: p.desc || `Alle offenen Vorgänge im Projekt ${p.name}`, tracker: p,
+      steps: p.statuses.map((x, i) => ({ id: `t-${p.key}-${i + 1}`, n: x.name, statusId: x.id, txt: x.id === "BLOCKED" ? "Blockiert – hier hängt etwas fest und braucht Hilfe oder eine Entscheidung." : CAT_TXT[x.cat] || "", sys: "tracker" })) }));
+  }
+  const allLevels = () => [...window.DW.PROCESSES, ...trackerProcs()];
   function levelData(proc) {
+    if (proc.tracker) return trackerLevelData(proc);
     const d = live(); const isLive = proc.id === LIVE_PROC && d && d.flow;
     const stations = proc.steps.map((s, i) => ({ step: s, i, items: [], liveMapped: false }));
     if (isLive) {
@@ -5125,6 +5230,23 @@ tick();
       ];
     }
     return { proc, isLive, stations, open, stau, missions, stars: missions.filter((m) => m.done).length, done7: isLive ? d.flow.done7 : null, doneToday: isLive ? d.flow.doneToday : null, sla: isLive ? d.flow.sla : 0 };
+  }
+
+  function trackerLevelData(proc) {
+    const p = proc.tracker; const staleH = p.staleH || 168; const days = Math.round(staleH / 24);
+    const stations = proc.steps.map((s, i) => ({ step: s, i, items: p.items.filter((it) => it.status === s.statusId).map((it) => ({ ...it, id: it.key })) }));
+    for (const st of stations) {
+      st.old = st.items.filter((x) => x.ageH > staleH).length; st.sla = st.items.filter((x) => x.sla).length; st.dim = false;
+      st.state = st.old >= 3 ? "hot" : st.old || (st.step.statusId === "BLOCKED" && st.items.length) ? "warn" : "ok";
+    }
+    const open = stations.reduce((a, s) => a + s.items.length, 0); const stau = stations.filter((s) => s.state !== "ok").length;
+    const missions = [];
+    if (p.sprint) missions.push({ t: "Sprintziel erreichen", s: `${p.sprint.done} von ${p.sprint.total} erledigt · ${p.sprint.name}`, p: p.sprint.total ? p.sprint.done / p.sprint.total : 0, done: !!p.sprint.total && p.sprint.done === p.sprint.total });
+    else if (p.type === "service") { const q = p.open ? 1 - p.sla / p.open : 1; missions.push({ t: "SLA einhalten", s: `${Math.round(q * 100)} % im Soll · Ziel 95 %`, p: Math.min(1, q / 0.95), done: q >= 0.95 }); }
+    else missions.push({ t: "Alles zugewiesen", s: p.unassigned ? `${p.unassigned} Vorgänge ohne Verantwortliche` : "Jeder Vorgang hat eine verantwortliche Person", p: p.open ? 1 - p.unassigned / p.open : 1, done: !p.unassigned });
+    missions.push({ t: "Nichts überfällig", s: p.overdue ? `${p.overdue} Vorgänge über dem Fälligkeitstermin` : "Alle Termine im Plan", p: p.open ? Math.max(0, 1 - p.overdue / p.open) : 1, done: !p.overdue });
+    missions.push({ t: "Kein Stau", s: stau ? `${stau} Station${stau > 1 ? "en" : ""} mit Wartezeit über ${days} Tagen oder blockiert` : "Alle Stationen im Fluss", p: Math.max(0, 1 - stau / Math.max(1, stations.length)), done: !stau });
+    return { proc, isLive: true, tracker: true, stations, open, stau, missions, stars: missions.filter((m) => m.done).length, done7: p.done7, doneToday: null, sla: p.sla, staleH };
   }
 
   /* ───────────── Bühne ───────────── */
@@ -5294,7 +5416,7 @@ tick();
 
   /* ───────────── HUD ───────────── */
   function hud(LD) {
-    const P = window.DW.PROCESSES; const idx = P.indexOf(LD.proc);
+    const P = allLevels(); const idx = Math.max(0, P.findIndex((p) => p.id === LD.proc.id));
     root.querySelector(".lv-head").innerHTML = `<button class="lv-back" data-x aria-label="Zurück zur Systemlandschaft"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
       <div style="min-width:0"><div class="lv-eyebrow">Level ${idx + 1} von ${P.length} · ${esc(LD.proc.area || "Prozess")} ${LD.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? `<span class="tag">${esc(window.GFTLive.label)}</span>` : '<span class="tag live">Live<span class="nm"> · GF Tracker</span></span>') : '<span class="tag demo">Beispieldaten</span>'}</div>
       <h1 class="lv-title">${esc(LD.proc.name)}</h1><div class="lv-sub">${esc(LD.proc.goal || "")}</div></div>`;
@@ -5303,7 +5425,7 @@ tick();
       <div class="st ${LD.stau ? (LD.stations.some((s) => s.state === "hot") ? "bad" : "warn") : ""}"><b>${LD.stau}</b><span>Stau-Stationen</span></div>
       ${LD.isLive ? `<div class="st"><b>${LD.done7}</b><span>erledigt · 7 Tage</span></div><div class="st ${LD.sla ? "bad" : ""}"><b>${LD.sla}</b><span>SLA verletzt</span></div>` : ""}`;
     root.querySelector(".lv-mission").innerHTML = `<h3>Missionen</h3>${LD.missions.map((m) => `<div class="ms ${m.done ? "done" : ""}"><i>${m.done ? "✓" : ""}</i><div><b>${esc(m.t)}</b><small>${esc(m.s)}</small><div class="bar"><i style="width:${Math.round(m.p * 100)}%"></i></div></div></div>`).join("")}`;
-    root.querySelector(".lv-levels").innerHTML = P.map((p, k) => { const L = k === idx ? LD : levelData(p); return `<button class="lc ${k === idx ? "on" : ""}" data-lv="${esc(p.id)}"><span class="n">${k + 1}</span><span><b>${esc(p.name)}</b><small>${"★".repeat(L.stars)}${"☆".repeat(3 - L.stars)} · ${L.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? "Tracker-Daten" : "live") : "Beispiel"}</small></span></button>`; }).join("");
+    root.querySelector(".lv-levels").innerHTML = P.map((p, k) => { const L = k === idx ? LD : levelData(p); return `<button class="lc ${k === idx ? "on" : ""}" data-lv="${esc(p.id)}"><span class="n">${p.tracker ? esc(p.tracker.key.slice(0, 3)) : k + 1}</span><span><b>${esc(p.name)}</b><small>${"★".repeat(L.stars)}${"☆".repeat(3 - L.stars)} · ${p.tracker ? "Projekt · " : ""}${L.isLive ? (window.GFTLive && window.GFTLive.label !== "Live · GF Tracker" ? "Tracker-Daten" : "live") : "Beispiel"}</small></span></button>`; }).join("");
     root.querySelectorAll("[data-lv]").forEach((b) => b.addEventListener("click", () => open(b.dataset.lv)));
     root.querySelector("[data-x]").addEventListener("click", close);
     const on = root.querySelector(".lc.on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest" });
@@ -5318,7 +5440,7 @@ tick();
       el.addEventListener("click", () => selectStation(i)); root.appendChild(el); return el;
     });
     const g = document.createElement("div"); g.className = "lbl goal";
-    g.innerHTML = `<span class="no">✓</span><span class="nm">Abgeschlossen</span> <span class="ct">${LD.isLive ? `${LD.doneToday} heute` : ""}</span>`; root.appendChild(g); R.goalLbl = g;
+    g.innerHTML = `<span class="no">✓</span><span class="nm">Abgeschlossen</span> <span class="ct">${LD.isLive ? (LD.doneToday == null ? `${LD.done7} in 7 T` : `${LD.doneToday} heute`) : ""}</span>`; root.appendChild(g); R.goalLbl = g;
   }
 
   function panel(LD, i) {
@@ -5328,11 +5450,11 @@ tick();
     const list = st.items.slice(0, 30);
     p.querySelector(".lv-pbody").innerHTML = `<div class="lv-eyebrow">Station ${i + 1} von ${LD.stations.length}${st.state === "hot" ? ' <span class="tag" style="background:rgba(239,68,68,.12);color:#ef4444">Engpass</span>' : st.state === "warn" ? ' <span class="tag" style="background:rgba(245,158,11,.14);color:#b45309">verzögert</span>' : ""}</div>
       <h2>${esc(s.n)}</h2><p>${esc(s.txt || "")}</p>
-      <div class="facts"><div><b>${st.dim ? "–" : st.items.length}</b><span>Vorgänge</span></div><div class="${st.old ? (st.old >= 3 ? "bad" : "warn") : ""}"><b>${st.dim ? "–" : st.old}</b><span>über 2 Tage</span></div><div class="${st.sla ? "bad" : ""}"><b>${LD.isLive && !st.dim ? st.sla : "–"}</b><span>SLA verletzt</span></div></div>
-      <dl><dt>Zuständig</dt><dd>${esc(grp ? grp.n : s.who || "–")}</dd><dt>Programm</dt><dd>${esc(sys ? sys.name : "–")}</dd><dt>Übergibt</dt><dd>${esc(s.gives || "–")}</dd><dt>Übliche Dauer</dt><dd>${String(s.days ?? "–").replace(".", ",")} Tage</dd></dl>
+      <div class="facts"><div><b>${st.dim ? "–" : st.items.length}</b><span>Vorgänge</span></div><div class="${st.old ? (st.old >= 3 ? "bad" : "warn") : ""}"><b>${st.dim ? "–" : st.old}</b><span>über ${LD.staleH ? Math.round(LD.staleH / 24) : 2} Tage</span></div><div class="${st.sla ? "bad" : ""}"><b>${LD.isLive && !st.dim ? st.sla : "–"}</b><span>SLA verletzt</span></div></div>
+      ${LD.tracker ? `<dl><dt>Projekt</dt><dd>${esc(LD.proc.tracker.key)} · ${esc(LD.proc.tracker.name)}</dd><dt>Team</dt><dd>${esc(LD.proc.tracker.team || "–")}</dd><dt>Ø Liegezeit hier</dt><dd>${st.items.length ? age(Math.round(st.items.reduce((a, x) => a + x.ageH, 0) / st.items.length)) : "–"}</dd></dl>` : `<dl><dt>Zuständig</dt><dd>${esc(grp ? grp.n : s.who || "–")}</dd><dt>Programm</dt><dd>${esc(sys ? sys.name : "–")}</dd><dt>Übergibt</dt><dd>${esc(s.gives || "–")}</dd><dt>Übliche Dauer</dt><dd>${String(s.days ?? "–").replace(".", ",")} Tage</dd></dl>`}
       ${st.dim ? '<p class="note">Diese Station ist im GF Tracker kein eigener Status. Die Daten kommen mit der Anbindung von Service-App, Inform und DocuWare.</p>'
         : !LD.isLive ? `<p class="note">Beispieldaten aus der Systemlandschaft${s.open ? `: ${esc(s.open)}` : ""}. Echte Zahlen folgen mit der Anbindung der Programme.</p>`
-        : list.length ? `<h3 style="margin-top:4px">Vorgänge an dieser Station</h3>${list.map((it) => `<a class="it" href="${esc(rel(it.url))}" target="_blank" rel="noopener"><i style="background:#${tokenColor(it).toString(16).padStart(6, "0")}"></i><span style="min-width:0"><b>${esc(it.key)} · ${esc(it.summary)}</b><small>${esc(TYPE_TXT[it.type] || it.type)} · ${esc(it.statusName)}${it.assignee ? ` · ${esc(it.assignee)}` : " · nicht zugewiesen"}</small></span><em class="${it.sla ? "sla" : it.ageH > OLD_H ? "old" : ""}">${it.sla ? "SLA" : age(it.ageH)}</em></a>`).join("")}${st.items.length > 30 ? `<p class="note" style="margin-top:8px">… und ${st.items.length - 30} weitere</p>` : ""}`
+        : list.length ? `<h3 style="margin-top:4px">Vorgänge an dieser Station</h3>${list.map((it) => `<a class="it" href="${esc(rel(it.url))}" target="_blank" rel="noopener"><i style="background:#${tokenColor(it).toString(16).padStart(6, "0")}"></i><span style="min-width:0"><b>${esc(it.key)} · ${esc(it.summary)}</b><small>${esc(TYPE_TXT[it.type] || it.type)} · ${esc(it.statusName)}${it.assignee ? ` · ${esc(it.assignee)}` : " · nicht zugewiesen"}</small></span><em class="${it.sla ? "sla" : it.ageH > (LD.staleH || OLD_H) ? "old" : ""}">${it.sla ? "SLA" : age(it.ageH)}</em></a>`).join("")}${st.items.length > 30 ? `<p class="note" style="margin-top:8px">… und ${st.items.length - 30} weitere</p>` : ""}`
         : '<p class="note">Keine Vorgänge an dieser Station – alles im Fluss.</p>'}`;
     p.classList.add("on"); R.lbls.forEach((e, k) => e.classList.toggle("sel", k === i));
   }
@@ -5419,7 +5541,7 @@ tick();
     if (u.station != null) selectStation(u.station);
   }
   function onKey(ev) {
-    if (!R) return; const P = window.DW.PROCESSES; const idx = P.indexOf(R.LD.proc);
+    if (!R) return; const P = allLevels(); const idx = Math.max(0, P.findIndex((p) => p.id === R.LD.proc.id));
     if (ev.key === "Escape") { if (R.sel != null) selectStation(null); else close(); }
     if (ev.key === "ArrowRight") open(P[(idx + 1) % P.length].id);
     if (ev.key === "ArrowLeft") open(P[(idx - 1 + P.length) % P.length].id);
@@ -5436,7 +5558,7 @@ tick();
   }
 
   function open(id) {
-    const W = window.DW; if (!W) return; const proc = W.PROCESSES.find((p) => p.id === id) || W.PROCESSES[0];
+    const W = window.DW; if (!W) return; const proc = allLevels().find((p) => p.id === id) || W.PROCESSES[0];
     if (!root) {
       root = document.createElement("div"); root.id = "lvl"; root.setAttribute("role", "dialog"); root.setAttribute("aria-label", "Prozess-Level");
       root.innerHTML = `<div class="g lv-head"></div><div class="g lv-stats"></div><div class="g lv-mission"></div><div class="g lv-levels" role="tablist" aria-label="Level"></div>
@@ -5462,7 +5584,9 @@ tick();
   // Live-Aktualisierung: neue/weitergerückte/abgeschlossene Vorgänge laufen sichtbar über die Strecke
   function update() {
     if (!R || !R.LD.isLive && R.LD.proc.id !== LIVE_PROC) return;
-    const before = R.LD; const LD = levelData(before.proc); R.LD = LD;
+    const before = R.LD; const proc = allLevels().find((p) => p.id === before.proc.id) || before.proc;
+    if (proc.steps.length !== before.stations.length) return open(proc.id); // Ablauf des Projekts geändert: Bühne neu aufbauen
+    const LD = levelData(proc); R.LD = LD;
     // Beschriftungen und Anzeigen auffrischen, Szene bleibt stehen
     hud(LD); labels(R, LD); if (R.sel != null) panel(LD, R.sel);
     R.stObjs.forEach((o, i) => { const st = LD.stations[i]; o.st = st; const c = stateCol(st.state);

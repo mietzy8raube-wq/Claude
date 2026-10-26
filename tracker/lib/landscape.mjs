@@ -36,8 +36,10 @@ export function buildLandscape(srcFile) {
   { id: 'lt2', from: 'factorial', to: 'tracker', name: 'Abwesenheiten', desc: 'Urlaub und Abwesenheit aus Factorial fließen in die automatische Zuweisung (sobald eingerichtet).', status: 'check', rate: 1, dir: 'fwd' },`, "Informationsbezüge GF Tracker");
   js = patch(js, "function renderKpis() {", "function renderKpis() { renderKpis0(); if (window.DWHooks && window.DWHooks.kpis) window.DWHooks.kpis(kpis); }\nfunction renderKpis0() {", "Kennzahlen");
   js = patch(js, "function renderDetail(id) {", "function renderDetail(id) { renderDetail0(id); if (id && byId[id] && window.DWHooks && window.DWHooks.detail) window.DWHooks.detail(id, byId[id], detail); }\nfunction renderDetail0(id) {", "Details");
+  js = patch(js, "AGENTS.forEach(a => { objects[a.id].group.visible = layerState.agent; });", "AGENTS.forEach(a => { objects[a.id].group.visible = layerState.agent; }); if (window.DWHooks && window.DWHooks.visibility) window.DWHooks.visibility(layerState, mode);", "Sichtbarkeit");
+  js = patch(js, "function renderProjList() {", "function renderProjList() { renderProjList0(); if (window.DWHooks && window.DWHooks.projList) window.DWHooks.projList(document.getElementById('projlist'), projFilter); }\nfunction renderProjList0() {", "Vorhabenliste");
   js = patch(js, "function tick() {", "function tick() { if (window.DWPaused) { requestAnimationFrame(tick); return; } // Prozess-Level offen: Welt ruht", "Pause");
-  js = patch(js, "if (location.protocol === 'file:') window.__dw", `window.DW = { LOCATIONS, SYSTEMS, PROCESSES, GROUPS, byId, objects, select, pushEvent, popAt, renderKpis, renderDetail, renderLocList, get selected() { return selected; } };
+  js = patch(js, "if (location.protocol === 'file:') window.__dw", `window.DW = { LOCATIONS, SYSTEMS, PROCESSES, GROUPS, scene, addLabel, tag, labels, layerState, applyVisibility, PLATE_Y, C, M, mat, byId, objects, select, pushEvent, popAt, renderKpis, renderDetail, renderLocList, get selected() { return selected; } };
 if (window.DWHooks && window.DWHooks.ready) window.DWHooks.ready();
 if (location.protocol === 'file:') window.__dw`, "Schnittstelle");
 
@@ -58,7 +60,7 @@ export function landscapeAssets(root) {
 }
 
 /** Zusammenfassung für die 3D-Übersicht aus den (bereits auf den Sichtbereich beschränkten) Vorgängen. */
-export function landscapeData({ S, issues, projects, teams, users, appUrl, company, user, now = Date.now() }) {
+export function landscapeData({ S, issues, projects, teams, users, sprints = [], appUrl, company, user, now = Date.now() }) {
   const P = new Map(projects.map((p) => [p.id, p])); const T = new Map(teams.map((t) => [t.id, t])); const U = new Map(users.map((u) => [u.id, u]));
   const key = (i) => `${P.get(i.projectId)?.key || "?"}-${i.no}`;
   const link = (i) => `${appUrl}/#/your-work?issue=${encodeURIComponent(key(i))}`;
@@ -75,13 +77,38 @@ export function landscapeData({ S, issues, projects, teams, users, appUrl, compa
   const flowItem = (i, p, sla) => flowItems.push({ key: key(i), summary: i.summary, status: i.status, statusName: S.statusInfo(p, i.status).name, type: i.type, prio: i.priority,
     assignee: U.get(i.assigneeId)?.name || null, sla: !!sla, ageH: Math.round((now - new Date(statusSince(i)).getTime()) / 36e5), url: link(i), site: siteOf(i) });
   const events = [];
+  // Projekte: Fahnen in der 3D-Welt und je ein Level (Stationen = Status des Projekts, Spielsteine = offene Vorgänge)
+  const siteOfTeam = (t) => (t?.site && known.has(t.site) ? t.site : DEFAULT_SITE);
+  const projOf = (p) => {
+    let ps = projStat.get(p.id); if (ps) return ps;
+    const t = T.get(p.teamId);
+    ps = { id: p.id, key: p.key, name: p.name, color: p.color || "#2f6bff", type: p.type, desc: p.desc || "", site: siteOfTeam(t), team: t?.name || null, lead: U.get(p.leadId)?.name || null,
+      open: 0, done: 0, overdue: 0, sla: 0, unassigned: 0, done7: 0, staleH: p.type === "service" ? 48 : 168, items: [], epics: [], sprint: null,
+      statuses: S.workflowFor(p).filter((x) => x.cat !== "done").map((x) => ({ id: x.id, name: x.name, cat: x.cat })), url: `${appUrl}/#/p/${encodeURIComponent(p.key)}` };
+    projStat.set(p.id, ps); return ps;
+  };
+  const epicCount = new Map(); const epics = [];
+  for (const i of issues) {
+    const p = P.get(i.projectId); if (!p) continue;
+    if (i.type === "EPIC") { epics.push(i); continue; }
+    if (i.epicId) { const c = epicCount.get(i.epicId) || { open: 0, done: 0 }; S.statusInfo(p, i.status).cat === "done" ? c.done++ : c.open++; epicCount.set(i.epicId, c); }
+  }
+  for (const e of epics) {
+    const p = P.get(e.projectId); const c = epicCount.get(e.id) || { open: 0, done: 0 }; const n = c.open + c.done;
+    projOf(p).epics.push({ key: key(e), summary: e.summary, due: e.dueDate || null, done: S.statusInfo(p, e.status).cat === "done", pct: n ? Math.round(c.done / n * 100) : 0, url: link(e) });
+  }
+  for (const sp of sprints) {
+    const p = P.get(sp.projectId); if (!p || sp.state !== "active") continue;
+    const list = issues.filter((i) => i.sprintId === sp.id && i.type !== "EPIC"); const dn = list.filter((i) => S.statusInfo(p, i.status).cat === "done").length;
+    projOf(p).sprint = { name: sp.name, goal: sp.goal || "", end: sp.end || null, total: list.length, done: dn };
+  }
   for (const i of issues) {
     const p = P.get(i.projectId); if (!p || i.type === "EPIC") continue;
     const cat = S.statusInfo(p, i.status).cat;
-    const ps = projStat.get(p.id) || { key: p.key, name: p.name, open: 0, done: 0 }; projStat.set(p.id, ps);
+    const ps = projOf(p);
     for (const h of i.history) if (h.field === "Status" || h.to === "erstellt") events.push({ at: h.at, i, h, p });
     if (cat === "done") {
-      ps.done++;
+      ps.done++; if (i.resolvedAt && now - new Date(i.resolvedAt).getTime() < 7 * 864e5) ps.done7++;
       if (p.type === "service") {
         const r = i.resolvedAt ? now - new Date(i.resolvedAt).getTime() : Infinity; if (r < 7 * 864e5) done7++; if (i.resolvedAt && i.resolvedAt.slice(0, 10) === ymd) doneToday++;
         if (i.status === "RESOLVED") { const s = (service.RESOLVED ||= { n: 0, old: 0 }); s.n++; if (now - new Date(statusSince(i)).getTime() > svcAge) s.old++; flowItem(i, p, false); }
@@ -92,6 +119,9 @@ export function landscapeData({ S, issues, projects, teams, users, appUrl, compa
     const st = sites[siteOf(i)];
     const overdue = !!i.dueDate && i.dueDate < ymd;
     const r = S.slaCompute(i, p, "resolve"), f = S.slaCompute(i, p, "first"); const sla = !!((r && !r.stopped && r.breached) || (f && !f.stopped && f.breached));
+    if (overdue) ps.overdue++; if (sla) ps.sla++; if (!i.assigneeId) ps.unassigned++;
+    ps.items.push({ key: key(i), summary: i.summary, status: i.status, statusName: S.statusInfo(p, i.status).name, type: i.type, prio: i.priority, assignee: U.get(i.assigneeId)?.name || null,
+      sla, overdue, ageH: Math.round((now - new Date(statusSince(i)).getTime()) / 36e5), url: link(i), site: siteOf(i) });
     const appt = !!i.appointmentAt && i.appointmentAt.slice(0, 10) === ymd; const high = i.priority === "HIGH" || i.priority === "HIGHEST";
     for (const x of [totals, st]) { x.open++; if (overdue) x.overdue++; if (sla) x.sla++; if (!i.assigneeId) x.unassigned++; if (appt) x.today++; if (high) x.high++; }
     st.top.push({ key: key(i), summary: i.summary, status: S.statusInfo(p, i.status).name, prio: i.priority, assignee: U.get(i.assigneeId)?.name || null, due: i.dueDate || null, sla, overdue, url: link(i),
@@ -111,7 +141,8 @@ export function landscapeData({ S, issues, projects, teams, users, appUrl, compa
     sites, totals, service, events: ev,
     flow: { items: flowItems.sort((a, b) => (b.sla - a.sla) || (b.ageH - a.ageH)).slice(0, 240), done7, doneToday,
       open: flowItems.filter((x) => x.status !== "RESOLVED").length, sla: flowItems.filter((x) => x.sla).length },
-    projects: [...projStat.values()].map((x) => ({ ...x, pct: x.open + x.done ? Math.round(x.done / (x.open + x.done) * 100) : 0 })),
+    projects: [...projStat.values()].map((x) => ({ ...x, pct: x.open + x.done ? Math.round(x.done / (x.open + x.done) * 100) : 0,
+      items: x.items.sort((a, b) => (b.sla - a.sla) || (b.overdue - a.overdue) || (b.ageH - a.ageH)).slice(0, 200), epics: x.epics.sort((a, b) => (a.due || "9").localeCompare(b.due || "9")) })),
     defaultSite: DEFAULT_SITE,
   };
 }

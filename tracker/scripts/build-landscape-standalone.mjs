@@ -22,10 +22,10 @@ const statik = `${read("public/shared.js")}
 ${browserLib}
 window.GFT_STATIC = { compute(db) {
   const S = TrackerShared; const d = db || S.seed();
-  const out = landscapeData({ S, issues: d.issues || [], projects: d.projects || [], teams: d.teams || [], users: d.users || [], appUrl: "", company: "druckluft-technik Chemnitz", user: null });
+  const out = landscapeData({ S, issues: d.issues || [], projects: d.projects || [], teams: d.teams || [], sprints: d.sprints || [], users: d.users || [], appUrl: "", company: "druckluft-technik Chemnitz", user: null });
   // Verweise auf die Einzeldatei-Version des Trackers im selben Ordner
   const fix = (u) => (u || "").replace(/^\\/#\\//, "gf-suite-tracker.html#/");
-  Object.values(out.sites).forEach((s) => s.top.forEach((i) => (i.url = fix(i.url)))); out.events.forEach((e) => (e.url = fix(e.url))); out.flow.items.forEach((i) => (i.url = fix(i.url)));
+  Object.values(out.sites).forEach((s) => s.top.forEach((i) => (i.url = fix(i.url)))); out.events.forEach((e) => (e.url = fix(e.url))); out.flow.items.forEach((i) => (i.url = fix(i.url))); out.projects.forEach((p) => { p.url = fix(p.url); p.items.forEach((i) => (i.url = fix(i.url))); p.epics.forEach((e) => (e.url = fix(e.url))); });
   return out;
 } };`;
 
