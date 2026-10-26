@@ -30,6 +30,8 @@ Kundenportal: <http://localhost:3000/portal>. Die Beispieldaten liegen in
 
 ## Produktivbetrieb (Docker + automatisches HTTPS)
 
+**Schritt-für-Schritt-Anleitung:** [INBETRIEBNAHME.md](INBETRIEBNAHME.md) (Server mieten, Adresse, Start, Einrichtung, Microsoft 365, Betrieb).
+
 ```bash
 cp .env.example .env          # Domain, Firmenname, Admin-E-Mail eintragen
 mkdir -p data && sudo chown 1000:1000 data
