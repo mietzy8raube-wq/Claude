@@ -21,7 +21,9 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Interner Server: CADDYFILE=Caddyfile.intern-zertifikat oder Caddyfile.intern-ca in .env (siehe INBETRIEBNAHME.md)
+      - ./${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro     # nur für Caddyfile.intern-zertifikat: zertifikat.pem + schluessel.pem
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

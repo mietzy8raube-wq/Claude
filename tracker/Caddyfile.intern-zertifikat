@@ -1,0 +1,10 @@
+# Interner Server mit eigenem Zertifikat (z. B. Wildcard *.druckluft-chemnitz.de oder von der Firmen-CA).
+# Dateien ablegen: certs/zertifikat.pem (Zertifikat inkl. Zwischenzertifikate) und certs/schluessel.pem (privater Schlüssel).
+# In .env: CADDYFILE=Caddyfile.intern-zertifikat
+{$DOMAIN} {
+	tls /certs/zertifikat.pem /certs/schluessel.pem
+	encode gzip
+	reverse_proxy tracker:3000 {
+		flush_interval -1
+	}
+}

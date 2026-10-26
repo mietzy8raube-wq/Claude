@@ -1,0 +1,13 @@
+# Interner Server ohne vorhandenes Zertifikat: Caddy betreibt eine eigene kleine Zertifizierungsstelle.
+# Deren Stammzertifikat einmal auf alle Firmen-PCs verteilen (Gruppenrichtlinie / Intune), siehe INBETRIEBNAHME.md.
+# In .env: CADDYFILE=Caddyfile.intern-ca
+{
+	skip_install_trust
+}
+{$DOMAIN} {
+	tls internal
+	encode gzip
+	reverse_proxy tracker:3000 {
+		flush_interval -1
+	}
+}
