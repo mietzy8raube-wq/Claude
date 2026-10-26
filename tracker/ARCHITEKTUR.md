@@ -715,6 +715,13 @@ Nur mit Anmeldung; gezeigt wird der eigene Sichtbereich.
   „Wartung & Reparatur“ (neu → eingeplant → Ersatzteil → in Arbeit → erledigt, mit
   Stau-Markierung ab 2 Tagen) und neue/geänderte Vorgänge als Meldungen. Jede Änderung
   im Tracker kommt sofort an (Live-Kanal); oben steht „Live · GF Tracker“.
+- **Prozess-Level:** Jeder Prozess lässt sich als eigenes Level öffnen (Knopf „Als Level
+  öffnen“ im Prozess, „▶ Level“ oben oder direkt `/landschaft#level=wartung`): Stationen auf
+  einer Strecke, Vorgänge als Spielsteine, die beim Statuswechsel sichtbar weiterfahren,
+  Stau-Stationen pulsieren, Abschlüsse fahren ins Ziel (+1). Drei Missionen ergeben die
+  Sterne (Wartung: SLA-Quote ≥ 95 %, kein Stau über 2 Tage, 5 Abschlüsse pro Woche).
+  „Wartung & Reparatur“ ist live aus dem Tracker (Status → Station), die übrigen Prozesse
+  zeigen Beispielmengen. Klick auf einen Spielstein öffnet den Vorgang; ← → wechselt das Level.
 - **Standort zuordnen:** *Teams → Team bearbeiten → Standort* (Chemnitz, Siebenlehn,
   Zwenkau). Vorgänge erscheinen beim Standort ihres Teams (sonst des Projekt-Teams),
   ohne Zuordnung in Chemnitz.

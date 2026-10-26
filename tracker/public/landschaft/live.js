@@ -15,7 +15,10 @@
     .gft-live .h{display:flex;justify-content:space-between;align-items:center}.gft-live .h a{font:600 11px var(--font-body);text-transform:none;letter-spacing:0;color:var(--petrol)}
     .databadge.live{color:#166534;background:#dcfce7}.databadge.live:hover{background:#bbf7d0}.databadge.err{color:#991b1b;background:#fee2e2}
     .gft-back{display:inline-flex;align-items:center;gap:6px;font:600 12px var(--font-body);color:var(--petrol);background:var(--petrol-soft);border-radius:10px;padding:7px 10px;text-decoration:none;white-space:nowrap}
-    .gft-back:hover{background:#dbe6ff}@media (max-width:860px){.gft-back span{display:none}.gft-back{padding:7px 9px}#top .brand-txt b{font-size:14px!important}}`;
+    .gft-back:hover{background:#dbe6ff}
+    .gft-play{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;margin:6px 0 14px;padding:11px 14px;border:0;border-radius:12px;cursor:pointer;font:600 13px var(--font-body);color:#fff;
+      background:linear-gradient(135deg,#2f6bff,#6a4dff);box-shadow:0 6px 18px rgba(47,107,255,.35);transition:transform .15s,box-shadow .15s}
+    .gft-play:hover{transform:translateY(-1px);box-shadow:0 10px 24px rgba(47,107,255,.42)}@media (max-width:860px){.gft-back span{display:none}.gft-back{padding:7px 9px}#top .brand-txt b{font-size:14px!important}}`;
   document.head.appendChild(style);
 
   const badge = () => document.getElementById("dataBadge");
@@ -53,7 +56,7 @@
     const fresh = data.events.filter((e) => !seen.has(e.id)); const first = !seen.size;
     data.events.forEach((e) => seen.add(e.id));
     (first ? fresh.slice(0, 3) : fresh.slice(0, 5)).reverse().forEach((e) => W.pushEvent({ st: e.st, text: `GF Tracker: ${e.text}`, go: W.byId[e.site] ? e.site : "tracker" }));
-    setBadge(); W.renderKpis();
+    setBadge(); W.renderKpis(); if (window.GFTLevel) window.GFTLevel.update();
     const sel = W.selected; if (sel && W.byId[sel] && (W.byId[sel].type === "loc" || ["tracker", "sources"].includes(sel) || W.byId[sel].type === "step" || W.byId[sel].type === "proc")) W.renderDetail(sel);
   }
 
@@ -63,11 +66,14 @@
   const rel = (u) => (data && u.startsWith(data.appUrl) ? u.slice(data.appUrl.length) || "/" : u);
   const teamLinks = (teams) => teams.map((t) => `<li><a class="trow" href="${esc(appLink(`#/filters?jql=${encodeURIComponent(`team = "${t}" AND statusCategory != Done ORDER BY priority DESC`)}`))}" target="_blank" rel="noopener"><span class="dot ok"></span><span>Team ${esc(t)}<small>offene Vorgänge im Tracker</small></span></a></li>`).join("");
 
+  window.GFTLive = { get data() { return data; } };
+  const levelBtn = (pid, label) => `<button type="button" class="gft-play" data-level="${esc(pid)}"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>${label}</button>`;
+  const wireLevel = (el) => el.querySelectorAll("[data-level]").forEach((b) => b.addEventListener("click", () => window.GFTLevel && window.GFTLevel.open(b.dataset.level)));
   window.DWHooks = {
     ready() {
       const top = document.getElementById("top");
       if (top && !document.querySelector(".gft-back")) { const a = document.createElement("a"); a.className = "gft-back"; a.href = "/"; a.innerHTML = "←<span> GF Tracker</span>"; a.title = "Zurück zum Tracker"; top.insertBefore(a, top.firstChild); }
-      setBadge(); load();
+      setBadge(); load().then(() => { const m = location.hash.match(/^#level=([\w-]+)/); if (m && window.GFTLevel) window.GFTLevel.open(m[1]); });
       try { const es = new EventSource("/api/events"); es.addEventListener("rev", soon); es.onerror = () => {}; } catch { /* ohne Live-Kanal reicht das Nachladen */ }
       setInterval(load, 60e3);
     },
@@ -75,10 +81,15 @@
       if (!data) return;
       const t = data.totals;
       el.insertAdjacentHTML("afterbegin", `<button type="button" class="kpi" data-gft="tracker" title="Offene Vorgänge im GF Tracker"><strong>${t.open}</strong>Vorgänge</button>${t.sla ? `<button type="button" class="kpi bad" data-gft="tracker" title="SLA verletzt"><strong>${t.sla}</strong>SLA</button>` : ""}`);
+      el.insertAdjacentHTML("beforeend", `<button type="button" class="kpi" data-level="wartung" title="Prozesse als Level"><strong>▶</strong>Level</button>`); wireLevel(el);
       el.querySelectorAll("[data-gft]").forEach((b) => b.addEventListener("click", () => window.DW.select("tracker", true)));
     },
     detail(id, entry, el) {
       const body = el.querySelector(".dbody"); if (!body) return;
+      if (entry.type === "proc" || entry.type === "step") {
+        const pr = entry.type === "proc" ? entry.d : entry.d.proc; const h = body.querySelector("h2");
+        if (h && pr) { h.insertAdjacentHTML("afterend", levelBtn(pr.id, pr.id === "wartung" ? "Als Level öffnen · live" : "Als Level öffnen")); wireLevel(body); }
+      }
       if (!data) { if (entry.type === "loc" || id === "tracker") body.insertAdjacentHTML("beforeend", `<section class="gft-live"><p class="h">GF Tracker</p><p class="hint">${status === "login" ? 'Nicht angemeldet. <a href="/login?next=/landschaft">Anmelden</a>' : "Daten werden geladen …"}</p></section>`); return; }
       if (entry.type === "loc" && data.sites[id]) {
         const s = data.sites[id];

@@ -2,7 +2,7 @@
 // läuft als Seite des Trackers unter /landschaft und zeigt dort echte Tracker-Daten statt Beispielen.
 // Die Quelldatei bleibt unverändert, damit neue Stände des Prototyps einfach übernommen werden können;
 // beim Start wird sie hier angepasst: three.js lokal statt CDN, Skript als eigene Datei (CSP ohne Inline-Skripte),
-// GF Tracker als Programm in der Systemebene und Einhängepunkte für public/landscape-live.js.
+// GF Tracker als Programm in der Systemebene und Einhängepunkte für public/landschaft/live.js und level.js (Prozess-Level).
 import fs from "node:fs";
 import path from "node:path";
 
@@ -36,14 +36,16 @@ export function buildLandscape(srcFile) {
   { id: 'lt2', from: 'factorial', to: 'tracker', name: 'Abwesenheiten', desc: 'Urlaub und Abwesenheit aus Factorial fließen in die automatische Zuweisung (sobald eingerichtet).', status: 'check', rate: 1, dir: 'fwd' },`, "Informationsbezüge GF Tracker");
   js = patch(js, "function renderKpis() {", "function renderKpis() { renderKpis0(); if (window.DWHooks && window.DWHooks.kpis) window.DWHooks.kpis(kpis); }\nfunction renderKpis0() {", "Kennzahlen");
   js = patch(js, "function renderDetail(id) {", "function renderDetail(id) { renderDetail0(id); if (id && byId[id] && window.DWHooks && window.DWHooks.detail) window.DWHooks.detail(id, byId[id], detail); }\nfunction renderDetail0(id) {", "Details");
-  js = patch(js, "if (location.protocol === 'file:') window.__dw", `window.DW = { LOCATIONS, SYSTEMS, PROCESSES, byId, objects, select, pushEvent, popAt, renderKpis, renderDetail, renderLocList, get selected() { return selected; } };
+  js = patch(js, "function tick() {", "function tick() { if (window.DWPaused) { requestAnimationFrame(tick); return; } // Prozess-Level offen: Welt ruht", "Pause");
+  js = patch(js, "if (location.protocol === 'file:') window.__dw", `window.DW = { LOCATIONS, SYSTEMS, PROCESSES, GROUPS, byId, objects, select, pushEvent, popAt, renderKpis, renderDetail, renderLocList, get selected() { return selected; } };
 if (window.DWHooks && window.DWHooks.ready) window.DWHooks.ready();
 if (location.protocol === 'file:') window.__dw`, "Schnittstelle");
 
   const html = `<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <link rel="icon" href="/icons/icon-64.png"><style>body{margin:0}</style></head><body>
 ${src.slice(0, start)}<script src="/landschaft/live.js"></script>
-<script src="/landschaft/world.js"></script>${src.slice(end + 9)}</body></html>`;
+<script src="/landschaft/world.js"></script>
+<script src="/landschaft/level.js"></script>${src.slice(end + 9)}</body></html>`;
   return { html, js };
 }
 
@@ -67,13 +69,25 @@ export function landscapeData({ S, issues, projects, teams, users, appUrl, compa
   const totals = blank(); delete totals.top;
   const sites = Object.fromEntries(SITES.map((s) => [s.id, { name: s.name, teams: teams.filter((t) => (known.has(t.site) ? t.site : DEFAULT_SITE) === s.id).map((t) => t.name), ...blank() }]));
   const service = {}; const svcAge = 2 * 864e5; const projStat = new Map();
+  // Einzelne Service-Vorgänge für die Prozess-Level (Spielsteine je Station)
+  const statusSince = (i) => i.history.reduce((m, h) => (h.field === "Status" && h.at > m ? h.at : m), "") || i.createdAt;
+  const flowItems = []; let done7 = 0, doneToday = 0;
+  const flowItem = (i, p, sla) => flowItems.push({ key: key(i), summary: i.summary, status: i.status, statusName: S.statusInfo(p, i.status).name, type: i.type, prio: i.priority,
+    assignee: U.get(i.assigneeId)?.name || null, sla: !!sla, ageH: Math.round((now - new Date(statusSince(i)).getTime()) / 36e5), url: link(i), site: siteOf(i) });
   const events = [];
   for (const i of issues) {
     const p = P.get(i.projectId); if (!p || i.type === "EPIC") continue;
     const cat = S.statusInfo(p, i.status).cat;
     const ps = projStat.get(p.id) || { key: p.key, name: p.name, open: 0, done: 0 }; projStat.set(p.id, ps);
     for (const h of i.history) if (h.field === "Status" || h.to === "erstellt") events.push({ at: h.at, i, h, p });
-    if (cat === "done") { ps.done++; if (p.type === "service" && i.status === "RESOLVED") { const s = (service.RESOLVED ||= { n: 0, old: 0 }); s.n++; if (now - new Date((i.history.find((h) => h.field === "Status")?.at) || i.updatedAt).getTime() > svcAge) s.old++; } continue; }
+    if (cat === "done") {
+      ps.done++;
+      if (p.type === "service") {
+        const r = i.resolvedAt ? now - new Date(i.resolvedAt).getTime() : Infinity; if (r < 7 * 864e5) done7++; if (i.resolvedAt && i.resolvedAt.slice(0, 10) === ymd) doneToday++;
+        if (i.status === "RESOLVED") { const s = (service.RESOLVED ||= { n: 0, old: 0 }); s.n++; if (now - new Date(statusSince(i)).getTime() > svcAge) s.old++; flowItem(i, p, false); }
+      }
+      continue;
+    }
     ps.open++;
     const st = sites[siteOf(i)];
     const overdue = !!i.dueDate && i.dueDate < ymd;
@@ -82,7 +96,7 @@ export function landscapeData({ S, issues, projects, teams, users, appUrl, compa
     for (const x of [totals, st]) { x.open++; if (overdue) x.overdue++; if (sla) x.sla++; if (!i.assigneeId) x.unassigned++; if (appt) x.today++; if (high) x.high++; }
     st.top.push({ key: key(i), summary: i.summary, status: S.statusInfo(p, i.status).name, prio: i.priority, assignee: U.get(i.assigneeId)?.name || null, due: i.dueDate || null, sla, overdue, url: link(i),
       w: (sla ? 8 : 0) + (overdue ? 4 : 0) + (S.PRIOS[i.priority]?.rank || 0) });
-    if (p.type === "service") { const s = (service[i.status] ||= { n: 0, old: 0 }); s.n++; const since = (i.history.find((h) => h.field === "Status")?.at) || i.createdAt; if (now - new Date(since).getTime() > svcAge) s.old++; }
+    if (p.type === "service") { const s = (service[i.status] ||= { n: 0, old: 0 }); s.n++; if (now - new Date(statusSince(i)).getTime() > svcAge) s.old++; flowItem(i, p, sla); }
   }
   for (const s of Object.values(sites)) { s.top = s.top.sort((a, b) => b.w - a.w).slice(0, 8).map(({ w, ...x }) => x); }
   events.sort((a, b) => b.at.localeCompare(a.at));
@@ -95,6 +109,8 @@ export function landscapeData({ S, issues, projects, teams, users, appUrl, compa
   return {
     at: new Date(now).toISOString(), appUrl, company, user: user ? { name: user.name, role: user.role } : null,
     sites, totals, service, events: ev,
+    flow: { items: flowItems.sort((a, b) => (b.sla - a.sla) || (b.ageH - a.ageH)).slice(0, 240), done7, doneToday,
+      open: flowItems.filter((x) => x.status !== "RESOLVED").length, sla: flowItems.filter((x) => x.sla).length },
     projects: [...projStat.values()].map((x) => ({ ...x, pct: x.open + x.done ? Math.round(x.done / (x.open + x.done) * 100) : 0 })),
     defaultSite: DEFAULT_SITE,
   };
