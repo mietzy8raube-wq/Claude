@@ -458,7 +458,7 @@
     const d0 = downAt; downAt = null;
     if (!R || !d0 || ev.target !== R.renderer.domElement || Math.hypot(ev.clientX - d0[0], ev.clientY - d0[1]) > 5) return;
     const u = pick(ev); if (!u) return selectStation(null);
-    if (u.token) { const tk = R.tokens.get(u.token); if (tk && !tk.it.sample && tk.it.url) { const u = rel(tk.it.url), k = u.indexOf("#/"); if (window.GFT_EMBED && window.opener && !window.opener.closed && k >= 0) { window.opener.location.hash = u.slice(k + 1); window.opener.focus(); } else window.open(u, "_blank", "noopener"); } else if (tk) selectStation(tk.si); return; }
+    if (u.token) { const tk = R.tokens.get(u.token); if (tk && !tk.it.sample && tk.it.url) { const u = rel(tk.it.url), k = u.indexOf("#/"); if (!(window.GFT_EMBED && k >= 0 && window.GFTLive && window.GFTLive.goTracker(u.slice(k + 1)))) window.open(u, "_blank", "noopener"); } else if (tk) selectStation(tk.si); return; }
     if (u.station != null) selectStation(u.station);
   }
   function onKey(ev) {

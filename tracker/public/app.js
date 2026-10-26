@@ -2694,11 +2694,16 @@ document.addEventListener("click", (e) => {
       if (!ui.archiveLoaded) { ensureArchive().then(() => el.click()); break; }
       exportXlsx(db.issues.filter((i) => activeIn(i, per)), `auswertung-gesamt-${per.label.toLowerCase().replace(/\s+/g, "-")}-${today()}.xlsx`, `Alle Projekte · ${per.label}`, { period: per, scope: db.issues }); break; }
     case "export-all-csv": exportCsv(db.issues, `alle-vorgaenge-${today()}.csv`); break;
-    case "open-landscape": { // HTML-Version: Systemlandschaft als eigenes Fenster, liest die Daten dieses Fensters live mit
+    case "open-landscape": { // HTML-Version: Systemlandschaft als Vollbild in dieser Seite (kein Pop-up), liest die Daten live mit
       window.gftLandscapeDb = () => db;
-      const w = window.open("", "gft-landschaft"); if (!w) { toast("Bitte Pop-ups für diese Datei erlauben."); break; }
-      if (!w.GFT_EMBED) { w.document.open(); w.document.write(window.GFT_LANDSCAPE); w.document.close(); }
-      w.focus(); break; }
+      let ov = document.getElementById("gft-landscape");
+      if (!ov) {
+        ov = document.createElement("div"); ov.id = "gft-landscape"; ov.style.cssText = "position:fixed;inset:0;z-index:5000;background:#eef2f6";
+        const f = document.createElement("iframe"); f.title = "Systemlandschaft"; f.style.cssText = "border:0;width:100%;height:100%;display:block"; f.srcdoc = window.GFT_LANDSCAPE;
+        ov.appendChild(f); document.body.appendChild(ov);
+        window.gftCloseLandscape = () => { ov.style.display = "none"; document.body.style.overflow = ""; };
+      }
+      ov.style.display = "block"; document.body.style.overflow = "hidden"; break; }
     case "export-json": location.href = authUrl("/api/admin/export"); break;
     case "import-json": $("#json-file").click(); break;
     case "logout": api("/api/logout", { method: "POST" }).finally(() => { if (TEAMS) { try { localStorage.removeItem("gft-teams-token"); } catch {} } location.href = LOGIN_URL; }); break;

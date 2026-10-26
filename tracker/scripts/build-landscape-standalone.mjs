@@ -19,14 +19,14 @@ const browserLib = `const DEFAULT_SITE = "hq";\n${lib.slice(lib.indexOf("export 
 if (!/function landscapeData/.test(browserLib) || /\bfs\.|\bpath\./.test(browserLib)) throw new Error("landscapeData nicht sauber herauslösbar – lib/landscape.mjs prüfen.");
 
 /** Einzeldatei-HTML der Systemlandschaft. embedded: läuft als Fenster der Tracker-HTML und liest deren Daten live mit. */
-export function buildLandscapeHtml({ embedded = false } = {}) {
+export function buildLandscapeHtml({ embedded = false, linkBase = "gf-suite-tracker.html" } = {}) {
 const statik = `${embedded ? "window.GFT_EMBED = true;\n" : ""}${read("public/shared.js")}
 ${browserLib}
 window.GFT_STATIC = { compute(db) {
   const S = TrackerShared; const d = db || S.seed();
   const out = landscapeData({ S, issues: d.issues || [], projects: d.projects || [], teams: d.teams || [], sprints: d.sprints || [], users: d.users || [], appUrl: "", company: "druckluft-technik Chemnitz", user: null });
   // Verweise auf die Einzeldatei-Version des Trackers im selben Ordner
-  const fix = (u) => (u || "").replace(/^\\/#\\//, "gf-suite-tracker.html#/");
+  const fix = (u) => (u || "").replace(/^\\/#\\//, ${JSON.stringify(linkBase)} + "#/");
   Object.values(out.sites).forEach((s) => s.top.forEach((i) => (i.url = fix(i.url)))); out.events.forEach((e) => (e.url = fix(e.url))); out.flow.items.forEach((i) => (i.url = fix(i.url))); out.projects.forEach((p) => { p.url = fix(p.url); p.items.forEach((i) => (i.url = fix(i.url))); p.epics.forEach((e) => (e.url = fix(e.url))); });
   return out;
 } };`;
@@ -44,7 +44,14 @@ html = html.replace("<head>", "<head><!-- three.js: MIT-Lizenz, Copyright 2010-2
 return html;
 }
 
+/** Variante zum Veröffentlichen als Web-Link (Artifact): ohne Dokument-Hülle, Verweise bleiben auf der Seite. */
+export function buildLandscapeArtifact() {
+  return buildLandscapeHtml({ linkBase: "" }).replace(/^<!doctype html><html lang="de"><head>/, "").replace(/<\/head><body>/, "").replace(/<\/body><\/html>\s*$/, "")
+    .replace(/<link rel="icon"[^>]*>/, "").replace(/<title>[^<]*<\/title>/, "").replace(/^/, "<title>Systemlandschaft dtC</title>\n");
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv[3] === "--artifact") { fs.writeFileSync(OUT, buildLandscapeArtifact()); console.log(`Geschrieben (Web-Link): ${OUT}`); process.exit(0); }
   const html = buildLandscapeHtml();
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, html);
