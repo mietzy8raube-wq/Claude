@@ -644,3 +644,6 @@ body.readonly [data-act="contact-new"], body.readonly [data-act="asset-new"], bo
 body.readonly [data-act="new-sprint"], body.readonly [data-act="start-sprint"], body.readonly [data-act="complete-sprint"], body.readonly .wf-panel .btn { display: none !important; }
 body.readonly #modal [data-f], body.readonly .desc-view, body.readonly [draggable="true"] { pointer-events: none; }
 body.readonly #modal select[data-f], body.readonly #modal input[data-f] { border-color: transparent; background: transparent; background-image: none; }
+
+/* nur für Bildschirmleser sichtbar (z. B. Überschrift im Vorgangsfenster, dessen Titel ein Eingabefeld ist) */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

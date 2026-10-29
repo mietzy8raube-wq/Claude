@@ -655,6 +655,9 @@ body.readonly [data-act="new-sprint"], body.readonly [data-act="start-sprint"], 
 body.readonly #modal [data-f], body.readonly .desc-view, body.readonly [draggable="true"] { pointer-events: none; }
 body.readonly #modal select[data-f], body.readonly #modal input[data-f] { border-color: transparent; background: transparent; background-image: none; }
 
+/* nur für Bildschirmleser sichtbar (z. B. Überschrift im Vorgangsfenster, dessen Titel ein Eingabefeld ist) */
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+
 .sa-login { max-width: 520px; margin: 8vh auto; padding: 0 16px; }
 .sa-logo { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: #fff; }
 .sa-users { display: grid; gap: 8px; }
@@ -2787,7 +2790,7 @@ function renderIssue() {
   const timePct = i.estimateH ? Math.min(100, (i.loggedH / i.estimateH) * 100) : 0;
   const sf = slaInfo(i, "first"), sr = slaInfo(i, "resolve");
   $("#modal").innerHTML = `
-    <div class="modal-h" style="padding-bottom:8px">${window.history.state?.gftIssue > 1 ? `<button class="btn subtle sm" data-act="nav-back" title="Zum vorherigen Vorgang (Alt+←)">‹ Zurück</button>` : ""}<div class="small muted mh-crumbs" style="flex:1">${crumbs}</div>
+    <div class="modal-h" style="padding-bottom:8px"><h2 class="sr-only">${keyOf(i)} ${esc(i.summary)}</h2>${window.history.state?.gftIssue > 1 ? `<button class="btn subtle sm" data-act="nav-back" title="Zum vorherigen Vorgang (Alt+←)">‹ Zurück</button>` : ""}<div class="small muted mh-crumbs" style="flex:1">${crumbs}</div>
       <div class="mh-sticky">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><b>${esc(i.summary)}</b>${lozenge(i)}${actionButton(i)}</div>
       <button class="btn subtle sm" data-act="watch" title="Beobachten">${icon("eye")} ${i.watchers.includes(db.currentUserId) ? "Beobachtet" : "Beobachten"} (${i.watchers.length})</button>
       <button class="btn subtle sm icon" data-act="clone" title="Klonen">${icon("copy")}</button>

@@ -2107,7 +2107,7 @@ function renderIssue() {
   const timePct = i.estimateH ? Math.min(100, (i.loggedH / i.estimateH) * 100) : 0;
   const sf = slaInfo(i, "first"), sr = slaInfo(i, "resolve");
   $("#modal").innerHTML = `
-    <div class="modal-h" style="padding-bottom:8px">${window.history.state?.gftIssue > 1 ? `<button class="btn subtle sm" data-act="nav-back" title="Zum vorherigen Vorgang (Alt+←)">‹ Zurück</button>` : ""}<div class="small muted mh-crumbs" style="flex:1">${crumbs}</div>
+    <div class="modal-h" style="padding-bottom:8px"><h2 class="sr-only">${keyOf(i)} ${esc(i.summary)}</h2>${window.history.state?.gftIssue > 1 ? `<button class="btn subtle sm" data-act="nav-back" title="Zum vorherigen Vorgang (Alt+←)">‹ Zurück</button>` : ""}<div class="small muted mh-crumbs" style="flex:1">${crumbs}</div>
       <div class="mh-sticky">${typeIcon(i.type)}<span class="key">${keyOf(i)}</span><b>${esc(i.summary)}</b>${lozenge(i)}${actionButton(i)}</div>
       <button class="btn subtle sm" data-act="watch" title="Beobachten">${icon("eye")} ${i.watchers.includes(db.currentUserId) ? "Beobachtet" : "Beobachten"} (${i.watchers.length})</button>
       <button class="btn subtle sm icon" data-act="clone" title="Klonen">${icon("copy")}</button>
