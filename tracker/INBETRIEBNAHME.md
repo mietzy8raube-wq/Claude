@@ -191,6 +191,28 @@ Ausführlich: `ARCHITEKTUR.md`, Abschnitte 8 und 13.
 
 ---
 
+## Anhang: ohne Docker – direkt mit Python (auch Windows Server)
+
+Wenn auf dem Server kein Docker laufen soll, z. B. auf einem **Windows Server**:
+
+1. Python 3 installieren (python.org, bei Windows „Add python.exe to PATH“ ankreuzen) und den Ordner
+   `tracker` auf den Server kopieren (z. B. `C:\GF-Tracker`).
+2. Eingabeaufforderung **als Administrator** in diesem Ordner öffnen:
+   ```
+   python start.py
+   ```
+   Fragt Firmenname, Admin-E-Mail und optional das **Firmenzertifikat** ab – unter Windows einfach die
+   `.pfx`-Datei samt Kennwort angeben. Mit Zertifikat läuft der Tracker auf Port 443 (https://…) und leitet
+   Port 80 dorthin um. Node.js wird dabei automatisch geladen.
+3. `python start.py --selbsttest` – alle Zeilen müssen „OK“ zeigen.
+4. `python start.py --dienst-einrichten` – startet den Tracker künftig beim Hochfahren
+   (Windows-Aufgabenplanung bzw. systemd unter Linux).
+5. Windows-Firewall: Port freigeben, z. B.
+   `netsh advfirewall firewall add rule name="GF Tracker" dir=in action=allow protocol=TCP localport=443`
+6. DNS-Eintrag wie in Schritt 3, dann weiter mit Schritt 8 (Anmeldung und Einrichtung).
+
+Protokoll: `logs\tracker.log`. Daten und nächtliche Sicherungen: `data\` – in die Server-Sicherung aufnehmen.
+
 ## Anhang: statt eigenem Server ein Cloud-Server
 
 Soll der Tracker doch aus dem Internet erreichbar sein (z. B. für das Kundenportal), geht es auch mit einem

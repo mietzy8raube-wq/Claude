@@ -2,6 +2,7 @@
 // GF Tracker – Server. Startet mit: node server.mjs  (Node.js ≥ 22.13)
 // Keine externen Pakete: HTTP, SQLite und Kryptografie kommen aus Node.js selbst.
 import http from "node:http";
+import https from "node:https";
 import zlib from "node:zlib";
 import fs from "node:fs";
 import path from "node:path";
@@ -51,7 +52,9 @@ const sessions = new Sessions(store, { secureCookies: CFG.secureCookies });
 const loginLimiter = new RateLimiter(10, 15 * 60e3);
 const portalLimiter = new RateLimiter(8, 10 * 60e3);
 const mailer = new Mailer({ tenantId: env.MS_TENANT_ID, clientId: env.MS_CLIENT_ID, clientSecret: env.MS_CLIENT_SECRET, sender: env.MAIL_SENDER, loginHost: env.MS_LOGIN_HOST, graphBase: env.MS_GRAPH_BASE });
-const log = (...a) => console.log(new Date().toISOString(), ...a);
+// Protokoll in die Konsole und – falls LOG_FILE gesetzt (z. B. Testversion ohne Konsolenfenster) – in eine Datei
+const LOG_FILE = env.LOG_FILE ? path.resolve(env.LOG_FILE) : null;
+const log = (...a) => { const t = new Date().toISOString(); console.log(t, ...a); if (LOG_FILE) try { fs.appendFileSync(LOG_FILE, `${t} ${a.join(" ")}\n`); } catch { /* Protokoll ist optional */ } };
 const accounts = new Accounts({ store, sessions, mailer, cfg: CFG, userById: (id) => userById(id), log });
 const forgotLimiter = new RateLimiter(5, 15 * 60e3);
 const DUMMY_HASH = hashPassword(randomToken(16));
@@ -1056,7 +1059,10 @@ async function handleApi(req, res, url, session) {
   throw new HttpError(404, "Unbekannte Schnittstelle.");
 }
 
-const server = http.createServer(async (req, res) => {
+// HTTPS ohne vorgeschalteten Proxy (z. B. interner Server, Start über start.py): Zertifikat als PEM oder PFX
+const TLS = env.TLS_PFX ? { pfx: fs.readFileSync(env.TLS_PFX), passphrase: env.TLS_PFX_PASSWORD || undefined }
+  : env.TLS_CERT && env.TLS_KEY ? { cert: fs.readFileSync(env.TLS_CERT), key: fs.readFileSync(env.TLS_KEY) } : null;
+const server = (TLS ? https : http).createServer(TLS || {}, async (req, res) => {
   const url = new URL(req.url, "http://localhost");
   try {
     const session = sessions.resolve(req, url);
@@ -1142,6 +1148,11 @@ setupInitialData();
 deadlineJob(); backupJob();
 setInterval(() => { try { deadlineJob(); } catch (e) { log("Fristenprüfung:", e.message); } try { automationJob(); } catch (e) { log("Automatik:", e.message); ilog("automation", "error", e.message); } notificationMailJob().catch((e) => log("Mail-Job:", e.message)); teamsNotifyJob().catch((e) => log("Teams-Job:", e.message)); }, Number(env.JOB_INTERVAL_MS) || 60e3).unref();
 setInterval(() => { backupJob(); sessions.cleanup(); accounts.cleanup(); ops.cleanup(); automation.cleanup(); }, 60 * 60e3).unref();
-server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
+if (TLS && env.HTTP_REDIRECT_PORT) { // http://… → https://… (z. B. Port 80 → 443)
+  http.createServer((req, res) => { res.writeHead(301, { Location: CFG.appUrl + (req.url || "/") }); res.end(); })
+    .on("error", (e) => log(`Umleitung von Port ${env.HTTP_REDIRECT_PORT} nicht möglich: ${e.message}`)).listen(Number(env.HTTP_REDIRECT_PORT), CFG.host);
+}
+server.on("error", (e) => { log(e.code === "EADDRINUSE" ? `Port ${CFG.port} ist bereits belegt – anderen Port wählen (PORT=…).` : e.code === "EACCES" ? `Port ${CFG.port} darf nur mit Administratorrechten genutzt werden.` : `Server-Fehler: ${e.message}`); process.exit(1); });
+server.listen(CFG.port, CFG.host, () => log(`GF Tracker läuft auf ${CFG.appUrl} (Port ${CFG.port}${TLS ? ", HTTPS" : ""}) · Daten: ${CFG.dataDir} · E-Mail: ${mailer.configured ? "aktiv" : "nicht eingerichtet"}`));
 const shutdown = () => { log("Beende…"); for (const c of clients) c.res.end(); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 3000).unref(); };
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);

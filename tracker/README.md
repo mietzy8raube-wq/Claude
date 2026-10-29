@@ -28,6 +28,25 @@ Dann <http://localhost:3000> öffnen. Beispielzugänge (Passwort jeweils `Passwo
 Kundenportal: <http://localhost:3000/portal>. Die Beispieldaten liegen in
 `data-demo/` und können gelöscht werden.
 
+## Auf dem Laptop testen (ohne Installation, ohne Verbindung nach außen)
+
+`python3 scripts/testpaket_bauen.py` baut `GF-Tracker-Testversion.zip` (Windows: Node.js enthalten,
+weder Python noch Internet nötig). Entpacken → **GF Tracker starten.bat** → Startfenster mit
+„Tracker öffnen“, „Systemlandschaft (3D)“, Anmeldedaten, Protokoll, Zurücksetzen. Läuft nur unter
+`http://localhost:3100` mit Beispieldaten. Ohne Paket: `python start.py --demo`.
+
+## Ohne Docker starten: `start.py` (Windows, Linux, macOS)
+
+```bash
+python start.py               # beim ersten Mal Einrichtung (Firma, Admin, Port, optional Zertifikat .pfx/.pem)
+python start.py --selbsttest  # prüft Anmeldung, Vorgänge, Systemlandschaft, 3D und Level
+python start.py --dienst-einrichten   # Autostart (Windows-Aufgabenplanung bzw. systemd), als Administrator/sudo
+```
+
+Lädt bei Bedarf Node.js (offizieller Download, Prüfsumme geprüft) nach `runtime/`, überwacht den
+Tracker und startet ihn nach Abstürzen neu. HTTPS direkt mit Firmenzertifikat (`TLS_PFX` oder
+`TLS_CERT`/`TLS_KEY`, auf Port 443 inkl. Umleitung von Port 80).
+
 ## Produktivbetrieb (Docker + automatisches HTTPS)
 
 **Schritt-für-Schritt-Anleitung:** [INBETRIEBNAHME.md](INBETRIEBNAHME.md) – auf dem eigenen Firmenserver (Linux-VM, internes Zertifikat, VPN) oder alternativ auf einem Cloud-Server.

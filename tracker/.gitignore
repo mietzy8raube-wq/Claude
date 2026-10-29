@@ -2,3 +2,5 @@ data/
 data-demo/
 .env
 certs/
+runtime/
+logs/
