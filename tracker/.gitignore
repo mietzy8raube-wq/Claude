@@ -4,3 +4,4 @@ data-demo/
 certs/
 runtime/
 logs/
+__pycache__/
